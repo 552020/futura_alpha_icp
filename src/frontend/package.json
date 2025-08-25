@@ -1,10 +1,10 @@
 {
-  "name": "futura_alpha_icp_frontend",
+  "name": "frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "setup": "npm i && dfx canister create futura_alpha_icp_backend && dfx generate futura_alpha_icp_backend && dfx deploy",
+    "setup": "npm i && dfx canister create frontend && dfx generate frontend && dfx deploy",
     "start": "vite --port 3000",
     "prebuild": "dfx generate",
     "build": "tsc && vite build",

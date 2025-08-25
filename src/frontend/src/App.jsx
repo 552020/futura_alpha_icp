@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { futura_alpha_icp_backend } from 'declarations/futura_alpha_icp_backend';
+import { useState } from "react";
+import { backend } from "declarations/backend";
 
 function App() {
-  const [greeting, setGreeting] = useState('');
+  const [greeting, setGreeting] = useState("");
 
   function handleSubmit(event) {
     event.preventDefault();
     const name = event.target.elements.name.value;
-    futura_alpha_icp_backend.greet(name).then((greeting) => {
+    backend.greet(name).then((greeting) => {
       setGreeting(greeting);
     });
     return false;
