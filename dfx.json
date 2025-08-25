@@ -5,7 +5,7 @@
       "package": "backend",
       "type": "rust",
       "declarations": {
-        "output": "src/nextjs/src/ic/declarations"
+        "output": "src/nextjs/src/ic/declarations/backend"
       }
     },
     "frontend": {
@@ -14,7 +14,7 @@
       "type": "assets",
       "workspace": "frontend",
       "declarations": {
-        "output": "src/nextjs/src/ic/declarations"
+        "output": "src/nextjs/src/ic/declarations/frontend"
       }
     },
     "internet_identity": {
@@ -28,7 +28,7 @@
       "type": "custom",
       "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz",
       "declarations": {
-        "output": "src/nextjs/src/ic/declarations"
+        "output": "src/nextjs/src/ic/declarations/internet_identity"
       }
     }
   },

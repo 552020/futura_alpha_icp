@@ -10,8 +10,7 @@
     "pretest": "npm run prebuild --workspaces --if-present",
     "start": "npm start --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
-    "generate": "dfx generate && npm run copy-declarations",
-    "copy-declarations": "cp -r src/declarations/* src/nextjs/src/ic/declarations/"
+    "generate": "dfx generate"
   },
   "type": "module",
   "workspaces": [
