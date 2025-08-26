@@ -9,7 +9,7 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-echo -e "${YELLOW}🚀 Deploying ICP canisters...${NC}"
+echo -e "${YELLOW}🚀 Deploying backend and Internet Identity canisters locally...${NC}"
 
 # Check if dfx is running
 if ! dfx ping >/dev/null 2>&1; then
@@ -18,7 +18,7 @@ if ! dfx ping >/dev/null 2>&1; then
     sleep 3
 fi
 
-if dfx deploy; then
+if dfx deploy backend internet_identity; then
     echo -e "${GREEN}✅ Deployed${NC}"
     
     echo -e "${YELLOW}📝 Generating declarations...${NC}"

@@ -53,6 +53,10 @@ fi
 echo "Building backend canister..."
 dfx build backend
 
+# Generate .did file
+echo "Generating .did file..."
+generate-did backend
+
 # Final confirmation before deployment
 echo "FINAL CONFIRMATION: About to deploy backend canister to ICP mainnet"
 echo "   - Deployer: $DEPLOYER"
