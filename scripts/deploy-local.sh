@@ -18,11 +18,19 @@ if ! dfx ping >/dev/null 2>&1; then
     sleep 3
 fi
 
-if dfx deploy backend internet_identity; then
+if dfx deploy backend && dfx deploy internet_identity; then
     echo -e "${GREEN}✅ Deployed${NC}"
     
-    echo -e "${YELLOW}📝 Generating declarations...${NC}"
-    if dfx generate; then
+    echo -e "${YELLOW}📝 Generating .did file...${NC}"
+    if generate-did backend; then
+        echo -e "${GREEN}✅ .did file generated${NC}"
+    else
+        echo -e "${RED}❌ .did file generation failed${NC}"
+        exit 1
+    fi
+    
+    echo -e "${YELLOW}📝 Generating declarations (backend, internet_identity only)...${NC}"
+    if dfx generate backend && dfx generate internet_identity; then
         echo -e "${GREEN}✅ Declarations generated${NC}"
         
         echo -e "${YELLOW}🔧 Fixing generated declarations...${NC}"

@@ -9,16 +9,7 @@
         "env_override": "process.env.NEXT_PUBLIC_CANISTER_ID_BACKEND"
       }
     },
-    "frontend": {
-      "dependencies": ["backend"],
-      "source": ["src/frontend/dist"],
-      "type": "assets",
-      "workspace": "frontend",
-      "declarations": {
-        "output": "src/nextjs/src/ic/declarations/frontend",
-        "env_override": "process.env.NEXT_PUBLIC_CANISTER_ID_FRONTEND"
-      }
-    },
+
     "internet_identity": {
       "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
       "frontend": {},
