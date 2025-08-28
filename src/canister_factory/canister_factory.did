@@ -1,0 +1,101 @@
+type InitArg = record {
+  max_canisters_per_caller: opt nat32;
+  min_factory_cycles: opt nat;
+  allowlist: opt vec principal;
+  admins: opt vec principal;
+  max_upload_size: opt nat64;
+  upload_ttl_seconds: opt nat64;
+};
+
+type UploadInfo = record {
+  owner: principal;
+  chunks: vec blob;
+  total_len: nat64;
+  committed_hash: opt blob;
+  created_at_time_ns: nat64;
+};
+
+type CallerStats = record {
+  created_count: nat32;
+  last_created_at: opt nat64;
+};
+
+type Mode = variant {
+  Install;
+  Reinstall;
+  Upgrade;
+};
+
+type CreateInstallRequest = record {
+  upload_id: nat64;
+  extra_controllers: opt vec principal;
+  init_arg: blob;
+  mode: Mode;
+  cycles: nat;
+  handoff: bool;
+};
+
+type CreateInstallResponse = record {
+  canister_id: principal;
+  module_hash_hex: text;
+  cycles_used: nat;
+};
+
+type UploadCommit = record {
+  expected_sha256_hex: text;
+};
+
+type FactoryStats = record {
+  total_canisters_created: nat64;
+  total_uploads: nat64;
+  active_uploads: nat64;
+  factory_cycles_balance: nat;
+  unique_callers: nat64;
+};
+
+type Config = record {
+  max_canisters_per_caller: nat32;
+  min_factory_cycles: nat;
+  max_upload_size: nat64;
+  upload_ttl_ns: nat64;
+  allowlist: opt vec principal;
+  admins: vec principal;
+  next_upload_id: nat64;
+  emergency_stop: bool;
+};
+
+type Result = variant { Ok; Err: text };
+type Result_1 = variant { Ok: nat64; Err: text };
+type Result_2 = variant { Ok: text; Err: text };
+type Result_3 = variant { Ok: CreateInstallResponse; Err: text };
+type Result_4 = variant { Ok: nat32; Err: text };
+type Result_5 = variant { Ok: UploadInfo; Err: text };
+
+service : (opt InitArg) -> {
+  // Upload management
+  create_upload: () -> (Result_1);
+  put_chunk: (nat64, blob) -> (Result_1);
+  commit_upload: (nat64, UploadCommit) -> (Result_2);
+  clear_upload: (nat64) -> (Result);
+  get_upload_info: (nat64) -> (Result_5) query;
+  
+  // Canister factory
+  create_and_install_with: (CreateInstallRequest) -> (Result_3);
+  
+  // Admin functions
+  set_emergency_stop: (bool) -> (Result);
+  set_allowlist: (opt vec principal) -> (Result);
+  add_admin: (principal) -> (Result);
+  remove_admin: (principal) -> (Result);
+  cleanup_expired_uploads_manual: () -> (Result_4);
+  
+  // Query functions
+  get_config: () -> (Config) query;
+  my_stats: () -> (CallerStats) query;
+  get_factory_stats: () -> (FactoryStats) query;
+  version: () -> (text) query;
+  health_check: () -> (text) query;
+  
+  // Candid export
+  __get_candid_interface_tmp_hack: () -> (text) query;
+}
