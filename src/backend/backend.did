@@ -152,9 +152,12 @@ service : () -> {
   list_users : () -> (vec CapsuleHeader) query;
   mark_bound : () -> (bool);
   mark_capsule_bound_to_web2 : () -> (bool);
+  prove_nonce : (text) -> (bool);
   register : () -> (CapsuleRegistrationResult);
   register_capsule : () -> (CapsuleRegistrationResult);
+  register_with_nonce : (text) -> (bool);
   remove_admin : (principal) -> (bool);
   user_stats : () -> (vec record { text; nat64 }) query;
+  verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;
 }

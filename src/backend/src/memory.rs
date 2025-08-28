@@ -10,6 +10,9 @@ thread_local! {
 
     // Capsule storage (centralized data storage)
     static CAPSULES: std::cell::RefCell<HashMap<String, Capsule>> = std::cell::RefCell::new(HashMap::new());
+
+    // Nonce proof storage for II authentication
+    static NONCE_PROOFS: std::cell::RefCell<HashMap<String, (Principal, u64)>> = std::cell::RefCell::new(HashMap::new());
 }
 
 // Helper function to generate secure codes
@@ -51,4 +54,16 @@ where
     F: FnOnce(&HashSet<Principal>) -> R,
 {
     ADMINS.with(|admins| f(&admins.borrow()))
+}
+
+// Nonce proof functions for II authentication
+pub fn store_nonce_proof(nonce: String, principal: Principal, timestamp: u64) -> bool {
+    NONCE_PROOFS.with(|proofs| {
+        proofs.borrow_mut().insert(nonce, (principal, timestamp));
+    });
+    true
+}
+
+pub fn get_nonce_proof(nonce: String) -> Option<Principal> {
+    NONCE_PROOFS.with(|proofs| proofs.borrow().get(&nonce).map(|(principal, _)| *principal))
 }

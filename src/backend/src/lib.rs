@@ -33,6 +33,38 @@ pub fn mark_bound() -> bool {
     capsule::mark_bound()
 }
 
+// Register user and prove nonce in one call (optimized for II auth flow)
+#[ic_cdk::update]
+pub fn register_with_nonce(nonce: String) -> bool {
+    let caller = ic_cdk::api::msg_caller();
+    let timestamp = ic_cdk::api::time();
+
+    // Register the user
+    capsule::register();
+
+    // Store nonce proof
+    memory::store_nonce_proof(nonce, caller, timestamp);
+
+    true
+}
+
+// Nonce proof for II authentication (kept for backward compatibility)
+#[ic_cdk::update]
+pub fn prove_nonce(nonce: String) -> bool {
+    // Store the nonce proof with the caller's principal and timestamp
+    let caller = ic_cdk::api::msg_caller();
+    let timestamp = ic_cdk::api::time();
+
+    // Store in memory (we'll implement this in memory.rs)
+    memory::store_nonce_proof(nonce, caller, timestamp)
+}
+
+#[ic_cdk::query]
+pub fn verify_nonce(nonce: String) -> Option<Principal> {
+    // Verify and return the principal who proved this nonce
+    memory::get_nonce_proof(nonce)
+}
+
 #[ic_cdk::query]
 pub fn get_user() -> Option<types::CapsuleInfo> {
     // Redirect to capsule info
