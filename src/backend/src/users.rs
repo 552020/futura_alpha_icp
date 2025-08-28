@@ -26,7 +26,7 @@ pub fn register_user() -> UserRegistrationResult {
                 UserRegistrationResult {
                     success: true,
                     user: Some(existing_user.clone()),
-                    message: "User already registered, updated activity".to_string(),
+                    message: "User already registered".to_string(),
                 }
             }
             None => {
@@ -43,7 +43,7 @@ pub fn register_user() -> UserRegistrationResult {
                 UserRegistrationResult {
                     success: true,
                     user: Some(new_user),
-                    message: "User registered successfully".to_string(),
+                    message: "User registered".to_string(),
                 }
             }
         }
@@ -82,7 +82,16 @@ pub fn get_user_by_principal(principal: Principal) -> Option<User> {
 }
 
 /// List all users (for admin/debugging)
+/// Note: In production, add proper admin authentication
 pub fn list_all_users() -> Vec<User> {
+    let caller = msg_caller();
+
+    // TODO: Add proper admin check in production
+    // For now, allow anonymous principal (local development)
+    if caller == Principal::anonymous() {
+        // Allow for local development/testing
+    }
+
     USERS.with(|users| users.borrow().values().cloned().collect())
 }
 
@@ -116,5 +125,24 @@ pub fn update_user_activity() -> bool {
             }
             None => false,
         }
+    })
+}
+
+// Upgrade persistence functions
+/// Export all users for stable storage during canister upgrade
+pub fn export_users_for_upgrade() -> Vec<(Principal, User)> {
+    USERS.with(|users| {
+        users
+            .borrow()
+            .iter()
+            .map(|(k, v)| (*k, v.clone()))
+            .collect()
+    })
+}
+
+/// Import users from stable storage after canister upgrade
+pub fn import_users_from_upgrade(user_data: Vec<(Principal, User)>) {
+    USERS.with(|users| {
+        *users.borrow_mut() = user_data.into_iter().collect();
     })
 }

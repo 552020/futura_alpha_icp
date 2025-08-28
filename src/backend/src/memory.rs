@@ -1,4 +1,5 @@
 use crate::types::*;
+use candid::Principal;
 use ic_cdk::api::msg_caller;
 use std::collections::HashMap;
 
@@ -9,6 +10,9 @@ thread_local! {
     static NOTES: std::cell::RefCell<HashMap<String, NoteMemory>> = std::cell::RefCell::new(HashMap::new());
     static DOCUMENTS: std::cell::RefCell<HashMap<String, DocumentMemory>> = std::cell::RefCell::new(HashMap::new());
     static AUDIO: std::cell::RefCell<HashMap<String, AudioMemory>> = std::cell::RefCell::new(HashMap::new());
+
+    // User storage for Internet Identity integration
+    static USERS: std::cell::RefCell<HashMap<Principal, User>> = std::cell::RefCell::new(HashMap::new());
 }
 
 // Helper function to generate secure codes
@@ -218,4 +222,13 @@ pub fn create_not_found_response() -> ic_http_certification::HttpResponse<'stati
         vec![("Content-Type".to_string(), "text/plain".to_string())],
     )
     .build()
+}
+
+// User storage functions
+pub fn with_users<R>(f: impl FnOnce(&mut HashMap<Principal, User>) -> R) -> R {
+    USERS.with(|users| f(&mut users.borrow_mut()))
+}
+
+pub fn with_users_read<R>(f: impl FnOnce(&HashMap<Principal, User>) -> R) -> R {
+    USERS.with(|users| f(&users.borrow()))
 }

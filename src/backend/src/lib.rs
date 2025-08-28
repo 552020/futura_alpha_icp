@@ -1,6 +1,6 @@
 // use crate::types::HttpRequest; // Disabled for now
-use candid::Principal;
 // use ic_cdk::api::data_certificate; // Disabled for now
+use candid::Principal;
 use ic_cdk::{api::certified_data_set, *};
 use ic_http_certification::utils::skip_certification_certified_data;
 // use ic_http_certification::{utils::add_skip_certification_header, HttpResponse}; // Disabled for now
@@ -9,7 +9,7 @@ use ic_http_certification::utils::skip_certification_certified_data;
 mod types;
 mod users;
 // mod memories; // Disabled for now
-// mod memory; // Disabled for now
+// mod memory; // Disabled for now - conflicts with current types
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
@@ -72,6 +72,24 @@ fn init() {
 //     add_skip_certification_header(data_certificate().unwrap(), &mut response);
 //     response
 // }
+
+// Persistence hooks for canister upgrades
+#[ic_cdk::pre_upgrade]
+fn pre_upgrade() {
+    // Serialize user data before upgrade
+    let user_data = users::export_users_for_upgrade();
+    ic_cdk::storage::stable_save((user_data,)).expect("Failed to save user data to stable storage");
+}
+
+#[ic_cdk::post_upgrade]
+fn post_upgrade() {
+    // Restore user data after upgrade
+    if let Ok((user_data,)) = ic_cdk::storage::stable_restore::<(Vec<(Principal, types::User)>,)>()
+    {
+        users::import_users_from_upgrade(user_data);
+    }
+    // If restore fails, start with empty state (no panic)
+}
 
 // Export the interface for the smart contract.
 ic_cdk::export_candid!();

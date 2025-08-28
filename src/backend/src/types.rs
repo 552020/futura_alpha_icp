@@ -146,9 +146,12 @@ pub struct UserMemoriesResponse {
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
 pub struct User {
     pub principal: Principal,
+    /// Registration timestamp (nanoseconds since Unix epoch)
     pub registered_at: u64,
+    /// Last activity timestamp (nanoseconds since Unix epoch)  
     pub last_activity_at: u64,
-    pub bound: bool, // Whether user is bound to Web2 session
+    /// Whether user is bound to Web2 session (optional convenience flag)
+    pub bound: bool,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
