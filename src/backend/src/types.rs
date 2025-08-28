@@ -1,4 +1,4 @@
-use candid::{CandidType, Deserialize};
+use candid::{CandidType, Deserialize, Principal};
 use serde::Serialize;
 
 // Memory types as enum for type safety
@@ -140,4 +140,20 @@ pub struct UserMemoriesResponse {
     pub videos: Vec<String>,
     pub documents: Vec<String>,
     pub audio: Vec<String>,
+}
+
+// User management types for Internet Identity integration
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct User {
+    pub principal: Principal,
+    pub registered_at: u64,
+    pub last_activity_at: u64,
+    pub bound: bool, // Whether user is bound to Web2 session
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct UserRegistrationResult {
+    pub success: bool,
+    pub user: Option<User>,
+    pub message: String,
 }

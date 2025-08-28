@@ -1,4 +1,21 @@
+type User = record {
+  "principal" : principal;
+  last_activity_at : nat64;
+  bound : bool;
+  registered_at : nat64;
+};
+type UserRegistrationResult = record {
+  user : opt User;
+  message : text;
+  success : bool;
+};
 service : () -> {
+  get_user : () -> (opt User) query;
+  get_user_by_principal : (principal) -> (opt User) query;
   greet : (text) -> (text) query;
+  list_users : () -> (vec User) query;
+  mark_bound : () -> (bool);
+  register : () -> (UserRegistrationResult);
+  user_stats : () -> (vec record { text; nat64 }) query;
   whoami : () -> (principal) query;
 }

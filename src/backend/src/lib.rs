@@ -6,9 +6,10 @@ use ic_http_certification::utils::skip_certification_certified_data;
 // use ic_http_certification::{utils::add_skip_certification_header, HttpResponse}; // Disabled for now
 
 // Import modules
+mod types;
+mod users;
 // mod memories; // Disabled for now
 // mod memory; // Disabled for now
-// mod types; // Disabled for now
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
@@ -18,6 +19,37 @@ fn greet(name: String) -> String {
 #[ic_cdk::query]
 pub fn whoami() -> Principal {
     ic_cdk::api::msg_caller()
+}
+
+// User management endpoints for Internet Identity integration
+#[ic_cdk::update]
+pub fn register() -> types::UserRegistrationResult {
+    users::register_user()
+}
+
+#[ic_cdk::update]
+pub fn mark_bound() -> bool {
+    users::mark_user_bound()
+}
+
+#[ic_cdk::query]
+pub fn get_user() -> Option<types::User> {
+    users::get_user()
+}
+
+#[ic_cdk::query]
+pub fn get_user_by_principal(principal: Principal) -> Option<types::User> {
+    users::get_user_by_principal(principal)
+}
+
+#[ic_cdk::query]
+pub fn list_users() -> Vec<types::User> {
+    users::list_all_users()
+}
+
+#[ic_cdk::query]
+pub fn user_stats() -> std::collections::HashMap<String, u64> {
+    users::get_user_stats()
 }
 
 #[init]
