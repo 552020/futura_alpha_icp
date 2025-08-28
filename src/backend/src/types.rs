@@ -133,6 +133,19 @@ pub struct CapsuleRegistrationResult {
     pub message: String,
 }
 
+// Capsule information for user queries
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct CapsuleInfo {
+    pub capsule_id: String,
+    pub subject: PersonRef,
+    pub is_owner: bool,
+    pub is_controller: bool,
+    pub is_self_capsule: bool,      // true if subject == caller
+    pub bound_to_web2: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
 // Capsule header for listing
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct CapsuleHeader {

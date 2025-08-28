@@ -6,11 +6,12 @@ use ic_http_certification::utils::skip_certification_certified_data;
 // use ic_http_certification::{utils::add_skip_certification_header, HttpResponse}; // Disabled for now
 
 // Import modules
+mod admin;
 mod capsule;
+mod memory;
 mod types;
-mod users;
-// mod memories; // Disabled for now
-// mod memory; // Disabled for now - conflicts with current types
+mod users; // Centralized storage for capsules and memory data
+           // mod memories; // Disabled for now
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
@@ -22,51 +23,66 @@ pub fn whoami() -> Principal {
     ic_cdk::api::msg_caller()
 }
 
-// User management endpoints for Internet Identity integration
+// User management endpoints for Internet Identity integration (DEPRECATED - use capsule endpoints)
+// These are kept for backward compatibility but will be removed
 #[ic_cdk::update]
-pub fn register() -> types::UserRegistrationResult {
-    users::register_user()
+pub fn register() -> types::CapsuleRegistrationResult {
+    // Redirect to capsule registration
+    capsule::register_capsule()
 }
 
 #[ic_cdk::update]
 pub fn mark_bound() -> bool {
-    users::mark_user_bound()
+    // Redirect to capsule binding
+    capsule::mark_capsule_bound_to_web2()
 }
 
 #[ic_cdk::query]
-pub fn get_user() -> Option<types::User> {
-    users::get_user()
+pub fn get_user() -> Option<types::CapsuleInfo> {
+    // Redirect to capsule info
+    capsule::get_capsule_info()
 }
 
 #[ic_cdk::query]
-pub fn get_user_by_principal(principal: Principal) -> Option<types::User> {
-    users::get_user_by_principal(principal)
+pub fn get_user_by_principal(principal: Principal) -> Option<types::CapsuleInfo> {
+    // TODO: Implement capsule lookup by principal
+    None
 }
 
 #[ic_cdk::query]
-pub fn list_users() -> Vec<types::User> {
-    users::list_all_users()
+pub fn list_users() -> Vec<types::CapsuleHeader> {
+    // Redirect to capsule listing
+    capsule::list_my_capsules()
 }
 
 #[ic_cdk::query]
 pub fn user_stats() -> std::collections::HashMap<String, u64> {
-    users::get_user_stats()
+    // TODO: Implement capsule-based statistics
+    let mut stats = std::collections::HashMap::new();
+    stats.insert("total_capsules".to_string(), 0u64);
+    stats.insert("bound_capsules".to_string(), 0u64);
+    stats
 }
 
 // Admin management endpoints
 #[ic_cdk::update]
 pub fn add_admin(principal: Principal) -> bool {
-    users::add_admin(principal)
+    admin::add_admin(principal)
 }
 
 #[ic_cdk::update]
 pub fn remove_admin(principal: Principal) -> bool {
-    users::remove_admin(principal)
+    admin::remove_admin(principal)
 }
 
 #[ic_cdk::query]
 pub fn list_admins() -> Vec<Principal> {
-    users::list_admins()
+    admin::list_admins()
+}
+
+#[ic_cdk::query]
+pub fn list_superadmins() -> Vec<Principal> {
+    admin::list_superadmins()
 }
 
 // Capsule registration (replaces user registration)
@@ -121,25 +137,21 @@ fn init() {
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Serialize user data, capsules, and admins before upgrade
-    let user_data = users::export_users_for_upgrade();
+    // Serialize capsules and admins before upgrade
     let capsule_data = capsule::export_capsules_for_upgrade();
-    let admin_data = users::export_admins_for_upgrade();
-    ic_cdk::storage::stable_save((user_data, capsule_data, admin_data))
+    let admin_data = admin::export_admins_for_upgrade();
+    ic_cdk::storage::stable_save((capsule_data, admin_data))
         .expect("Failed to save data to stable storage");
 }
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
-    // Restore user data, capsules, and admins after upgrade
-    if let Ok((user_data, capsule_data, admin_data)) = ic_cdk::storage::stable_restore::<(
-        Vec<(Principal, types::User)>,
-        Vec<(String, types::Capsule)>,
-        Vec<Principal>,
-    )>() {
-        users::import_users_from_upgrade(user_data);
+    // Restore capsules and admins after upgrade
+    if let Ok((capsule_data, admin_data)) =
+        ic_cdk::storage::stable_restore::<(Vec<(String, types::Capsule)>, Vec<Principal>)>()
+    {
         capsule::import_capsules_from_upgrade(capsule_data);
-        users::import_admins_from_upgrade(admin_data);
+        admin::import_admins_from_upgrade(admin_data);
     }
     // If restore fails, start with empty state (no panic)
 }

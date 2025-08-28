@@ -1,3 +1,4 @@
+use crate::memory::{with_capsules, with_capsules_mut};
 use crate::types::*;
 use ic_cdk::api::{msg_caller, time};
 use std::cell::RefCell;
@@ -185,10 +186,7 @@ impl Capsule {
     }
 }
 
-// Thread-local storage for capsules (centralized for now)
-thread_local! {
-    static CAPSULES: RefCell<HashMap<String, Capsule>> = RefCell::new(HashMap::new());
-}
+// Note: CAPSULES storage moved to memory.rs for centralized storage
 
 /// Create a new capsule
 pub fn create_capsule(subject: PersonRef) -> CapsuleCreationResult {
@@ -196,8 +194,8 @@ pub fn create_capsule(subject: PersonRef) -> CapsuleCreationResult {
     let capsule = Capsule::new(subject, caller);
     let capsule_id = capsule.id.clone();
 
-    CAPSULES.with(|capsules| {
-        capsules.borrow_mut().insert(capsule_id.clone(), capsule);
+    with_capsules_mut(|capsules| {
+        capsules.insert(capsule_id.clone(), capsule);
     });
 
     CapsuleCreationResult {
@@ -211,9 +209,8 @@ pub fn create_capsule(subject: PersonRef) -> CapsuleCreationResult {
 pub fn get_capsule(capsule_id: String) -> Option<Capsule> {
     let caller = PersonRef::from_caller();
 
-    CAPSULES.with(|capsules| {
+    with_capsules(|capsules| {
         capsules
-            .borrow()
             .get(&capsule_id)
             .filter(|capsule| capsule.has_write_access(&caller))
             .cloned()
@@ -224,9 +221,8 @@ pub fn get_capsule(capsule_id: String) -> Option<Capsule> {
 pub fn list_my_capsules() -> Vec<CapsuleHeader> {
     let caller = PersonRef::from_caller();
 
-    CAPSULES.with(|capsules| {
+    with_capsules(|capsules| {
         capsules
-            .borrow()
             .values()
             .filter(|capsule| capsule.has_write_access(&caller))
             .map(|capsule| capsule.to_header())
@@ -240,9 +236,8 @@ pub fn register_capsule() -> CapsuleRegistrationResult {
     let caller_ref = PersonRef::from_caller();
 
     // Check if caller already has a self-capsule (subject == owner == caller)
-    let existing_self_capsule = CAPSULES.with(|capsules| {
+    let existing_self_capsule = with_capsules(|capsules| {
         capsules
-            .borrow()
             .values()
             .find(|capsule| {
                 capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref)
@@ -261,9 +256,8 @@ pub fn register_capsule() -> CapsuleRegistrationResult {
             }
 
             // Store the updated capsule
-            CAPSULES.with(|capsules| {
+            with_capsules_mut(|capsules| {
                 capsules
-                    .borrow_mut()
                     .insert(capsule.id.clone(), capsule.clone());
             });
 
@@ -307,11 +301,9 @@ pub fn register_capsule() -> CapsuleRegistrationResult {
 pub fn mark_capsule_bound_to_web2() -> bool {
     let caller_ref = PersonRef::from_caller();
 
-    CAPSULES.with(|capsules| {
-        let mut capsules_map = capsules.borrow_mut();
-
+    with_capsules_mut(|capsules| {
         // Find caller's self-capsule (where caller is both subject and owner)
-        for capsule in capsules_map.values_mut() {
+        for capsule in capsules.values_mut() {
             if capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref) {
                 capsule.bound_to_web2 = true;
                 capsule.updated_at = time();
@@ -330,9 +322,8 @@ pub fn mark_capsule_bound_to_web2() -> bool {
 
 /// Export all capsules for upgrade persistence
 pub fn export_capsules_for_upgrade() -> Vec<(String, Capsule)> {
-    CAPSULES.with(|capsules| {
+    with_capsules(|capsules| {
         capsules
-            .borrow()
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
@@ -341,7 +332,38 @@ pub fn export_capsules_for_upgrade() -> Vec<(String, Capsule)> {
 
 /// Import capsules from upgrade persistence
 pub fn import_capsules_from_upgrade(capsule_data: Vec<(String, Capsule)>) {
-    CAPSULES.with(|capsules| {
-        *capsules.borrow_mut() = capsule_data.into_iter().collect();
+    with_capsules_mut(|capsules| {
+        *capsules = capsule_data.into_iter().collect();
+    })
+}
+
+/// Get capsule information for the caller
+/// Returns capsule info if caller is owner/controller of any capsule
+pub fn get_capsule_info() -> Option<CapsuleInfo> {
+    let caller_ref = PersonRef::from_caller();
+
+    with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| {
+                // Check if caller is owner or controller
+                capsule.owners.contains_key(&caller_ref)
+                    || capsule.controllers.contains_key(&caller_ref)
+            })
+            .map(|capsule| {
+                // Check if this is caller's self-capsule (subject == caller)
+                let is_self_capsule = capsule.subject == caller_ref;
+
+                CapsuleInfo {
+                    capsule_id: capsule.id.clone(),
+                    subject: capsule.subject.clone(),
+                    is_owner: capsule.owners.contains_key(&caller_ref),
+                    is_controller: capsule.controllers.contains_key(&caller_ref),
+                    is_self_capsule,
+                    bound_to_web2: capsule.bound_to_web2,
+                    created_at: capsule.created_at,
+                    updated_at: capsule.updated_at,
+                }
+            })
     })
 }

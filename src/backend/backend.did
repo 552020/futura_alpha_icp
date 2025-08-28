@@ -47,6 +47,16 @@ type CapsuleHeader = record {
   controller_count : nat32;
   memory_count : nat32;
 };
+type CapsuleInfo = record {
+  updated_at : nat64;
+  subject : PersonRef;
+  capsule_id : text;
+  is_owner : bool;
+  created_at : nat64;
+  bound_to_web2 : bool;
+  is_self_capsule : bool;
+  is_controller : bool;
+};
 type CapsuleRegistrationResult = record {
   capsule_id : opt text;
   is_new : bool;
@@ -122,17 +132,6 @@ type MemoryType = variant { Note; Image; Document; Audio; Video };
 type NoteMetadata = record { base : MemoryMetadataBase; tags : opt vec text };
 type OwnerState = record { last_activity_at : nat64; since : nat64 };
 type PersonRef = variant { Opaque : text; Principal : principal };
-type User = record {
-  "principal" : principal;
-  last_activity_at : nat64;
-  bound : bool;
-  registered_at : nat64;
-};
-type UserRegistrationResult = record {
-  user : opt User;
-  message : text;
-  success : bool;
-};
 type VideoMetadata = record {
   height : opt nat32;
   duration : opt nat32;
@@ -144,15 +143,16 @@ service : () -> {
   add_admin : (principal) -> (bool);
   create_capsule : (PersonRef) -> (CapsuleCreationResult);
   get_capsule : (text) -> (opt Capsule) query;
-  get_user : () -> (opt User) query;
-  get_user_by_principal : (principal) -> (opt User) query;
+  get_user : () -> (opt CapsuleInfo) query;
+  get_user_by_principal : (principal) -> (opt CapsuleInfo) query;
   greet : (text) -> (text) query;
   list_admins : () -> (vec principal) query;
   list_my_capsules : () -> (vec CapsuleHeader) query;
-  list_users : () -> (vec User) query;
+  list_superadmins : () -> (vec principal) query;
+  list_users : () -> (vec CapsuleHeader) query;
   mark_bound : () -> (bool);
   mark_capsule_bound_to_web2 : () -> (bool);
-  register : () -> (UserRegistrationResult);
+  register : () -> (CapsuleRegistrationResult);
   register_capsule : () -> (CapsuleRegistrationResult);
   remove_admin : (principal) -> (bool);
   user_stats : () -> (vec record { text; nat64 }) query;
