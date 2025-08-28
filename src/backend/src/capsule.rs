@@ -38,6 +38,7 @@ impl Capsule {
             owners,
             controllers: HashMap::new(),
             connections: HashMap::new(),
+            connection_groups: HashMap::new(),
             memories: HashMap::new(),
             created_at: now,
             updated_at: now,
@@ -64,8 +65,27 @@ impl Capsule {
         match &memory.access {
             MemoryAccess::Public => true,
             MemoryAccess::Private => self.has_write_access(person),
-            MemoryAccess::Custom(allowed) => {
-                self.has_write_access(person) || allowed.contains(person)
+            MemoryAccess::Custom { individuals, groups } => {
+                // Check if person has write access (owners/controllers always have access)
+                if self.has_write_access(person) {
+                    return true;
+                }
+                
+                // Check direct individual access
+                if individuals.contains(person) {
+                    return true;
+                }
+                
+                // Check group access
+                for group_id in groups {
+                    if let Some(group) = self.connection_groups.get(group_id) {
+                        if group.members.contains(person) {
+                            return true;
+                        }
+                    }
+                }
+                
+                false
             }
             MemoryAccess::Scheduled {
                 accessible_after,
@@ -93,8 +113,27 @@ impl Capsule {
         match access {
             MemoryAccess::Public => true,
             MemoryAccess::Private => self.has_write_access(person),
-            MemoryAccess::Custom(allowed) => {
-                self.has_write_access(person) || allowed.contains(person)
+            MemoryAccess::Custom { individuals, groups } => {
+                // Check if person has write access (owners/controllers always have access)
+                if self.has_write_access(person) {
+                    return true;
+                }
+                
+                // Check direct individual access
+                if individuals.contains(person) {
+                    return true;
+                }
+                
+                // Check group access
+                for group_id in groups {
+                    if let Some(group) = self.connection_groups.get(group_id) {
+                        if group.members.contains(person) {
+                            return true;
+                        }
+                    }
+                }
+                
+                false
             }
             MemoryAccess::Scheduled {
                 accessible_after,

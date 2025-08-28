@@ -25,6 +25,7 @@ type Capsule = record {
   subject : PersonRef;
   owners : vec record { PersonRef; OwnerState };
   created_at : nat64;
+  connection_groups : vec record { text; ConnectionGroup };
   connections : vec record { PersonRef; Connection };
   memories : vec record { text; Memory };
 };
@@ -48,6 +49,14 @@ type Connection = record {
   peer : PersonRef;
   created_at : nat64;
 };
+type ConnectionGroup = record {
+  id : text;
+  updated_at : nat64;
+  members : vec PersonRef;
+  name : text;
+  description : opt text;
+  created_at : nat64;
+};
 type ConnectionStatus = variant { Blocked; Accepted; Revoked; Pending };
 type ControllerState = record { granted_at : nat64; granted_by : PersonRef };
 type DocumentMetadata = record { base : MemoryMetadataBase };
@@ -64,7 +73,7 @@ type Memory = record {
 };
 type MemoryAccess = variant {
   Private;
-  Custom : vec PersonRef;
+  Custom : record { groups : vec text; individuals : vec PersonRef };
   EventTriggered : record {
     access : MemoryAccess;
     trigger_event : AccessEvent;

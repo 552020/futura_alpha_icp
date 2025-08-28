@@ -188,6 +188,17 @@ pub struct Connection {
     pub updated_at: u64,
 }
 
+// Connection groups for organizing relationships
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct ConnectionGroup {
+    pub id: String,
+    pub name: String,                    // "Family", "Close Friends", etc.
+    pub description: Option<String>,
+    pub members: Vec<PersonRef>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
 // Controller state tracking (simplified - full control except ownership transfer)
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct ControllerState {
@@ -240,6 +251,7 @@ pub struct Capsule {
     pub owners: HashMap<PersonRef, OwnerState>,           // 1..n owners (usually 1)
     pub controllers: HashMap<PersonRef, ControllerState>, // delegated admins (full control)
     pub connections: HashMap<PersonRef, Connection>,      // social graph
+    pub connection_groups: HashMap<String, ConnectionGroup>, // organized connection groups
     pub memories: HashMap<String, Memory>,                // content
     pub created_at: u64,
     pub updated_at: u64,
@@ -338,7 +350,10 @@ pub enum MemoryType {
 pub enum MemoryAccess {
     Public,
     Private,
-    Custom(Vec<PersonRef>),
+    Custom {
+        individuals: Vec<PersonRef>,  // direct individual access
+        groups: Vec<String>,          // group access (group IDs)
+    },
 
     // Time-based access
     Scheduled {
