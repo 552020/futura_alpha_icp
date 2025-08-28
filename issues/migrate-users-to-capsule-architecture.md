@@ -23,12 +23,12 @@ We are migrating from a separate `users.rs` module to a pure capsule-based archi
 #### User Registration & Management
 
 - [x] ~~`get_user()` → Get caller's self-capsule~~ ✅ DONE (implemented as `get_capsule_info()`)
-- [ ] `get_user_by_principal(principal)` → Get capsule where principal is owner
-- [ ] `update_user_activity()` → Update capsule/owner activity timestamps
+- [x] ~~`get_user_by_principal(principal)` → Get capsule where principal is owner~~ ⏭️ SKIPPED (not needed for MVP)
+- [x] ~~`update_user_activity()` → Update capsule/owner activity timestamps~~ ⏭️ SKIPPED (automatic in existing functions)
 
 #### User Statistics & Analytics
 
-- [ ] `get_user_stats()` → Capsule-based statistics (total capsules, bound capsules, etc.)
+- [x] ~~`get_user_stats()` → Capsule-based statistics (total capsules, bound capsules, etc.)~~ ⏭️ SKIPPED (not needed for MVP)
 
 #### Admin System (Moved to admin.rs)
 

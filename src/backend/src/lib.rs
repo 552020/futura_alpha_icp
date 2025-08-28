@@ -42,11 +42,7 @@ pub fn get_user() -> Option<types::CapsuleInfo> {
     capsule::get_capsule_info()
 }
 
-#[ic_cdk::query]
-pub fn get_user_by_principal(principal: Principal) -> Option<types::CapsuleInfo> {
-    // TODO: Implement capsule lookup by principal
-    None
-}
+
 
 #[ic_cdk::query]
 pub fn list_users() -> Vec<types::CapsuleHeader> {
@@ -54,14 +50,7 @@ pub fn list_users() -> Vec<types::CapsuleHeader> {
     capsule::list_my_capsules()
 }
 
-#[ic_cdk::query]
-pub fn user_stats() -> std::collections::HashMap<String, u64> {
-    // TODO: Implement capsule-based statistics
-    let mut stats = std::collections::HashMap::new();
-    stats.insert("total_capsules".to_string(), 0u64);
-    stats.insert("bound_capsules".to_string(), 0u64);
-    stats
-}
+
 
 // Admin management endpoints
 #[ic_cdk::update]
