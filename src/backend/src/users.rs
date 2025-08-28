@@ -1,11 +1,16 @@
 use crate::types::*;
 use candid::Principal;
 use ic_cdk::api::{msg_caller, time};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 // User storage - thread-local for canister state
 thread_local! {
     static USERS: std::cell::RefCell<HashMap<Principal, User>> = std::cell::RefCell::new(HashMap::new());
+}
+
+// Admin storage - auto-bootstrap first caller as admin
+thread_local! {
+    static ADMINS: std::cell::RefCell<HashSet<Principal>> = std::cell::RefCell::new(HashSet::new());
 }
 
 /// Register a user (idempotent operation)
@@ -82,14 +87,13 @@ pub fn get_user_by_principal(principal: Principal) -> Option<User> {
 }
 
 /// List all users (for admin/debugging)
-/// Note: In production, add proper admin authentication
+/// Note: Admin access required
 pub fn list_all_users() -> Vec<User> {
     let caller = msg_caller();
 
-    // TODO: Add proper admin check in production
-    // For now, allow anonymous principal (local development)
-    if caller == Principal::anonymous() {
-        // Allow for local development/testing
+    // This will auto-bootstrap first caller as admin
+    if !is_admin(&caller) {
+        ic_cdk::trap("Unauthorized: Admin access required");
     }
 
     USERS.with(|users| users.borrow().values().cloned().collect())
@@ -128,6 +132,58 @@ pub fn update_user_activity() -> bool {
     })
 }
 
+/// Check if principal is an admin (auto-bootstrap first caller)
+pub fn is_admin(principal: &Principal) -> bool {
+    ADMINS.with(|admins| {
+        let mut admins_set = admins.borrow_mut();
+
+        // If no admins exist, the first caller becomes admin
+        if admins_set.is_empty() {
+            admins_set.insert(*principal);
+            return true;
+        }
+
+        admins_set.contains(principal)
+    })
+}
+
+/// Add new admin (any existing admin can add others)
+pub fn add_admin(new_admin_principal: Principal) -> bool {
+    let caller = msg_caller();
+
+    if !is_admin(&caller) {
+        return false;
+    }
+
+    ADMINS.with(|admins| {
+        admins.borrow_mut().insert(new_admin_principal);
+    });
+
+    true
+}
+
+/// Remove admin
+pub fn remove_admin(admin_principal: Principal) -> bool {
+    let caller = msg_caller();
+
+    if !is_admin(&caller) {
+        return false;
+    }
+
+    ADMINS.with(|admins| admins.borrow_mut().remove(&admin_principal))
+}
+
+/// List all admins
+pub fn list_admins() -> Vec<Principal> {
+    let caller = msg_caller();
+
+    if !is_admin(&caller) {
+        return Vec::new();
+    }
+
+    ADMINS.with(|admins| admins.borrow().iter().cloned().collect())
+}
+
 // Upgrade persistence functions
 /// Export all users for stable storage during canister upgrade
 pub fn export_users_for_upgrade() -> Vec<(Principal, User)> {
@@ -144,5 +200,17 @@ pub fn export_users_for_upgrade() -> Vec<(Principal, User)> {
 pub fn import_users_from_upgrade(user_data: Vec<(Principal, User)>) {
     USERS.with(|users| {
         *users.borrow_mut() = user_data.into_iter().collect();
+    })
+}
+
+/// Export all admins for upgrade persistence
+pub fn export_admins_for_upgrade() -> Vec<Principal> {
+    ADMINS.with(|admins| admins.borrow().iter().cloned().collect())
+}
+
+/// Import admins from stable storage after canister upgrade
+pub fn import_admins_from_upgrade(admin_data: Vec<Principal>) {
+    ADMINS.with(|admins| {
+        *admins.borrow_mut() = admin_data.into_iter().collect();
     })
 }

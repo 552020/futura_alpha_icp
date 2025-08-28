@@ -113,7 +113,7 @@ pub struct Capsule {
     pub memories: HashMap<String, Memory>,                   // content
     pub created_at: u64,
     pub updated_at: u64,
-    pub bound_to_web2: bool,                                 // Web2 (NextAuth) binding status
+    pub bound_to_web2: bool, // Web2 (NextAuth) binding status
 }
 
 // Capsule creation result
