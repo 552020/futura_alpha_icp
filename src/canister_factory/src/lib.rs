@@ -1,10 +1,16 @@
 use candid::{CandidType, Principal};
-use ic_cdk::api::call::call_with_payment;
-use ic_cdk::api::management_canister::main::{
-    install_code, update_settings, CanisterIdRecord, CanisterInstallMode, CanisterSettings,
-    CreateCanisterArgument, InstallCodeArgument, UpdateSettingsArgument,
-};
 use ic_cdk::api::msg_caller;
+use ic_cdk::call::Call;
+use ic_cdk::management_canister::{
+    install_code,
+    update_settings,
+    CanisterId, // type alias
+    CanisterInstallMode,
+    CanisterSettings,
+    CreateCanisterArgs,
+    InstallCodeArgs,
+    UpdateSettingsArgs,
+};
 use ic_cdk_macros::{init, post_upgrade, pre_upgrade, query, update};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -438,7 +444,7 @@ async fn create_and_install_with(
         controllers.append(&mut extras);
     }
 
-    let create_args = CreateCanisterArgument {
+    let create_args = CreateCanisterArgs {
         settings: Some(CanisterSettings {
             controllers: Some(controllers.clone()),
             compute_allocation: None,
@@ -447,18 +453,20 @@ async fn create_and_install_with(
             reserved_cycles_limit: None,
             log_visibility: None,
             wasm_memory_limit: None,
+            wasm_memory_threshold: None,
         }),
     };
 
-    let (rec,): (CanisterIdRecord,) = call_with_payment(
-        Principal::management_canister(),
-        "create_canister",
-        (create_args,),
-        req.cycles.try_into().unwrap(),
-    )
-    .await
-    .map_err(|(code, msg)| format!("create_canister failed: {code:?}: {msg}"))?;
-    let canister_id = rec.canister_id;
+    let res = Call::unbounded_wait(Principal::management_canister(), "create_canister")
+        .with_arg(&create_args)
+        .with_cycles(req.cycles.try_into().unwrap())
+        .await
+        .map_err(|e| format!("create_canister failed: {e:?}"))?;
+
+    // The response is decoded using .candid::<T>()
+    let (canister_id,): (CanisterId,) = res
+        .candid()
+        .map_err(|e| format!("Candid decode failed: {e:?}"))?;
 
     // Install/reinstall/upgrade
     let mode = match req.mode {
@@ -467,20 +475,28 @@ async fn create_and_install_with(
         Mode::Upgrade => CanisterInstallMode::Upgrade(None),
     };
 
-    let install_args = InstallCodeArgument {
+    let install_args = InstallCodeArgs {
         mode,
         canister_id,
         wasm_module: wasm_bytes,
         arg: req.init_arg.clone(),
     };
 
-    install_code(install_args)
+    // install_code(install_args)
+    //     .await
+    //     .map_err(|(code, msg)| format!("install_code failed: {code:?}: {msg}"))?;
+
+    // install_code(&install_args)
+    //     .await
+    //     .map_err(|(code, msg)| format!("install_code failed: {code:?}: {msg}"))?;
+
+    install_code(&install_args)
         .await
-        .map_err(|(code, msg)| format!("install_code failed: {code:?}: {msg}"))?;
+        .map_err(|e| format!("install_code failed: {e:?}"))?;
 
     // Optional handoff: ensure only caller (+extras) remain as controllers.
     if req.handoff {
-        let upd = UpdateSettingsArgument {
+        let upd = UpdateSettingsArgs {
             canister_id,
             settings: CanisterSettings {
                 controllers: Some(controllers),
@@ -490,11 +506,12 @@ async fn create_and_install_with(
                 reserved_cycles_limit: None,
                 log_visibility: None,
                 wasm_memory_limit: None,
+                wasm_memory_threshold: None,
             },
         };
-        update_settings(upd)
+        update_settings(&upd)
             .await
-            .map_err(|(code, msg)| format!("update_settings failed: {code:?}: {msg}"))?;
+            .map_err(|e| format!("update_settings failed: {e:?}"))?;
     }
 
     let final_balance = ic_cdk::api::canister_cycle_balance();
