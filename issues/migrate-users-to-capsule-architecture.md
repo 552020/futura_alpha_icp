@@ -48,10 +48,10 @@ We are migrating from a separate `users.rs` module to a pure capsule-based archi
 
 #### Backend Files
 
-- [ ] `src/backend/src/users.rs` → Remove user-specific functions, keep admin system
-- [ ] `src/backend/src/lib.rs` → Update exposed functions
-- [ ] `src/backend/src/types.rs` → Remove User struct, keep admin types
-- [ ] `src/backend/backend.did` → Regenerate after changes
+- [x] ~~`src/backend/src/users.rs` → Remove user-specific functions, keep admin system~~ ✅ DONE (file removed)
+- [x] ~~`src/backend/src/lib.rs` → Update exposed functions~~ ✅ DONE
+- [x] ~~`src/backend/src/types.rs` → Remove User struct, keep admin types~~ ✅ DONE
+- [x] ~~`src/backend/backend.did` → Regenerate after changes~~ ✅ DONE
 
 #### Frontend Files (Future)
 

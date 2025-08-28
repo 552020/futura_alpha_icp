@@ -10,8 +10,7 @@ mod admin;
 mod capsule;
 mod memory;
 mod types;
-mod users; // Centralized storage for capsules and memory data
-           // mod memories; // Disabled for now
+// mod memories; // Disabled for now
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
