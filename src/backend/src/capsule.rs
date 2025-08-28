@@ -61,18 +61,56 @@ impl Capsule {
 
     /// Check if a PersonRef can read a specific memory
     pub fn can_read_memory(&self, person: &PersonRef, memory: &Memory) -> bool {
-        match &memory.visibility {
-            Visibility::Public => true,
-            Visibility::Private => self.has_write_access(person),
-            Visibility::Connections => {
-                self.has_write_access(person)
-                    || self
-                        .connections
-                        .get(person)
-                        .map(|conn| matches!(conn.status, ConnectionStatus::Accepted))
-                        .unwrap_or(false)
+        match &memory.access {
+            MemoryAccess::Public => true,
+            MemoryAccess::Private => self.has_write_access(person),
+            MemoryAccess::Custom(allowed) => {
+                self.has_write_access(person) || allowed.contains(person)
             }
-            Visibility::Custom => self.has_write_access(person) || memory.allowed.contains(person),
+            MemoryAccess::Scheduled {
+                accessible_after,
+                access,
+            } => {
+                // Check if time has passed, if so use the nested access rule
+                let current_time = ic_cdk::api::time();
+                if current_time >= *accessible_after {
+                    self.can_read_memory_access(person, access)
+                } else {
+                    // Not yet accessible
+                    false
+                }
+            }
+            MemoryAccess::EventTriggered { access, .. } => {
+                // For now, treat as private until event system is implemented
+                // TODO: Implement event checking
+                self.can_read_memory_access(person, access)
+            }
+        }
+    }
+
+    /// Helper function to check access recursively
+    fn can_read_memory_access(&self, person: &PersonRef, access: &MemoryAccess) -> bool {
+        match access {
+            MemoryAccess::Public => true,
+            MemoryAccess::Private => self.has_write_access(person),
+            MemoryAccess::Custom(allowed) => {
+                self.has_write_access(person) || allowed.contains(person)
+            }
+            MemoryAccess::Scheduled {
+                accessible_after,
+                access,
+            } => {
+                let current_time = ic_cdk::api::time();
+                if current_time >= *accessible_after {
+                    self.can_read_memory_access(person, access)
+                } else {
+                    false
+                }
+            }
+            MemoryAccess::EventTriggered { access, .. } => {
+                // TODO: Implement event checking
+                self.can_read_memory_access(person, access)
+            }
         }
     }
 

@@ -1,3 +1,21 @@
+type AccessEvent = variant {
+  CapsuleMaturity : nat32;
+  Graduation;
+  AfterDeath;
+  Wedding;
+  Birthday : nat32;
+  Custom : text;
+  ConnectionCount : nat32;
+  Anniversary : nat32;
+};
+type AudioMetadata = record {
+  duration : opt nat32;
+  base : MemoryMetadataBase;
+  channels : opt nat8;
+  sample_rate : opt nat32;
+  bitrate : opt nat32;
+  format : opt text;
+};
 type BlobKind = variant { Http; Ipfs; External; IcCanister };
 type BlobRef = record { locator : text; hash : opt blob; kind : BlobKind };
 type Capsule = record {
@@ -32,16 +50,56 @@ type Connection = record {
 };
 type ConnectionStatus = variant { Blocked; Accepted; Revoked; Pending };
 type ControllerState = record { granted_at : nat64; granted_by : PersonRef };
+type DocumentMetadata = record { base : MemoryMetadataBase };
+type ImageMetadata = record {
+  base : MemoryMetadataBase;
+  dimensions : opt record { nat32; nat32 };
+};
 type Memory = record {
   id : text;
-  updated_at : nat64;
-  meta : MemoryMeta;
-  allowed : vec PersonRef;
-  created_at : nat64;
-  blob_ref : BlobRef;
-  visibility : Visibility;
+  access : MemoryAccess;
+  metadata : MemoryMetadata;
+  data : MemoryData;
+  info : MemoryInfo;
 };
-type MemoryMeta = record { title : opt text; tags : vec text };
+type MemoryAccess = variant {
+  Private;
+  Custom : vec PersonRef;
+  EventTriggered : record {
+    access : MemoryAccess;
+    trigger_event : AccessEvent;
+  };
+  Public;
+  Scheduled : record { access : MemoryAccess; accessible_after : nat64 };
+};
+type MemoryData = record { data : opt blob; blob_ref : BlobRef };
+type MemoryInfo = record {
+  updated_at : nat64;
+  date_of_memory : opt nat64;
+  memory_type : MemoryType;
+  name : text;
+  content_type : text;
+  created_at : nat64;
+  uploaded_at : nat64;
+};
+type MemoryMetadata = variant {
+  Note : NoteMetadata;
+  Image : ImageMetadata;
+  Document : DocumentMetadata;
+  Audio : AudioMetadata;
+  Video : VideoMetadata;
+};
+type MemoryMetadataBase = record {
+  date_of_memory : opt text;
+  size : nat64;
+  people_in_memory : opt vec text;
+  mime_type : text;
+  original_name : text;
+  uploaded_at : text;
+  format : opt text;
+};
+type MemoryType = variant { Note; Image; Document; Audio; Video };
+type NoteMetadata = record { base : MemoryMetadataBase; tags : opt vec text };
 type OwnerState = record { since : nat64 };
 type PersonRef = variant { Opaque : text; Principal : principal };
 type User = record {
@@ -55,7 +113,13 @@ type UserRegistrationResult = record {
   message : text;
   success : bool;
 };
-type Visibility = variant { Private; Connections; Custom; Public };
+type VideoMetadata = record {
+  height : opt nat32;
+  duration : opt nat32;
+  thumbnail : opt text;
+  base : MemoryMetadataBase;
+  width : opt nat32;
+};
 service : () -> {
   create_capsule : (PersonRef) -> (CapsuleCreationResult);
   get_capsule : (text) -> (opt Capsule) query;
