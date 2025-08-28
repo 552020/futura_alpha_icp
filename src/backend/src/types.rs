@@ -1,5 +1,6 @@
 use candid::{CandidType, Deserialize, Principal};
 use serde::Serialize;
+use std::collections::HashMap;
 
 // Memory types as enum for type safety
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq, Eq)]
@@ -159,4 +160,120 @@ pub struct UserRegistrationResult {
     pub success: bool,
     pub user: Option<User>,
     pub message: String,
+}
+
+// Capsule types for user-owned data architecture
+// Core person reference - can be a live principal or opaque identifier
+#[derive(CandidType, Deserialize, Serialize, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum PersonRef {
+    Principal(Principal), // live II user
+    Opaque(String),       // non-principal subject (e.g., deceased), UUID-like
+}
+
+// Connection status for peer relationships
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub enum ConnectionStatus {
+    Pending,
+    Accepted,
+    Blocked,
+    Revoked,
+}
+
+// Connection between persons
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct Connection {
+    pub peer: PersonRef,
+    pub status: ConnectionStatus,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+// Controller state tracking (simplified - full control except ownership transfer)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct ControllerState {
+    pub granted_at: u64,
+    pub granted_by: PersonRef,
+}
+
+// Owner state tracking
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct OwnerState {
+    pub since: u64,
+}
+
+// Memory visibility levels
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub enum Visibility {
+    Private,     // only owners/controllers
+    Connections, // accepted connections can see
+    Public,      // anyone can see
+    Custom,      // specific allowed list
+}
+
+// Blob storage reference
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub enum BlobKind {
+    IcCanister, // stored in IC canister
+    Http,       // HTTP URL
+    Ipfs,       // IPFS CID
+    External,   // external reference
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct BlobRef {
+    pub kind: BlobKind,
+    pub locator: String,        // canister+key, URL, CID, etc.
+    pub hash: Option<[u8; 32]>, // optional integrity hash
+}
+
+// Memory metadata
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, Default)]
+pub struct MemoryMeta {
+    pub title: Option<String>,
+    pub tags: Vec<String>,
+}
+
+// Individual memory/content item
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct Memory {
+    pub id: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub visibility: Visibility,
+    pub allowed: Vec<PersonRef>, // used when visibility is Custom
+    pub blob_ref: BlobRef,
+    pub meta: MemoryMeta,
+}
+
+// Main capsule structure
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct Capsule {
+    pub id: String,                                       // unique capsule identifier
+    pub subject: PersonRef,                               // who this capsule is about
+    pub owners: HashMap<PersonRef, OwnerState>,           // 1..n owners (usually 1)
+    pub controllers: HashMap<PersonRef, ControllerState>, // delegated admins (full control)
+    pub connections: HashMap<PersonRef, Connection>,      // social graph
+    pub memories: HashMap<String, Memory>,                // content
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+// Capsule creation result
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct CapsuleCreationResult {
+    pub success: bool,
+    pub capsule_id: Option<String>,
+    pub message: String,
+}
+
+// Capsule header for listing
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct CapsuleHeader {
+    pub id: String,
+    pub subject: PersonRef,
+    pub owner_count: u32,
+    pub controller_count: u32,
+    pub memory_count: u32,
+    pub created_at: u64,
+    pub updated_at: u64,
 }

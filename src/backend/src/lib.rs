@@ -6,6 +6,7 @@ use ic_http_certification::utils::skip_certification_certified_data;
 // use ic_http_certification::{utils::add_skip_certification_header, HttpResponse}; // Disabled for now
 
 // Import modules
+mod capsule;
 mod types;
 mod users;
 // mod memories; // Disabled for now
@@ -52,6 +53,22 @@ pub fn user_stats() -> std::collections::HashMap<String, u64> {
     users::get_user_stats()
 }
 
+// Capsule management endpoints
+#[ic_cdk::update]
+pub fn create_capsule(subject: types::PersonRef) -> types::CapsuleCreationResult {
+    capsule::create_capsule(subject)
+}
+
+#[ic_cdk::query]
+pub fn get_capsule(capsule_id: String) -> Option<types::Capsule> {
+    capsule::get_capsule(capsule_id)
+}
+
+#[ic_cdk::query]
+pub fn list_my_capsules() -> Vec<types::CapsuleHeader> {
+    capsule::list_my_capsules()
+}
+
 #[init]
 fn init() {
     certified_data_set(&skip_certification_certified_data());
@@ -76,17 +93,22 @@ fn init() {
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Serialize user data before upgrade
+    // Serialize user data and capsules before upgrade
     let user_data = users::export_users_for_upgrade();
-    ic_cdk::storage::stable_save((user_data,)).expect("Failed to save user data to stable storage");
+    let capsule_data = capsule::export_capsules_for_upgrade();
+    ic_cdk::storage::stable_save((user_data, capsule_data))
+        .expect("Failed to save data to stable storage");
 }
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
-    // Restore user data after upgrade
-    if let Ok((user_data,)) = ic_cdk::storage::stable_restore::<(Vec<(Principal, types::User)>,)>()
-    {
+    // Restore user data and capsules after upgrade
+    if let Ok((user_data, capsule_data)) = ic_cdk::storage::stable_restore::<(
+        Vec<(Principal, types::User)>,
+        Vec<(String, types::Capsule)>,
+    )>() {
         users::import_users_from_upgrade(user_data);
+        capsule::import_capsules_from_upgrade(capsule_data);
     }
     // If restore fails, start with empty state (no panic)
 }

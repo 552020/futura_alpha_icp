@@ -1,3 +1,49 @@
+type BlobKind = variant { Http; Ipfs; External; IcCanister };
+type BlobRef = record { locator : text; hash : opt blob; kind : BlobKind };
+type Capsule = record {
+  id : text;
+  updated_at : nat64;
+  controllers : vec record { PersonRef; ControllerState };
+  subject : PersonRef;
+  owners : vec record { PersonRef; OwnerState };
+  created_at : nat64;
+  connections : vec record { PersonRef; Connection };
+  memories : vec record { text; Memory };
+};
+type CapsuleCreationResult = record {
+  capsule_id : opt text;
+  message : text;
+  success : bool;
+};
+type CapsuleHeader = record {
+  id : text;
+  updated_at : nat64;
+  subject : PersonRef;
+  owner_count : nat32;
+  created_at : nat64;
+  controller_count : nat32;
+  memory_count : nat32;
+};
+type Connection = record {
+  status : ConnectionStatus;
+  updated_at : nat64;
+  peer : PersonRef;
+  created_at : nat64;
+};
+type ConnectionStatus = variant { Blocked; Accepted; Revoked; Pending };
+type ControllerState = record { granted_at : nat64; granted_by : PersonRef };
+type Memory = record {
+  id : text;
+  updated_at : nat64;
+  meta : MemoryMeta;
+  allowed : vec PersonRef;
+  created_at : nat64;
+  blob_ref : BlobRef;
+  visibility : Visibility;
+};
+type MemoryMeta = record { title : opt text; tags : vec text };
+type OwnerState = record { since : nat64 };
+type PersonRef = variant { Opaque : text; Principal : principal };
 type User = record {
   "principal" : principal;
   last_activity_at : nat64;
@@ -9,10 +55,14 @@ type UserRegistrationResult = record {
   message : text;
   success : bool;
 };
+type Visibility = variant { Private; Connections; Custom; Public };
 service : () -> {
+  create_capsule : (PersonRef) -> (CapsuleCreationResult);
+  get_capsule : (text) -> (opt Capsule) query;
   get_user : () -> (opt User) query;
   get_user_by_principal : (principal) -> (opt User) query;
   greet : (text) -> (text) query;
+  list_my_capsules : () -> (vec CapsuleHeader) query;
   list_users : () -> (vec User) query;
   mark_bound : () -> (bool);
   register : () -> (UserRegistrationResult);
