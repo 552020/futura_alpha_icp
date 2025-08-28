@@ -140,7 +140,7 @@ pub struct CapsuleInfo {
     pub subject: PersonRef,
     pub is_owner: bool,
     pub is_controller: bool,
-    pub is_self_capsule: bool,      // true if subject == caller
+    pub is_self_capsule: bool, // true if subject == caller
     pub bound_to_web2: bool,
     pub created_at: u64,
     pub updated_at: u64,

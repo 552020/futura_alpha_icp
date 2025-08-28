@@ -257,8 +257,7 @@ pub fn register_capsule() -> CapsuleRegistrationResult {
 
             // Store the updated capsule
             with_capsules_mut(|capsules| {
-                capsules
-                    .insert(capsule.id.clone(), capsule.clone());
+                capsules.insert(capsule.id.clone(), capsule.clone());
             });
 
             CapsuleRegistrationResult {
@@ -294,6 +293,70 @@ pub fn register_capsule() -> CapsuleRegistrationResult {
             }
         }
     }
+}
+
+/// Simple user registration for II integration (idempotent)
+/// Tracks basic user info: { registered_at, last_activity_at, bound: bool }
+pub fn register() -> bool {
+    let caller_ref = PersonRef::from_caller();
+    let now = time();
+
+    // Check if user already has a self-capsule
+    let existing_self_capsule = with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| {
+                capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref)
+            })
+            .cloned()
+    });
+
+    match existing_self_capsule {
+        Some(mut capsule) => {
+            // Update activity timestamp
+            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                owner_state.last_activity_at = now;
+            }
+            capsule.updated_at = now;
+
+            // Store the updated capsule
+            with_capsules_mut(|capsules| {
+                capsules.insert(capsule.id.clone(), capsule);
+            });
+            true
+        }
+        None => {
+            // Create new self-capsule with basic info
+            match create_capsule(caller_ref.clone()) {
+                CapsuleCreationResult { success: true, .. } => true,
+                CapsuleCreationResult { success: false, .. } => false,
+            }
+        }
+    }
+}
+
+/// Simple binding function for II integration
+/// Sets bound=true for the caller's self-capsule
+pub fn mark_bound() -> bool {
+    let caller_ref = PersonRef::from_caller();
+
+    with_capsules_mut(|capsules| {
+        // Find caller's self-capsule (where caller is both subject and owner)
+        for capsule in capsules.values_mut() {
+            if capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref) {
+                capsule.bound_to_web2 = true;
+                capsule.updated_at = time();
+
+                // Update owner activity too
+                if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                    owner_state.last_activity_at = time();
+                }
+
+                return true;
+            }
+        }
+        false // No self-capsule found
+    })
 }
 
 /// Mark caller's self-capsule as bound to Web2

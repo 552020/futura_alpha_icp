@@ -22,18 +22,15 @@ pub fn whoami() -> Principal {
     ic_cdk::api::msg_caller()
 }
 
-// User management endpoints for Internet Identity integration (DEPRECATED - use capsule endpoints)
-// These are kept for backward compatibility but will be removed
+// II integration endpoints (simple registration for II auth flow)
 #[ic_cdk::update]
-pub fn register() -> types::CapsuleRegistrationResult {
-    // Redirect to capsule registration
-    capsule::register_capsule()
+pub fn register() -> bool {
+    capsule::register()
 }
 
 #[ic_cdk::update]
 pub fn mark_bound() -> bool {
-    // Redirect to capsule binding
-    capsule::mark_capsule_bound_to_web2()
+    capsule::mark_bound()
 }
 
 #[ic_cdk::query]
@@ -42,15 +39,11 @@ pub fn get_user() -> Option<types::CapsuleInfo> {
     capsule::get_capsule_info()
 }
 
-
-
 #[ic_cdk::query]
 pub fn list_users() -> Vec<types::CapsuleHeader> {
     // Redirect to capsule listing
     capsule::list_my_capsules()
 }
-
-
 
 // Admin management endpoints
 #[ic_cdk::update]
