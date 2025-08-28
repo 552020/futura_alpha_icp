@@ -31,6 +31,7 @@ type Capsule = record {
   connection_groups : vec record { text; ConnectionGroup };
   connections : vec record { PersonRef; Connection };
   memories : vec record { text; Memory };
+  bound_to_web2 : bool;
 };
 type CapsuleCreationResult = record {
   capsule_id : opt text;
@@ -148,6 +149,7 @@ service : () -> {
   list_my_capsules : () -> (vec CapsuleHeader) query;
   list_users : () -> (vec User) query;
   mark_bound : () -> (bool);
+  mark_capsule_bound_to_web2 : () -> (bool);
   register : () -> (UserRegistrationResult);
   register_capsule : () -> (CapsuleRegistrationResult);
   user_stats : () -> (vec record { text; nat64 }) query;

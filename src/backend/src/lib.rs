@@ -59,6 +59,12 @@ pub fn register_capsule() -> types::CapsuleRegistrationResult {
     capsule::register_capsule()
 }
 
+// Mark capsule as bound to Web2 (replaces mark_bound)
+#[ic_cdk::update]
+pub fn mark_capsule_bound_to_web2() -> bool {
+    capsule::mark_capsule_bound_to_web2()
+}
+
 // Capsule management endpoints
 #[ic_cdk::update]
 pub fn create_capsule(subject: types::PersonRef) -> types::CapsuleCreationResult {

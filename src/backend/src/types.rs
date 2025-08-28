@@ -98,7 +98,7 @@ pub struct ControllerState {
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct OwnerState {
     pub since: u64,
-    pub last_activity_at: u64,  // Track owner activity
+    pub last_activity_at: u64, // Track owner activity
 }
 
 // Main capsule structure
@@ -113,6 +113,7 @@ pub struct Capsule {
     pub memories: HashMap<String, Memory>,                   // content
     pub created_at: u64,
     pub updated_at: u64,
+    pub bound_to_web2: bool,                                 // Web2 (NextAuth) binding status
 }
 
 // Capsule creation result
@@ -127,8 +128,8 @@ pub struct CapsuleCreationResult {
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct CapsuleRegistrationResult {
     pub success: bool,
-    pub capsule_id: Option<String>,     // Just the ID
-    pub is_new: bool,                   // true if just created, false if existing
+    pub capsule_id: Option<String>, // Just the ID
+    pub is_new: bool,               // true if just created, false if existing
     pub message: String,
 }
 

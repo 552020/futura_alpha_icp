@@ -30,10 +30,13 @@ impl Capsule {
         let capsule_id = format!("capsule_{}", now);
 
         let mut owners = HashMap::new();
-        owners.insert(initial_owner, OwnerState { 
-            since: now,
-            last_activity_at: now,
-        });
+        owners.insert(
+            initial_owner,
+            OwnerState {
+                since: now,
+                last_activity_at: now,
+            },
+        );
 
         Capsule {
             id: capsule_id,
@@ -45,6 +48,7 @@ impl Capsule {
             memories: HashMap::new(),
             created_at: now,
             updated_at: now,
+            bound_to_web2: false, // Initially not bound to Web2
         }
     }
 
@@ -234,34 +238,35 @@ pub fn list_my_capsules() -> Vec<CapsuleHeader> {
 /// Creates a capsule where the caller is both subject and owner
 pub fn register_capsule() -> CapsuleRegistrationResult {
     let caller_ref = PersonRef::from_caller();
-    
+
     // Check if caller already has a self-capsule (subject == owner == caller)
     let existing_self_capsule = CAPSULES.with(|capsules| {
         capsules
             .borrow()
             .values()
             .find(|capsule| {
-                capsule.subject == caller_ref && 
-                capsule.owners.contains_key(&caller_ref)
+                capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref)
             })
             .cloned()
     });
-    
+
     match existing_self_capsule {
         Some(mut capsule) => {
             // Update owner activity and capsule timestamp
             let now = time();
             capsule.updated_at = now;
-            
+
             if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
                 owner_state.last_activity_at = now;
             }
-            
+
             // Store the updated capsule
             CAPSULES.with(|capsules| {
-                capsules.borrow_mut().insert(capsule.id.clone(), capsule.clone());
+                capsules
+                    .borrow_mut()
+                    .insert(capsule.id.clone(), capsule.clone());
             });
-            
+
             CapsuleRegistrationResult {
                 success: true,
                 capsule_id: Some(capsule.id),
@@ -272,25 +277,55 @@ pub fn register_capsule() -> CapsuleRegistrationResult {
         None => {
             // Create new self-capsule (subject = caller, owner = caller automatically)
             match create_capsule(caller_ref.clone()) {
-                CapsuleCreationResult { success: true, capsule_id, .. } => {
-                    CapsuleRegistrationResult {
-                        success: true,
-                        capsule_id,
-                        is_new: true,
-                        message: "Capsule created successfully!".to_string(),
-                    }
-                }
-                CapsuleCreationResult { success: false, message, .. } => {
-                    CapsuleRegistrationResult {
-                        success: false,
-                        capsule_id: None,
-                        is_new: false,
-                        message: format!("Failed to create capsule: {}", message),
-                    }
-                }
+                CapsuleCreationResult {
+                    success: true,
+                    capsule_id,
+                    ..
+                } => CapsuleRegistrationResult {
+                    success: true,
+                    capsule_id,
+                    is_new: true,
+                    message: "Capsule created successfully!".to_string(),
+                },
+                CapsuleCreationResult {
+                    success: false,
+                    message,
+                    ..
+                } => CapsuleRegistrationResult {
+                    success: false,
+                    capsule_id: None,
+                    is_new: false,
+                    message: format!("Failed to create capsule: {}", message),
+                },
             }
         }
     }
+}
+
+/// Mark caller's self-capsule as bound to Web2
+/// Called after successful NextAuth authentication
+pub fn mark_capsule_bound_to_web2() -> bool {
+    let caller_ref = PersonRef::from_caller();
+
+    CAPSULES.with(|capsules| {
+        let mut capsules_map = capsules.borrow_mut();
+
+        // Find caller's self-capsule (where caller is both subject and owner)
+        for capsule in capsules_map.values_mut() {
+            if capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref) {
+                capsule.bound_to_web2 = true;
+                capsule.updated_at = time();
+
+                // Update owner activity too
+                if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                    owner_state.last_activity_at = time();
+                }
+
+                return true;
+            }
+        }
+        false // No self-capsule found
+    })
 }
 
 /// Export all capsules for upgrade persistence
