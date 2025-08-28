@@ -53,6 +53,12 @@ pub fn user_stats() -> std::collections::HashMap<String, u64> {
     users::get_user_stats()
 }
 
+// Capsule registration (replaces user registration)
+#[ic_cdk::update]
+pub fn register_capsule() -> types::CapsuleRegistrationResult {
+    capsule::register_capsule()
+}
+
 // Capsule management endpoints
 #[ic_cdk::update]
 pub fn create_capsule(subject: types::PersonRef) -> types::CapsuleCreationResult {

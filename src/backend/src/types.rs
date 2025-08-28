@@ -2,118 +2,6 @@ use candid::{CandidType, Deserialize, Principal};
 use serde::Serialize;
 use std::collections::HashMap;
 
-// // Memory types as enum for type safety
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq, Eq)]
-// pub enum MemoryType {
-//     Image,
-//     Document,
-//     Note,
-//     Video,
-//     Audio,
-// }
-
-// // Generic memory types (like database tables)
-// pub type MemoryId = u64;
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct MemoryData {
-//     pub id: MemoryId,
-//     pub memory_type: MemoryType,
-//     pub name: String,
-//     pub content_type: String,
-//     pub data: Vec<u8>,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct MemoryInfo {
-//     pub id: MemoryId,
-//     pub memory_type: MemoryType,
-//     pub name: String,
-//     pub content_type: String,
-//     pub metadata: MemoryMetadata,
-// }
-
-// Memory metadata
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct MemoryMetadata {
-//     pub size: u64,
-//     pub mime_type: String,
-//     pub original_name: String,
-//     pub uploaded_at: String,
-//     pub date_of_memory: Option<String>,
-//     pub people_in_memory: Option<Vec<String>>,
-//     pub format: Option<String>,
-// }
-
-// // Metadata structs for different memory types
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct ImageMetadata {
-//     pub common: MemoryMetadata,
-//     pub dimensions: Option<(u32, u32)>,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct VideoMetadata {
-//     pub common: MemoryMetadata,
-//     pub duration: Option<u32>, // Duration in seconds
-//     pub width: Option<u32>,
-//     pub height: Option<u32>,
-//     pub thumbnail: Option<String>,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct AudioMetadata {
-//     pub common: MemoryMetadata,
-//     pub duration: Option<u32>, // Duration in seconds
-//     pub format: Option<String>,
-//     pub bitrate: Option<u32>,
-//     pub sample_rate: Option<u32>,
-//     pub channels: Option<u8>,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct DocumentMetadata {
-//     pub common: MemoryMetadata,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct NoteMetadata {
-//     pub tags: Option<Vec<String>>,
-//     pub date_of_memory: Option<String>,
-// }
-
-// Simple extensions with just specific metadata
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct ImageMemory {
-//     pub base: MemoryData,
-//     pub metadata: ImageMetadata,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct VideoMemory {
-//     pub base: MemoryData,
-//     pub metadata: VideoMetadata,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct AudioMemory {
-//     pub base: MemoryData,
-//     pub metadata: AudioMetadata,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct DocumentMemory {
-//     pub base: MemoryData,
-//     pub metadata: DocumentMetadata,
-// }
-
-// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-// pub struct NoteMemory {
-//     pub base: MemoryData,
-//     pub content: String, // Notes store text content instead of binary data
-//     pub metadata: NoteMetadata,
-// }
-
 // HTTP types for serving content
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct HttpHeader(pub String, pub String);
@@ -192,7 +80,7 @@ pub struct Connection {
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
 pub struct ConnectionGroup {
     pub id: String,
-    pub name: String,                    // "Family", "Close Friends", etc.
+    pub name: String, // "Family", "Close Friends", etc.
     pub description: Option<String>,
     pub members: Vec<PersonRef>,
     pub created_at: u64,
@@ -210,49 +98,19 @@ pub struct ControllerState {
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct OwnerState {
     pub since: u64,
+    pub last_activity_at: u64,  // Track owner activity
 }
-
-// Blob storage reference
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub enum BlobKind {
-    IcCanister, // stored in IC canister
-    Http,       // HTTP URL
-    Ipfs,       // IPFS CID
-    External,   // external reference
-}
-
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct BlobRef {
-    pub kind: BlobKind,
-    pub locator: String,        // canister+key, URL, CID, etc.
-    pub hash: Option<[u8; 32]>, // optional integrity hash
-}
-
-// // Individual memory/content item (enhanced with capsule fields) - OLD VERSION
-// #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-// pub struct Memory {
-//     pub id: String,
-//     pub memory_type: MemoryType,
-//     pub name: String,
-//     pub content_type: String,
-//     pub metadata: MemoryMetadata, // Rich metadata system we already have
-//     pub created_at: u64,
-//     pub updated_at: u64,
-//     pub visibility: Visibility,
-//     pub allowed: Vec<PersonRef>, // used when visibility is Custom
-//     pub blob_ref: BlobRef,
-// }
 
 // Main capsule structure
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct Capsule {
-    pub id: String,                                       // unique capsule identifier
-    pub subject: PersonRef,                               // who this capsule is about
-    pub owners: HashMap<PersonRef, OwnerState>,           // 1..n owners (usually 1)
-    pub controllers: HashMap<PersonRef, ControllerState>, // delegated admins (full control)
-    pub connections: HashMap<PersonRef, Connection>,      // social graph
+    pub id: String,                                          // unique capsule identifier
+    pub subject: PersonRef,                                  // who this capsule is about
+    pub owners: HashMap<PersonRef, OwnerState>,              // 1..n owners (usually 1)
+    pub controllers: HashMap<PersonRef, ControllerState>,    // delegated admins (full control)
+    pub connections: HashMap<PersonRef, Connection>,         // social graph
     pub connection_groups: HashMap<String, ConnectionGroup>, // organized connection groups
-    pub memories: HashMap<String, Memory>,                // content
+    pub memories: HashMap<String, Memory>,                   // content
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -262,6 +120,15 @@ pub struct Capsule {
 pub struct CapsuleCreationResult {
     pub success: bool,
     pub capsule_id: Option<String>,
+    pub message: String,
+}
+
+// Capsule registration result (minimal response for user registration)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct CapsuleRegistrationResult {
+    pub success: bool,
+    pub capsule_id: Option<String>,     // Just the ID
+    pub is_new: bool,                   // true if just created, false if existing
     pub message: String,
 }
 
@@ -351,8 +218,8 @@ pub enum MemoryAccess {
     Public,
     Private,
     Custom {
-        individuals: Vec<PersonRef>,  // direct individual access
-        groups: Vec<String>,          // group access (group IDs)
+        individuals: Vec<PersonRef>, // direct individual access
+        groups: Vec<String>,         // group access (group IDs)
     },
 
     // Time-based access
@@ -398,6 +265,29 @@ pub struct MemoryInfo {
     pub updated_at: u64,
     pub uploaded_at: u64,
     pub date_of_memory: Option<u64>, // when the actual event happened
+}
+
+// External blob storage types
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub enum MemoryBlobKindExternal {
+    Http,    // HTTP URL
+    Ipfs,    // IPFS CID
+    Arweave, // Arweave CID
+    AWS,     // AWS S3
+}
+
+// Blob storage reference
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub enum MemoryBlobKind {
+    ICPCapsule,             // stored in IC canister
+    MemoryBlobKindExternal, // external reference
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct BlobRef {
+    pub kind: MemoryBlobKind,
+    pub locator: String,        // canister+key, URL, CID, etc.
+    pub hash: Option<[u8; 32]>, // optional integrity hash
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]

@@ -30,7 +30,10 @@ impl Capsule {
         let capsule_id = format!("capsule_{}", now);
 
         let mut owners = HashMap::new();
-        owners.insert(initial_owner, OwnerState { since: now });
+        owners.insert(initial_owner, OwnerState { 
+            since: now,
+            last_activity_at: now,
+        });
 
         Capsule {
             id: capsule_id,
@@ -65,17 +68,20 @@ impl Capsule {
         match &memory.access {
             MemoryAccess::Public => true,
             MemoryAccess::Private => self.has_write_access(person),
-            MemoryAccess::Custom { individuals, groups } => {
+            MemoryAccess::Custom {
+                individuals,
+                groups,
+            } => {
                 // Check if person has write access (owners/controllers always have access)
                 if self.has_write_access(person) {
                     return true;
                 }
-                
+
                 // Check direct individual access
                 if individuals.contains(person) {
                     return true;
                 }
-                
+
                 // Check group access
                 for group_id in groups {
                     if let Some(group) = self.connection_groups.get(group_id) {
@@ -84,7 +90,7 @@ impl Capsule {
                         }
                     }
                 }
-                
+
                 false
             }
             MemoryAccess::Scheduled {
@@ -113,17 +119,20 @@ impl Capsule {
         match access {
             MemoryAccess::Public => true,
             MemoryAccess::Private => self.has_write_access(person),
-            MemoryAccess::Custom { individuals, groups } => {
+            MemoryAccess::Custom {
+                individuals,
+                groups,
+            } => {
                 // Check if person has write access (owners/controllers always have access)
                 if self.has_write_access(person) {
                     return true;
                 }
-                
+
                 // Check direct individual access
                 if individuals.contains(person) {
                     return true;
                 }
-                
+
                 // Check group access
                 for group_id in groups {
                     if let Some(group) = self.connection_groups.get(group_id) {
@@ -132,7 +141,7 @@ impl Capsule {
                         }
                     }
                 }
-                
+
                 false
             }
             MemoryAccess::Scheduled {
@@ -219,6 +228,69 @@ pub fn list_my_capsules() -> Vec<CapsuleHeader> {
             .map(|capsule| capsule.to_header())
             .collect()
     })
+}
+
+/// Register capsule for current user (idempotent self-registration)
+/// Creates a capsule where the caller is both subject and owner
+pub fn register_capsule() -> CapsuleRegistrationResult {
+    let caller_ref = PersonRef::from_caller();
+    
+    // Check if caller already has a self-capsule (subject == owner == caller)
+    let existing_self_capsule = CAPSULES.with(|capsules| {
+        capsules
+            .borrow()
+            .values()
+            .find(|capsule| {
+                capsule.subject == caller_ref && 
+                capsule.owners.contains_key(&caller_ref)
+            })
+            .cloned()
+    });
+    
+    match existing_self_capsule {
+        Some(mut capsule) => {
+            // Update owner activity and capsule timestamp
+            let now = time();
+            capsule.updated_at = now;
+            
+            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                owner_state.last_activity_at = now;
+            }
+            
+            // Store the updated capsule
+            CAPSULES.with(|capsules| {
+                capsules.borrow_mut().insert(capsule.id.clone(), capsule.clone());
+            });
+            
+            CapsuleRegistrationResult {
+                success: true,
+                capsule_id: Some(capsule.id),
+                is_new: false,
+                message: "Welcome back! Your capsule is ready.".to_string(),
+            }
+        }
+        None => {
+            // Create new self-capsule (subject = caller, owner = caller automatically)
+            match create_capsule(caller_ref.clone()) {
+                CapsuleCreationResult { success: true, capsule_id, .. } => {
+                    CapsuleRegistrationResult {
+                        success: true,
+                        capsule_id,
+                        is_new: true,
+                        message: "Capsule created successfully!".to_string(),
+                    }
+                }
+                CapsuleCreationResult { success: false, message, .. } => {
+                    CapsuleRegistrationResult {
+                        success: false,
+                        capsule_id: None,
+                        is_new: false,
+                        message: format!("Failed to create capsule: {}", message),
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Export all capsules for upgrade persistence

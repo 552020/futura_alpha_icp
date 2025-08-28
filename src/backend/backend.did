@@ -16,8 +16,11 @@ type AudioMetadata = record {
   bitrate : opt nat32;
   format : opt text;
 };
-type BlobKind = variant { Http; Ipfs; External; IcCanister };
-type BlobRef = record { locator : text; hash : opt blob; kind : BlobKind };
+type BlobRef = record {
+  locator : text;
+  hash : opt blob;
+  kind : MemoryBlobKind;
+};
 type Capsule = record {
   id : text;
   updated_at : nat64;
@@ -42,6 +45,12 @@ type CapsuleHeader = record {
   created_at : nat64;
   controller_count : nat32;
   memory_count : nat32;
+};
+type CapsuleRegistrationResult = record {
+  capsule_id : opt text;
+  is_new : bool;
+  message : text;
+  success : bool;
 };
 type Connection = record {
   status : ConnectionStatus;
@@ -81,6 +90,7 @@ type MemoryAccess = variant {
   Public;
   Scheduled : record { access : MemoryAccess; accessible_after : nat64 };
 };
+type MemoryBlobKind = variant { MemoryBlobKindExternal; ICPCapsule };
 type MemoryData = record { data : opt blob; blob_ref : BlobRef };
 type MemoryInfo = record {
   updated_at : nat64;
@@ -109,7 +119,7 @@ type MemoryMetadataBase = record {
 };
 type MemoryType = variant { Note; Image; Document; Audio; Video };
 type NoteMetadata = record { base : MemoryMetadataBase; tags : opt vec text };
-type OwnerState = record { since : nat64 };
+type OwnerState = record { last_activity_at : nat64; since : nat64 };
 type PersonRef = variant { Opaque : text; Principal : principal };
 type User = record {
   "principal" : principal;
@@ -139,6 +149,7 @@ service : () -> {
   list_users : () -> (vec User) query;
   mark_bound : () -> (bool);
   register : () -> (UserRegistrationResult);
+  register_capsule : () -> (CapsuleRegistrationResult);
   user_stats : () -> (vec record { text; nat64 }) query;
   whoami : () -> (principal) query;
 }
