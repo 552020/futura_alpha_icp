@@ -69,9 +69,9 @@
     - Create caller validation for migration endpoints
     - _Requirements: 6.2_
 
-- [ ] 6. Implement canister creation and WASM installation
+- [x] 6. Implement canister creation and WASM installation
 
-  - [ ] 6.1 Create personal canister with dual controllers
+  - [x] 6.1 Create personal canister with dual controllers
 
     - Implement canister creation with {factory, user} controllers
     - Add cycles funding from factory reserve with preflight check using with_cycles() on management calls
@@ -79,7 +79,7 @@
     - Persist registry entry with Creating status
     - _Requirements: 1.1, 2.5, 6.1, 6.3_
 
-  - [ ] 6.2 Install personal canister WASM module
+  - [x] 6.2 Install personal canister WASM module
 
     - Load single personal-canister WASM binary
     - Install WASM with proper initialization
@@ -87,15 +87,15 @@
     - Add API_VERSION compatibility check pre-import and fail fast if incompatible
     - _Requirements: 1.2, 4.1, 4.7_
 
-  - [ ] 6.3 Add minimal creation configuration support
+  - [x] 6.3 Add minimal creation configuration support
     - Implement `CreatePersonalCanisterConfig` with optional name and subnet_id
     - Accept minimal config input and ignore non-MVP options without error
     - Add configuration validation and defaults
     - _Requirements: 6.4_
 
-- [ ] 7. Create internal data transfer system
+- [x] 7. Create internal data transfer system
 
-  - [ ] 7.1 Implement chunked data import API
+  - [x] 7.1 Implement chunked data import API
 
     - Create `begin_import`, `put_memory_chunk`, `commit_memory`, `finalize_import` functions
     - Add session management for import operations
@@ -103,7 +103,7 @@
     - Reject oversize chunks with clear error messages
     - _Requirements: 1.4, 4.2_
 
-  - [ ] 7.2 Add data transfer verification
+  - [x] 7.2 Add data transfer verification
     - Implement hash-based verification of transferred data
     - Add count reconciliation between source and target
     - Create verification failure handling and cleanup

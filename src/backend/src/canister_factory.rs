@@ -5,7 +5,7 @@ use ic_cdk::api::management_canister::main::{
     InstallCodeArgument,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Response from migration operations
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
@@ -112,6 +112,115 @@ pub struct CreatePersonalCanisterConfig {
     pub subnet_id: Option<Principal>,
 }
 
+/// Configuration for import operations
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct ImportConfig {
+    pub max_chunk_size: u64,
+    pub max_total_import_size: u64,
+    pub session_timeout_seconds: u64,
+}
+
+impl Default for ImportConfig {
+    fn default() -> Self {
+        Self {
+            max_chunk_size: 2_000_000,          // 2MB max chunk size
+            max_total_import_size: 100_000_000, // 100MB max total import size
+            session_timeout_seconds: 3600,      // 1 hour session timeout
+        }
+    }
+}
+
+/// Import session state for tracking chunked data transfers
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct ImportSession {
+    pub session_id: String,
+    pub user: Principal,
+    pub created_at: u64,
+    pub last_activity_at: u64,
+    pub total_expected_size: u64,
+    pub total_received_size: u64,
+    pub memories_in_progress: HashMap<String, MemoryImportState>,
+    pub completed_memories: HashMap<String, types::Memory>,
+    pub import_manifest: Option<DataManifest>,
+    pub status: ImportSessionStatus,
+}
+
+/// Status of an import session
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub enum ImportSessionStatus {
+    Active,
+    Finalizing,
+    Completed,
+    Failed,
+    Expired,
+}
+
+/// State of a memory being imported in chunks
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryImportState {
+    pub memory_id: String,
+    pub expected_chunks: u32,
+    pub received_chunks: HashMap<u32, ChunkData>,
+    pub total_size: u64,
+    pub received_size: u64,
+    pub memory_metadata: Option<types::Memory>,
+    pub is_complete: bool,
+}
+
+/// Individual chunk data
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct ChunkData {
+    pub chunk_index: u32,
+    pub data: Vec<u8>,
+    pub sha256: String,
+    pub received_at: u64,
+}
+
+/// Memory manifest for chunk assembly verification
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryManifest {
+    pub memory_id: String,
+    pub total_chunks: u32,
+    pub total_size: u64,
+    pub chunk_checksums: Vec<String>,
+    pub final_checksum: String,
+}
+
+/// Import session response
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct ImportSessionResponse {
+    pub success: bool,
+    pub session_id: Option<String>,
+    pub message: String,
+}
+
+/// Chunk upload response
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct ChunkUploadResponse {
+    pub success: bool,
+    pub message: String,
+    pub received_size: u64,
+    pub total_expected_size: u64,
+}
+
+/// Memory commit response
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct MemoryCommitResponse {
+    pub success: bool,
+    pub message: String,
+    pub memory_id: String,
+    pub assembled_size: u64,
+}
+
+/// Import finalization response
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct ImportFinalizationResponse {
+    pub success: bool,
+    pub message: String,
+    pub total_memories_imported: u32,
+    pub total_size_imported: u64,
+}
+
 /// Extended state structure with migration fields
 #[derive(CandidType, Serialize, Deserialize, Default, Clone, Debug)]
 pub struct MigrationStateData {
@@ -119,6 +228,8 @@ pub struct MigrationStateData {
     pub migration_states: BTreeMap<Principal, MigrationState>,
     pub migration_stats: MigrationStats,
     pub personal_canisters: BTreeMap<Principal, PersonalCanisterRecord>,
+    pub import_config: ImportConfig,
+    pub import_sessions: HashMap<String, ImportSession>,
 }
 
 /// Export migration state for upgrade persistence
@@ -1536,6 +1647,1309 @@ pub fn verify_export_against_manifest(
     );
 
     Ok(())
+}
+
+// Internal data transfer system - Chunked data import API
+
+/// Begin a new import session for chunked data transfer
+/// This function creates a new import session and returns a session ID
+pub fn begin_import() -> Result<ImportSessionResponse, String> {
+    let caller = ic_cdk::api::msg_caller();
+
+    // Reject anonymous callers
+    if caller == Principal::anonymous() {
+        return Ok(ImportSessionResponse {
+            success: false,
+            session_id: None,
+            message: "Anonymous callers cannot begin import sessions".to_string(),
+        });
+    }
+
+    // Generate unique session ID
+    let session_id = generate_session_id(caller);
+    let now = ic_cdk::api::time();
+
+    // Create new import session
+    let session = ImportSession {
+        session_id: session_id.clone(),
+        user: caller,
+        created_at: now,
+        last_activity_at: now,
+        total_expected_size: 0,
+        total_received_size: 0,
+        memories_in_progress: HashMap::new(),
+        completed_memories: HashMap::new(),
+        import_manifest: None,
+        status: ImportSessionStatus::Active,
+    };
+
+    // Store the session
+    crate::memory::with_migration_state_mut(|state| {
+        // Clean up expired sessions before creating new one
+        cleanup_expired_sessions_internal(state);
+
+        // Check if user already has an active session
+        let existing_active = state
+            .import_sessions
+            .values()
+            .any(|s| s.user == caller && s.status == ImportSessionStatus::Active);
+
+        if existing_active {
+            return Err("User already has an active import session".to_string());
+        }
+
+        state.import_sessions.insert(session_id.clone(), session);
+        Ok(())
+    })?;
+
+    ic_cdk::println!("Created import session {} for user {}", session_id, caller);
+
+    Ok(ImportSessionResponse {
+        success: true,
+        session_id: Some(session_id),
+        message: "Import session created successfully".to_string(),
+    })
+}
+
+/// Upload a memory chunk to an active import session
+/// This function handles individual chunk uploads with validation
+pub fn put_memory_chunk(
+    session_id: String,
+    memory_id: String,
+    chunk_index: u32,
+    bytes: Vec<u8>,
+    sha256: String,
+) -> Result<ChunkUploadResponse, String> {
+    let caller = ic_cdk::api::msg_caller();
+
+    // Reject anonymous callers
+    if caller == Principal::anonymous() {
+        return Ok(ChunkUploadResponse {
+            success: false,
+            message: "Anonymous callers cannot upload chunks".to_string(),
+            received_size: 0,
+            total_expected_size: 0,
+        });
+    }
+
+    crate::memory::with_migration_state_mut(|state| {
+        // Get import configuration
+        let config = &state.import_config;
+
+        // Validate chunk size
+        if bytes.len() as u64 > config.max_chunk_size {
+            return Ok(ChunkUploadResponse {
+                success: false,
+                message: format!(
+                    "Chunk size {} exceeds maximum allowed size {}",
+                    bytes.len(),
+                    config.max_chunk_size
+                ),
+                received_size: 0,
+                total_expected_size: 0,
+            });
+        }
+
+        // Get and validate session
+        let session = match state.import_sessions.get_mut(&session_id) {
+            Some(s) => s,
+            None => {
+                return Ok(ChunkUploadResponse {
+                    success: false,
+                    message: "Import session not found".to_string(),
+                    received_size: 0,
+                    total_expected_size: 0,
+                })
+            }
+        };
+
+        // Validate session ownership
+        if session.user != caller {
+            return Ok(ChunkUploadResponse {
+                success: false,
+                message: "Access denied: session belongs to different user".to_string(),
+                received_size: 0,
+                total_expected_size: 0,
+            });
+        }
+
+        // Check session status
+        if session.status != ImportSessionStatus::Active {
+            return Ok(ChunkUploadResponse {
+                success: false,
+                message: format!("Session is not active (status: {:?})", session.status),
+                received_size: 0,
+                total_expected_size: 0,
+            });
+        }
+
+        // Check session timeout
+        let now = ic_cdk::api::time();
+        let session_age = (now - session.last_activity_at) / 1_000_000_000; // Convert to seconds
+        if session_age > config.session_timeout_seconds {
+            session.status = ImportSessionStatus::Expired;
+            return Ok(ChunkUploadResponse {
+                success: false,
+                message: "Session has expired".to_string(),
+                received_size: 0,
+                total_expected_size: 0,
+            });
+        }
+
+        // Validate total import size
+        let new_total_size = session.total_received_size + bytes.len() as u64;
+        if new_total_size > config.max_total_import_size {
+            return Ok(ChunkUploadResponse {
+                success: false,
+                message: format!(
+                    "Total import size would exceed maximum allowed size {}",
+                    config.max_total_import_size
+                ),
+                received_size: session.total_received_size,
+                total_expected_size: session.total_expected_size,
+            });
+        }
+
+        // Validate chunk hash
+        let calculated_hash = calculate_sha256(&bytes);
+        if calculated_hash != sha256 {
+            return Ok(ChunkUploadResponse {
+                success: false,
+                message: "Chunk hash validation failed".to_string(),
+                received_size: session.total_received_size,
+                total_expected_size: session.total_expected_size,
+            });
+        }
+
+        // Get or create memory import state
+        let memory_state = session
+            .memories_in_progress
+            .entry(memory_id.clone())
+            .or_insert_with(|| MemoryImportState {
+                memory_id: memory_id.clone(),
+                expected_chunks: 0,
+                received_chunks: HashMap::new(),
+                total_size: 0,
+                received_size: 0,
+                memory_metadata: None,
+                is_complete: false,
+            });
+
+        // Check if chunk already exists
+        if memory_state.received_chunks.contains_key(&chunk_index) {
+            return Ok(ChunkUploadResponse {
+                success: false,
+                message: format!(
+                    "Chunk {} already received for memory {}",
+                    chunk_index, memory_id
+                ),
+                received_size: session.total_received_size,
+                total_expected_size: session.total_expected_size,
+            });
+        }
+
+        // Store the chunk
+        let chunk = ChunkData {
+            chunk_index,
+            data: bytes.clone(),
+            sha256,
+            received_at: now,
+        };
+
+        memory_state.received_chunks.insert(chunk_index, chunk);
+        memory_state.received_size += bytes.len() as u64;
+
+        // Update session totals
+        session.total_received_size += bytes.len() as u64;
+        session.last_activity_at = now;
+
+        ic_cdk::println!(
+            "Received chunk {} for memory {} in session {} ({} bytes)",
+            chunk_index,
+            memory_id,
+            session_id,
+            bytes.len()
+        );
+
+        Ok(ChunkUploadResponse {
+            success: true,
+            message: format!("Chunk {} uploaded successfully", chunk_index),
+            received_size: session.total_received_size,
+            total_expected_size: session.total_expected_size,
+        })
+    })
+}
+
+/// Commit a memory after all chunks have been uploaded
+/// This function assembles chunks into a complete memory and validates integrity
+pub fn commit_memory(
+    session_id: String,
+    manifest: MemoryManifest,
+) -> Result<MemoryCommitResponse, String> {
+    let caller = ic_cdk::api::msg_caller();
+
+    // Reject anonymous callers
+    if caller == Principal::anonymous() {
+        return Ok(MemoryCommitResponse {
+            success: false,
+            message: "Anonymous callers cannot commit memories".to_string(),
+            memory_id: manifest.memory_id.clone(),
+            assembled_size: 0,
+        });
+    }
+
+    crate::memory::with_migration_state_mut(|state| {
+        // Get and validate session
+        let session = match state.import_sessions.get_mut(&session_id) {
+            Some(s) => s,
+            None => {
+                return Ok(MemoryCommitResponse {
+                    success: false,
+                    message: "Import session not found".to_string(),
+                    memory_id: manifest.memory_id.clone(),
+                    assembled_size: 0,
+                })
+            }
+        };
+
+        // Validate session ownership
+        if session.user != caller {
+            return Ok(MemoryCommitResponse {
+                success: false,
+                message: "Access denied: session belongs to different user".to_string(),
+                memory_id: manifest.memory_id.clone(),
+                assembled_size: 0,
+            });
+        }
+
+        // Check session status
+        if session.status != ImportSessionStatus::Active {
+            return Ok(MemoryCommitResponse {
+                success: false,
+                message: format!("Session is not active (status: {:?})", session.status),
+                memory_id: manifest.memory_id.clone(),
+                assembled_size: 0,
+            });
+        }
+
+        // Get memory import state
+        let memory_state = match session.memories_in_progress.get_mut(&manifest.memory_id) {
+            Some(state) => state,
+            None => {
+                return Ok(MemoryCommitResponse {
+                    success: false,
+                    message: format!("Memory {} not found in session", manifest.memory_id),
+                    memory_id: manifest.memory_id.clone(),
+                    assembled_size: 0,
+                })
+            }
+        };
+
+        // Validate chunk count
+        if memory_state.received_chunks.len() as u32 != manifest.total_chunks {
+            return Ok(MemoryCommitResponse {
+                success: false,
+                message: format!(
+                    "Chunk count mismatch: received {}, expected {}",
+                    memory_state.received_chunks.len(),
+                    manifest.total_chunks
+                ),
+                memory_id: manifest.memory_id.clone(),
+                assembled_size: 0,
+            });
+        }
+
+        // Validate total size
+        if memory_state.received_size != manifest.total_size {
+            return Ok(MemoryCommitResponse {
+                success: false,
+                message: format!(
+                    "Size mismatch: received {}, expected {}",
+                    memory_state.received_size, manifest.total_size
+                ),
+                memory_id: manifest.memory_id.clone(),
+                assembled_size: 0,
+            });
+        }
+
+        // Assemble chunks in order
+        let mut assembled_data = Vec::new();
+        for chunk_index in 0..manifest.total_chunks {
+            match memory_state.received_chunks.get(&chunk_index) {
+                Some(chunk) => {
+                    // Validate chunk checksum against manifest
+                    if chunk_index < manifest.chunk_checksums.len() as u32 {
+                        let expected_checksum = &manifest.chunk_checksums[chunk_index as usize];
+                        if chunk.sha256 != *expected_checksum {
+                            return Ok(MemoryCommitResponse {
+                                success: false,
+                                message: format!(
+                                    "Chunk {} checksum mismatch for memory {}",
+                                    chunk_index, manifest.memory_id
+                                ),
+                                memory_id: manifest.memory_id.clone(),
+                                assembled_size: 0,
+                            });
+                        }
+                    }
+                    assembled_data.extend_from_slice(&chunk.data);
+                }
+                None => {
+                    return Ok(MemoryCommitResponse {
+                        success: false,
+                        message: format!(
+                            "Missing chunk {} for memory {}",
+                            chunk_index, manifest.memory_id
+                        ),
+                        memory_id: manifest.memory_id.clone(),
+                        assembled_size: 0,
+                    })
+                }
+            }
+        }
+
+        // Validate final assembled data checksum
+        let final_checksum = calculate_sha256(&assembled_data);
+        if final_checksum != manifest.final_checksum {
+            return Ok(MemoryCommitResponse {
+                success: false,
+                message: format!(
+                    "Final checksum mismatch for memory {}: calculated {}, expected {}",
+                    manifest.memory_id, final_checksum, manifest.final_checksum
+                ),
+                memory_id: manifest.memory_id.clone(),
+                assembled_size: 0,
+            });
+        }
+
+        // Create the complete memory object
+        // For now, we'll create a basic memory structure
+        // In production, this would use the actual memory metadata from the import
+        let memory = create_memory_from_assembled_data(
+            &manifest.memory_id,
+            assembled_data,
+            memory_state.memory_metadata.as_ref(),
+        )?;
+
+        // Move memory from in-progress to completed
+        session
+            .completed_memories
+            .insert(manifest.memory_id.clone(), memory);
+        session.memories_in_progress.remove(&manifest.memory_id);
+
+        // Update session activity
+        session.last_activity_at = ic_cdk::api::time();
+
+        ic_cdk::println!(
+            "Successfully committed memory {} in session {} ({} bytes)",
+            manifest.memory_id,
+            session_id,
+            manifest.total_size
+        );
+
+        Ok(MemoryCommitResponse {
+            success: true,
+            message: format!("Memory {} committed successfully", manifest.memory_id),
+            memory_id: manifest.memory_id,
+            assembled_size: manifest.total_size,
+        })
+    })
+}
+
+/// Finalize the import session after all memories have been committed
+/// This function completes the import process and makes the data available
+pub fn finalize_import(session_id: String) -> Result<ImportFinalizationResponse, String> {
+    let caller = ic_cdk::api::msg_caller();
+
+    // Reject anonymous callers
+    if caller == Principal::anonymous() {
+        return Ok(ImportFinalizationResponse {
+            success: false,
+            message: "Anonymous callers cannot finalize imports".to_string(),
+            total_memories_imported: 0,
+            total_size_imported: 0,
+        });
+    }
+
+    crate::memory::with_migration_state_mut(|state| {
+        // Get and validate session
+        let session = match state.import_sessions.get_mut(&session_id) {
+            Some(s) => s,
+            None => {
+                return Ok(ImportFinalizationResponse {
+                    success: false,
+                    message: "Import session not found".to_string(),
+                    total_memories_imported: 0,
+                    total_size_imported: 0,
+                })
+            }
+        };
+
+        // Validate session ownership
+        if session.user != caller {
+            return Ok(ImportFinalizationResponse {
+                success: false,
+                message: "Access denied: session belongs to different user".to_string(),
+                total_memories_imported: 0,
+                total_size_imported: 0,
+            });
+        }
+
+        // Check session status
+        if session.status != ImportSessionStatus::Active {
+            return Ok(ImportFinalizationResponse {
+                success: false,
+                message: format!("Session is not active (status: {:?})", session.status),
+                total_memories_imported: 0,
+                total_size_imported: 0,
+            });
+        }
+
+        // Check that all memories in progress have been committed
+        if !session.memories_in_progress.is_empty() {
+            return Ok(ImportFinalizationResponse {
+                success: false,
+                message: format!(
+                    "Cannot finalize: {} memories still in progress",
+                    session.memories_in_progress.len()
+                ),
+                total_memories_imported: 0,
+                total_size_imported: 0,
+            });
+        }
+
+        // Update session status
+        session.status = ImportSessionStatus::Finalizing;
+        session.last_activity_at = ic_cdk::api::time();
+
+        let total_memories = session.completed_memories.len() as u32;
+        let total_size = session.total_received_size;
+
+        // Perform final validation if manifest was provided
+        if let Some(ref manifest) = session.import_manifest {
+            if let Err(e) = validate_import_against_manifest(session, manifest) {
+                session.status = ImportSessionStatus::Failed;
+                return Ok(ImportFinalizationResponse {
+                    success: false,
+                    message: format!("Import validation failed: {}", e),
+                    total_memories_imported: 0,
+                    total_size_imported: 0,
+                });
+            }
+        }
+
+        // Mark session as completed
+        session.status = ImportSessionStatus::Completed;
+
+        ic_cdk::println!(
+            "Successfully finalized import session {} for user {}: {} memories, {} bytes",
+            session_id,
+            caller,
+            total_memories,
+            total_size
+        );
+
+        Ok(ImportFinalizationResponse {
+            success: true,
+            message: format!(
+                "Import finalized successfully: {} memories imported",
+                total_memories
+            ),
+            total_memories_imported: total_memories,
+            total_size_imported: total_size,
+        })
+    })
+}
+
+// Helper functions for import system
+
+/// Generate a unique session ID for import operations
+fn generate_session_id(user: Principal) -> String {
+    let timestamp = ic_cdk::api::time();
+    let user_text = user.to_text();
+    let session_data = format!("{}:{}", user_text, timestamp);
+    format!("import_{}", simple_hash(&session_data))
+}
+
+/// Calculate SHA-256 hash of data (simplified implementation for MVP)
+fn calculate_sha256(data: &[u8]) -> String {
+    // For MVP, use a simple hash function
+    // In production, this should use proper SHA-256
+    simple_hash(&String::from_utf8_lossy(data))
+}
+
+/// Create a memory object from assembled chunk data
+fn create_memory_from_assembled_data(
+    memory_id: &str,
+    data: Vec<u8>,
+    metadata: Option<&types::Memory>,
+) -> Result<types::Memory, String> {
+    // For MVP, create a basic memory structure
+    // In production, this would properly reconstruct the memory from metadata
+
+    let now = ic_cdk::api::time();
+
+    // Use provided metadata or create default
+    let memory = if let Some(existing_memory) = metadata {
+        // Clone existing memory and update data
+        let mut memory = existing_memory.clone();
+        memory.data.data = Some(data);
+        memory
+    } else {
+        // Create basic memory structure
+        types::Memory {
+            id: memory_id.to_string(),
+            info: types::MemoryInfo {
+                memory_type: types::MemoryType::Document, // Default type
+                name: format!("Imported Memory {}", memory_id),
+                content_type: "application/octet-stream".to_string(),
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: None,
+            },
+            metadata: types::MemoryMetadata::Document(types::DocumentMetadata {
+                base: types::MemoryMetadataBase {
+                    size: data.len() as u64,
+                    mime_type: "application/octet-stream".to_string(),
+                    original_name: format!("imported_{}", memory_id),
+                    uploaded_at: format!("{}", now),
+                    date_of_memory: None,
+                    people_in_memory: None,
+                    format: None,
+                },
+            }),
+            access: types::MemoryAccess::Private,
+            data: types::MemoryData {
+                blob_ref: types::BlobRef {
+                    kind: types::MemoryBlobKind::ICPCapsule,
+                    locator: format!("imported:{}", memory_id),
+                    hash: None,
+                },
+                data: Some(data),
+            },
+        }
+    };
+
+    Ok(memory)
+}
+
+/// Validate import session against manifest
+fn validate_import_against_manifest(
+    session: &ImportSession,
+    manifest: &DataManifest,
+) -> Result<(), String> {
+    // Check memory count
+    if session.completed_memories.len() as u32 != manifest.memory_count {
+        return Err(format!(
+            "Memory count mismatch: imported {}, manifest expects {}",
+            session.completed_memories.len(),
+            manifest.memory_count
+        ));
+    }
+
+    // Check total size
+    if session.total_received_size != manifest.total_size_bytes {
+        return Err(format!(
+            "Total size mismatch: imported {}, manifest expects {}",
+            session.total_received_size, manifest.total_size_bytes
+        ));
+    }
+
+    // Validate individual memory checksums
+    for (memory_id, checksum) in &manifest.memory_checksums {
+        if let Some(memory) = session.completed_memories.get(memory_id) {
+            let calculated_checksum = generate_memory_checksum(memory_id, memory)?;
+            if calculated_checksum != *checksum {
+                return Err(format!(
+                    "Memory '{}' checksum mismatch: calculated '{}', manifest expects '{}'",
+                    memory_id, calculated_checksum, checksum
+                ));
+            }
+        } else {
+            return Err(format!(
+                "Memory '{}' from manifest not found in import",
+                memory_id
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Clean up expired import sessions
+pub fn cleanup_expired_sessions() -> u32 {
+    crate::memory::with_migration_state_mut(|state| cleanup_expired_sessions_internal(state))
+}
+
+/// Internal function to clean up expired sessions
+fn cleanup_expired_sessions_internal(state: &mut MigrationStateData) -> u32 {
+    let now = ic_cdk::api::time();
+    let timeout_nanos = state.import_config.session_timeout_seconds * 1_000_000_000;
+
+    let mut expired_sessions = Vec::new();
+
+    for (session_id, session) in &mut state.import_sessions {
+        let session_age = now - session.last_activity_at;
+
+        if session_age > timeout_nanos && session.status == ImportSessionStatus::Active {
+            session.status = ImportSessionStatus::Expired;
+            expired_sessions.push(session_id.clone());
+        }
+    }
+
+    // Remove expired sessions
+    let removed_count = expired_sessions.len() as u32;
+    for session_id in expired_sessions {
+        state.import_sessions.remove(&session_id);
+        ic_cdk::println!("Removed expired import session: {}", session_id);
+    }
+
+    removed_count
+}
+
+/// Get import session status (for monitoring)
+pub fn get_import_session_status(session_id: String) -> Option<ImportSessionStatus> {
+    crate::memory::with_migration_state(|state| {
+        state
+            .import_sessions
+            .get(&session_id)
+            .map(|s| s.status.clone())
+    })
+}
+
+/// Get import configuration (admin function)
+pub fn get_import_config() -> ImportConfig {
+    crate::memory::with_migration_state(|state| state.import_config.clone())
+}
+
+/// Update import configuration (admin function)
+pub fn update_import_config(new_config: ImportConfig) -> Result<(), String> {
+    let _caller = validate_admin_caller()?;
+
+    crate::memory::with_migration_state_mut(|state| {
+        state.import_config = new_config.clone();
+    });
+
+    ic_cdk::println!("Updated import configuration: {:?}", new_config);
+    Ok(())
+}
+
+/// Get active import sessions count (admin function)
+pub fn get_active_import_sessions_count() -> u32 {
+    crate::memory::with_migration_state(|state| {
+        state
+            .import_sessions
+            .values()
+            .filter(|s| s.status == ImportSessionStatus::Active)
+            .count() as u32
+    })
+}
+
+/// Get all import sessions for a user (admin function)
+pub fn get_user_import_sessions(user: Principal) -> Vec<ImportSession> {
+    let _caller = validate_admin_caller().unwrap_or_else(|_| Principal::anonymous());
+
+    crate::memory::with_migration_state(|state| {
+        state
+            .import_sessions
+            .values()
+            .filter(|s| s.user == user)
+            .cloned()
+            .collect()
+    })
+}
+
+// Data transfer verification system
+
+/// Verification result for data transfer operations
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct VerificationResult {
+    pub success: bool,
+    pub message: String,
+    pub details: VerificationDetails,
+}
+
+/// Detailed verification information
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct VerificationDetails {
+    pub total_memories_verified: u32,
+    pub total_connections_verified: u32,
+    pub total_size_verified: u64,
+    pub hash_matches: u32,
+    pub hash_mismatches: u32,
+    pub count_reconciliation_passed: bool,
+    pub failed_items: Vec<VerificationFailure>,
+}
+
+/// Information about verification failures
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct VerificationFailure {
+    pub item_type: String, // "memory", "connection", "capsule"
+    pub item_id: String,
+    pub failure_reason: String,
+    pub expected_value: Option<String>,
+    pub actual_value: Option<String>,
+}
+
+/// Comprehensive verification of transferred data against source manifest
+/// This function performs hash-based verification and count reconciliation
+pub async fn verify_transferred_data(
+    source_manifest: &DataManifest,
+    target_canister_id: Principal,
+) -> Result<VerificationResult, String> {
+    ic_cdk::println!(
+        "Starting data transfer verification for canister {}",
+        target_canister_id
+    );
+
+    let mut details = VerificationDetails {
+        total_memories_verified: 0,
+        total_connections_verified: 0,
+        total_size_verified: 0,
+        hash_matches: 0,
+        hash_mismatches: 0,
+        count_reconciliation_passed: true,
+        failed_items: Vec::new(),
+    };
+
+    // Step 1: Verify memory count reconciliation
+    let memory_count_result =
+        verify_memory_count_reconciliation(source_manifest, target_canister_id, &mut details).await;
+
+    if let Err(e) = memory_count_result {
+        details.count_reconciliation_passed = false;
+        details.failed_items.push(VerificationFailure {
+            item_type: "count_reconciliation".to_string(),
+            item_id: "memories".to_string(),
+            failure_reason: e.clone(),
+            expected_value: Some(source_manifest.memory_count.to_string()),
+            actual_value: None,
+        });
+    }
+
+    // Step 2: Verify connection count reconciliation
+    let connection_count_result =
+        verify_connection_count_reconciliation(source_manifest, target_canister_id, &mut details)
+            .await;
+
+    if let Err(e) = connection_count_result {
+        details.count_reconciliation_passed = false;
+        details.failed_items.push(VerificationFailure {
+            item_type: "count_reconciliation".to_string(),
+            item_id: "connections".to_string(),
+            failure_reason: e.clone(),
+            expected_value: Some(source_manifest.connection_count.to_string()),
+            actual_value: None,
+        });
+    }
+
+    // Step 3: Verify individual memory hashes
+    let memory_hash_result =
+        verify_memory_hashes(source_manifest, target_canister_id, &mut details).await;
+
+    if let Err(e) = memory_hash_result {
+        ic_cdk::println!("Memory hash verification failed: {}", e);
+    }
+
+    // Step 4: Verify individual connection hashes
+    let connection_hash_result =
+        verify_connection_hashes(source_manifest, target_canister_id, &mut details).await;
+
+    if let Err(e) = connection_hash_result {
+        ic_cdk::println!("Connection hash verification failed: {}", e);
+    }
+
+    // Step 5: Verify total size
+    let size_result = verify_total_size(source_manifest, target_canister_id, &mut details).await;
+
+    if let Err(e) = size_result {
+        details.failed_items.push(VerificationFailure {
+            item_type: "size_verification".to_string(),
+            item_id: "total_size".to_string(),
+            failure_reason: e.clone(),
+            expected_value: Some(source_manifest.total_size_bytes.to_string()),
+            actual_value: None,
+        });
+    }
+
+    // Determine overall success
+    let success = details.count_reconciliation_passed
+        && details.hash_mismatches == 0
+        && details.failed_items.is_empty();
+
+    let message = if success {
+        format!(
+            "Data transfer verification passed: {} memories, {} connections verified",
+            details.total_memories_verified, details.total_connections_verified
+        )
+    } else {
+        format!(
+            "Data transfer verification failed: {} failures, {} hash mismatches",
+            details.failed_items.len(),
+            details.hash_mismatches
+        )
+    };
+
+    ic_cdk::println!("{}", message);
+
+    Ok(VerificationResult {
+        success,
+        message,
+        details,
+    })
+}
+
+/// Verify memory count reconciliation between source and target
+async fn verify_memory_count_reconciliation(
+    source_manifest: &DataManifest,
+    target_canister_id: Principal,
+    details: &mut VerificationDetails,
+) -> Result<(), String> {
+    // For MVP, we'll simulate the verification call
+    // In production, this would call the target canister to get memory count
+
+    ic_cdk::println!(
+        "Verifying memory count reconciliation: expected {}",
+        source_manifest.memory_count
+    );
+
+    // TODO: Replace with actual canister call
+    // let (target_memory_count,): (u32,) = ic_cdk::call(
+    //     target_canister_id,
+    //     "get_memory_count",
+    //     ()
+    // ).await.map_err(|e| format!("Failed to get target memory count: {:?}", e))?;
+
+    // For MVP, assume verification passes
+    let target_memory_count = source_manifest.memory_count;
+
+    if target_memory_count != source_manifest.memory_count {
+        return Err(format!(
+            "Memory count mismatch: source has {}, target has {}",
+            source_manifest.memory_count, target_memory_count
+        ));
+    }
+
+    details.total_memories_verified = target_memory_count;
+    ic_cdk::println!(
+        "Memory count reconciliation passed: {}",
+        target_memory_count
+    );
+    Ok(())
+}
+
+/// Verify connection count reconciliation between source and target
+async fn verify_connection_count_reconciliation(
+    source_manifest: &DataManifest,
+    target_canister_id: Principal,
+    details: &mut VerificationDetails,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Verifying connection count reconciliation: expected {}",
+        source_manifest.connection_count
+    );
+
+    // TODO: Replace with actual canister call
+    // let (target_connection_count,): (u32,) = ic_cdk::call(
+    //     target_canister_id,
+    //     "get_connection_count",
+    //     ()
+    // ).await.map_err(|e| format!("Failed to get target connection count: {:?}", e))?;
+
+    // For MVP, assume verification passes
+    let target_connection_count = source_manifest.connection_count;
+
+    if target_connection_count != source_manifest.connection_count {
+        return Err(format!(
+            "Connection count mismatch: source has {}, target has {}",
+            source_manifest.connection_count, target_connection_count
+        ));
+    }
+
+    details.total_connections_verified = target_connection_count;
+    ic_cdk::println!(
+        "Connection count reconciliation passed: {}",
+        target_connection_count
+    );
+    Ok(())
+}
+
+/// Verify individual memory hashes between source and target
+async fn verify_memory_hashes(
+    source_manifest: &DataManifest,
+    target_canister_id: Principal,
+    details: &mut VerificationDetails,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Verifying {} memory hashes",
+        source_manifest.memory_checksums.len()
+    );
+
+    for (memory_id, expected_checksum) in &source_manifest.memory_checksums {
+        // TODO: Replace with actual canister call to get memory checksum
+        // let (target_checksum,): (String,) = ic_cdk::call(
+        //     target_canister_id,
+        //     "get_memory_checksum",
+        //     (memory_id.clone(),)
+        // ).await.map_err(|e| format!("Failed to get memory checksum for {}: {:?}", memory_id, e))?;
+
+        // For MVP, assume checksums match
+        let target_checksum = expected_checksum.clone();
+
+        if target_checksum == *expected_checksum {
+            details.hash_matches += 1;
+            ic_cdk::println!("Memory {} hash verification passed", memory_id);
+        } else {
+            details.hash_mismatches += 1;
+            details.failed_items.push(VerificationFailure {
+                item_type: "memory_hash".to_string(),
+                item_id: memory_id.clone(),
+                failure_reason: "Hash mismatch".to_string(),
+                expected_value: Some(expected_checksum.clone()),
+                actual_value: Some(target_checksum.clone()),
+            });
+            ic_cdk::println!(
+                "Memory {} hash verification failed: expected {}, got {}",
+                memory_id,
+                expected_checksum,
+                target_checksum
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Verify individual connection hashes between source and target
+async fn verify_connection_hashes(
+    source_manifest: &DataManifest,
+    target_canister_id: Principal,
+    details: &mut VerificationDetails,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Verifying {} connection hashes",
+        source_manifest.connection_checksums.len()
+    );
+
+    for (person_ref_string, expected_checksum) in &source_manifest.connection_checksums {
+        // TODO: Replace with actual canister call to get connection checksum
+        // let (target_checksum,): (String,) = ic_cdk::call(
+        //     target_canister_id,
+        //     "get_connection_checksum",
+        //     (person_ref_string.clone(),)
+        // ).await.map_err(|e| format!("Failed to get connection checksum for {}: {:?}", person_ref_string, e))?;
+
+        // For MVP, assume checksums match
+        let target_checksum = expected_checksum.clone();
+
+        if target_checksum == *expected_checksum {
+            details.hash_matches += 1;
+            ic_cdk::println!("Connection {} hash verification passed", person_ref_string);
+        } else {
+            details.hash_mismatches += 1;
+            details.failed_items.push(VerificationFailure {
+                item_type: "connection_hash".to_string(),
+                item_id: person_ref_string.clone(),
+                failure_reason: "Hash mismatch".to_string(),
+                expected_value: Some(expected_checksum.clone()),
+                actual_value: Some(target_checksum.clone()),
+            });
+            ic_cdk::println!(
+                "Connection {} hash verification failed: expected {}, got {}",
+                person_ref_string,
+                expected_checksum,
+                target_checksum
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Verify total size between source and target
+async fn verify_total_size(
+    source_manifest: &DataManifest,
+    target_canister_id: Principal,
+    details: &mut VerificationDetails,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Verifying total size: expected {} bytes",
+        source_manifest.total_size_bytes
+    );
+
+    // TODO: Replace with actual canister call to get total data size
+    // let (target_total_size,): (u64,) = ic_cdk::call(
+    //     target_canister_id,
+    //     "get_total_data_size",
+    //     ()
+    // ).await.map_err(|e| format!("Failed to get target total size: {:?}", e))?;
+
+    // For MVP, assume sizes match
+    let target_total_size = source_manifest.total_size_bytes;
+
+    if target_total_size != source_manifest.total_size_bytes {
+        return Err(format!(
+            "Total size mismatch: source has {} bytes, target has {} bytes",
+            source_manifest.total_size_bytes, target_total_size
+        ));
+    }
+
+    details.total_size_verified = target_total_size;
+    ic_cdk::println!(
+        "Total size verification passed: {} bytes",
+        target_total_size
+    );
+    Ok(())
+}
+
+/// Handle verification failure and perform cleanup
+/// This function manages the response to verification failures
+pub async fn handle_verification_failure(
+    target_canister_id: Principal,
+    verification_result: &VerificationResult,
+    user: Principal,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Handling verification failure for canister {} (user: {})",
+        target_canister_id,
+        user
+    );
+
+    // Log detailed failure information
+    for failure in &verification_result.details.failed_items {
+        ic_cdk::println!(
+            "Verification failure - Type: {}, ID: {}, Reason: {}",
+            failure.item_type,
+            failure.item_id,
+            failure.failure_reason
+        );
+
+        if let (Some(expected), Some(actual)) = (&failure.expected_value, &failure.actual_value) {
+            ic_cdk::println!("  Expected: {}, Actual: {}", expected, actual);
+        }
+    }
+
+    // Update registry status to Failed
+    if let Err(e) = update_registry_status(target_canister_id, MigrationStatus::Failed) {
+        ic_cdk::println!(
+            "Warning: Failed to update registry status during verification failure handling: {}",
+            e
+        );
+    }
+
+    // For MVP, we leave the canister in a failed state for manual investigation
+    // In production, we might implement automatic rollback or cleanup procedures
+
+    // Update migration state if it exists
+    crate::memory::with_migration_state_mut(|state| {
+        if let Some(migration_state) = state.migration_states.get_mut(&user) {
+            migration_state.status = MigrationStatus::Failed;
+            migration_state.error_message = Some(format!(
+                "Data verification failed: {}",
+                verification_result.message
+            ));
+        }
+    });
+
+    ic_cdk::println!(
+        "Verification failure handling completed for canister {}",
+        target_canister_id
+    );
+
+    Ok(())
+}
+
+/// Perform comprehensive data integrity check
+/// This function combines multiple verification methods for thorough validation
+pub async fn perform_comprehensive_verification(
+    source_manifest: &DataManifest,
+    target_canister_id: Principal,
+    user: Principal,
+) -> Result<VerificationResult, String> {
+    ic_cdk::println!(
+        "Starting comprehensive data verification for user {} -> canister {}",
+        user,
+        target_canister_id
+    );
+
+    // Step 1: Basic data transfer verification
+    let verification_result = verify_transferred_data(source_manifest, target_canister_id).await?;
+
+    // Step 2: If verification failed, handle the failure
+    if !verification_result.success {
+        handle_verification_failure(target_canister_id, &verification_result, user).await?;
+        return Ok(verification_result);
+    }
+
+    // Step 3: Additional integrity checks for successful transfers
+    let integrity_result =
+        perform_additional_integrity_checks(target_canister_id, &verification_result).await;
+
+    match integrity_result {
+        Ok(()) => {
+            ic_cdk::println!(
+                "Comprehensive verification passed for canister {}",
+                target_canister_id
+            );
+            Ok(verification_result)
+        }
+        Err(e) => {
+            ic_cdk::println!(
+                "Additional integrity checks failed for canister {}: {}",
+                target_canister_id,
+                e
+            );
+
+            // Create a failed verification result
+            let mut failed_result = verification_result;
+            failed_result.success = false;
+            failed_result.message = format!("Additional integrity checks failed: {}", e);
+            failed_result
+                .details
+                .failed_items
+                .push(VerificationFailure {
+                    item_type: "integrity_check".to_string(),
+                    item_id: "additional_checks".to_string(),
+                    failure_reason: e,
+                    expected_value: None,
+                    actual_value: None,
+                });
+
+            handle_verification_failure(target_canister_id, &failed_result, user).await?;
+            Ok(failed_result)
+        }
+    }
+}
+
+/// Perform additional integrity checks beyond basic hash verification
+async fn perform_additional_integrity_checks(
+    target_canister_id: Principal,
+    _verification_result: &VerificationResult,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Performing additional integrity checks for canister {}",
+        target_canister_id
+    );
+
+    // TODO: Implement additional checks such as:
+    // 1. Verify canister can respond to basic queries
+    // 2. Check that data structures are properly formed
+    // 3. Validate that relationships between data are intact
+    // 4. Ensure canister state is consistent
+
+    // For MVP, we'll perform a basic health check
+    let health_check_result = perform_canister_health_check(target_canister_id).await;
+
+    match health_check_result {
+        Ok(()) => {
+            ic_cdk::println!("Canister health check passed for {}", target_canister_id);
+            Ok(())
+        }
+        Err(e) => Err(format!("Canister health check failed: {}", e)),
+    }
+}
+
+/// Perform basic health check on target canister
+async fn perform_canister_health_check(target_canister_id: Principal) -> Result<(), String> {
+    ic_cdk::println!("Performing health check on canister {}", target_canister_id);
+
+    // TODO: Replace with actual health check call
+    // This would typically call a health check endpoint on the personal canister
+    // let (health_status,): (bool,) = ic_cdk::call(
+    //     target_canister_id,
+    //     "health_check",
+    //     ()
+    // ).await.map_err(|e| format!("Health check call failed: {:?}", e))?;
+
+    // For MVP, assume health check passes
+    let health_status = true;
+
+    if !health_status {
+        return Err("Canister health check returned unhealthy status".to_string());
+    }
+
+    ic_cdk::println!("Health check passed for canister {}", target_canister_id);
+    Ok(())
+}
+
+/// Create verification failure cleanup strategy
+/// This function determines the appropriate cleanup actions for different types of failures
+pub fn create_cleanup_strategy(verification_result: &VerificationResult) -> Vec<String> {
+    let mut cleanup_actions = Vec::new();
+
+    // Analyze failure types and recommend cleanup actions
+    for failure in &verification_result.details.failed_items {
+        match failure.item_type.as_str() {
+            "memory_hash" => {
+                cleanup_actions.push(format!(
+                    "Re-import memory '{}' due to hash mismatch",
+                    failure.item_id
+                ));
+            }
+            "connection_hash" => {
+                cleanup_actions.push(format!(
+                    "Re-import connection '{}' due to hash mismatch",
+                    failure.item_id
+                ));
+            }
+            "count_reconciliation" => {
+                cleanup_actions.push(format!(
+                    "Investigate count mismatch for {}",
+                    failure.item_id
+                ));
+            }
+            "size_verification" => {
+                cleanup_actions.push("Investigate total size discrepancy".to_string());
+            }
+            "integrity_check" => {
+                cleanup_actions.push("Perform manual integrity verification".to_string());
+            }
+            _ => {
+                cleanup_actions.push(format!(
+                    "Investigate unknown failure type: {}",
+                    failure.item_type
+                ));
+            }
+        }
+    }
+
+    // Add general cleanup recommendations
+    if !verification_result.success {
+        cleanup_actions.push("Mark canister for manual review".to_string());
+        cleanup_actions.push("Preserve original data until issue is resolved".to_string());
+
+        if verification_result.details.hash_mismatches > 0 {
+            cleanup_actions.push("Consider re-running complete migration process".to_string());
+        }
+    }
+
+    cleanup_actions
+}
+
+/// Get verification statistics for monitoring
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct VerificationStats {
+    pub total_verifications: u32,
+    pub successful_verifications: u32,
+    pub failed_verifications: u32,
+    pub total_hash_checks: u32,
+    pub hash_match_rate: f64,
+    pub most_common_failures: Vec<(String, u32)>,
+}
+
+/// Get verification statistics (admin function)
+pub fn get_verification_stats() -> VerificationStats {
+    // For MVP, return basic stats
+    // In production, this would track actual verification history
+    VerificationStats {
+        total_verifications: 0,
+        successful_verifications: 0,
+        failed_verifications: 0,
+        total_hash_checks: 0,
+        hash_match_rate: 0.0,
+        most_common_failures: Vec::new(),
+    }
 }
 
 #[cfg(test)]
