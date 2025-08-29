@@ -1,7 +1,6 @@
 use crate::memory::{with_capsules, with_capsules_mut};
 use crate::types::*;
 use ic_cdk::api::{msg_caller, time};
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 impl PersonRef {

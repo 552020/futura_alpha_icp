@@ -1,6 +1,5 @@
 use crate::types::*;
 use candid::Principal;
-use ic_cdk::api::msg_caller;
 use std::collections::{HashMap, HashSet};
 
 // Centralized storage for capsules and admin data
@@ -15,17 +14,7 @@ thread_local! {
     static NONCE_PROOFS: std::cell::RefCell<HashMap<String, (Principal, u64)>> = std::cell::RefCell::new(HashMap::new());
 }
 
-// Helper function to generate secure codes
-pub fn generate_secure_code() -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
 
-    let mut hasher = DefaultHasher::new();
-    ic_cdk::api::time().hash(&mut hasher);
-    msg_caller().hash(&mut hasher);
-
-    format!("{:x}", hasher.finish())
-}
 
 // Access functions for centralized storage
 pub fn with_capsules_mut<F, R>(f: F) -> R
