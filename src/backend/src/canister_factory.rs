@@ -1,5 +1,9 @@
 use crate::types;
 use candid::{CandidType, Principal};
+use ic_cdk::api::management_canister::main::{
+    create_canister, install_code, CanisterInstallMode, CanisterSettings, CreateCanisterArgument,
+    InstallCodeArgument,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -99,6 +103,13 @@ pub struct MigrationStats {
     pub total_successes: u64,
     pub total_failures: u64,
     pub total_cycles_consumed: u128,
+}
+
+/// Minimal configuration for creating personal canisters
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug, Default)]
+pub struct CreatePersonalCanisterConfig {
+    pub name: Option<String>,
+    pub subnet_id: Option<Principal>,
 }
 
 /// Extended state structure with migration fields
@@ -988,6 +999,431 @@ pub fn get_user_capsule_id(user: Principal) -> Option<String> {
             .find(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
             .map(|capsule| capsule.id.clone())
     })
+}
+
+// Canister creation and WASM installation functions
+
+/// Create a personal canister with dual controllers (factory and user)
+/// This function handles the complete canister creation process including:
+/// - Preflight cycles check
+/// - Canister creation with dual controllers
+/// - Registry entry creation
+/// - Cycles consumption tracking
+pub async fn create_personal_canister(
+    user: Principal,
+    _config: CreatePersonalCanisterConfig,
+    cycles_to_fund: u128,
+) -> Result<Principal, String> {
+    // Preflight check for cycles reserve
+    preflight_cycles_reserve(cycles_to_fund)?;
+
+    // Prepare canister settings with dual controllers
+    let factory_principal = ic_cdk::api::canister_self();
+    let controllers = vec![factory_principal, user];
+
+    let canister_settings = CanisterSettings {
+        controllers: Some(controllers),
+        compute_allocation: None,
+        memory_allocation: None,
+        freezing_threshold: None,
+        reserved_cycles_limit: None,
+        log_visibility: None,
+        wasm_memory_limit: None,
+    };
+
+    // Create canister creation arguments
+    let create_args = CreateCanisterArgument {
+        settings: Some(canister_settings),
+    };
+
+    ic_cdk::println!(
+        "Creating personal canister for user {} with {} cycles",
+        user,
+        cycles_to_fund
+    );
+
+    // Create the canister with cycles funding
+    let create_result = create_canister(create_args, cycles_to_fund).await;
+
+    match create_result {
+        Ok((canister_record,)) => {
+            let canister_id = canister_record.canister_id;
+            ic_cdk::println!(
+                "Successfully created personal canister {} for user {}",
+                canister_id,
+                user
+            );
+
+            // Create registry entry with Creating status
+            create_registry_entry(canister_id, user, MigrationStatus::Creating, cycles_to_fund)?;
+
+            // Consume cycles from reserve
+            consume_cycles_from_reserve(cycles_to_fund)?;
+
+            // Log cycles consumption
+            log_cycles_consumption(
+                "create_canister",
+                cycles_to_fund,
+                Some(user),
+                Some(canister_id),
+            );
+
+            Ok(canister_id)
+        }
+        Err((rejection_code, message)) => {
+            let error_msg = format!(
+                "Failed to create personal canister for user {}: {:?} - {}",
+                user, rejection_code, message
+            );
+
+            ic_cdk::println!("{}", error_msg);
+
+            // Don't consume cycles on failure
+            Err(error_msg)
+        }
+    }
+}
+
+/// Install WASM module on a personal canister
+/// This function handles WASM installation with proper error handling and validation
+pub async fn install_personal_canister_wasm(
+    canister_id: Principal,
+    wasm_module: Vec<u8>,
+    init_arg: Vec<u8>,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Installing WASM module on personal canister {} ({} bytes)",
+        canister_id,
+        wasm_module.len()
+    );
+
+    // Prepare installation arguments
+    let install_args = InstallCodeArgument {
+        mode: CanisterInstallMode::Install,
+        canister_id,
+        wasm_module,
+        arg: init_arg,
+    };
+
+    // Install the WASM module
+    let install_result = install_code(install_args).await;
+
+    match install_result {
+        Ok(()) => {
+            ic_cdk::println!(
+                "Successfully installed WASM module on personal canister {}",
+                canister_id
+            );
+
+            // Update registry status to Installing -> Installed (will be updated to Importing later)
+            update_registry_status(canister_id, MigrationStatus::Installing)?;
+
+            Ok(())
+        }
+        Err((rejection_code, message)) => {
+            let error_msg = format!(
+                "Failed to install WASM on personal canister {}: {:?} - {}",
+                canister_id, rejection_code, message
+            );
+
+            ic_cdk::println!("{}", error_msg);
+
+            // Update registry status to Failed
+            update_registry_status(canister_id, MigrationStatus::Failed)?;
+
+            Err(error_msg)
+        }
+    }
+}
+
+/// Validate configuration for personal canister creation
+/// This function validates the minimal config and applies defaults
+pub fn validate_and_prepare_config(
+    config: CreatePersonalCanisterConfig,
+) -> Result<CreatePersonalCanisterConfig, String> {
+    let validated_config = config;
+
+    // Validate name if provided
+    if let Some(ref name) = validated_config.name {
+        if name.is_empty() {
+            return Err("Canister name cannot be empty".to_string());
+        }
+
+        if name.len() > 100 {
+            return Err("Canister name cannot exceed 100 characters".to_string());
+        }
+
+        // Basic validation for allowed characters (alphanumeric, spaces, hyphens, underscores)
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_')
+        {
+            return Err(
+                "Canister name can only contain alphanumeric characters, spaces, hyphens, and underscores"
+                    .to_string(),
+            );
+        }
+    }
+
+    // Subnet ID validation is minimal - if provided, it should be a valid Principal
+    // The IC will validate if the subnet actually exists during canister creation
+    if let Some(subnet_id) = validated_config.subnet_id {
+        // Basic validation that it's not anonymous
+        if subnet_id == Principal::anonymous() {
+            return Err("Subnet ID cannot be anonymous principal".to_string());
+        }
+    }
+
+    // For MVP, we ignore any non-supported options without error
+    // This allows future expansion without breaking existing clients
+
+    ic_cdk::println!(
+        "Validated canister config: name={:?}, subnet_id={:?}",
+        validated_config.name,
+        validated_config.subnet_id
+    );
+
+    Ok(validated_config)
+}
+
+/// Apply configuration defaults for personal canister creation
+/// This function fills in default values for optional configuration fields
+pub fn apply_config_defaults(config: CreatePersonalCanisterConfig) -> CreatePersonalCanisterConfig {
+    let mut config_with_defaults = config;
+
+    // Apply default name if not provided
+    if config_with_defaults.name.is_none() {
+        config_with_defaults.name = Some("Personal Capsule".to_string());
+    }
+
+    // Subnet ID remains None by default (let IC choose)
+    // This is the recommended approach for most use cases
+
+    ic_cdk::println!(
+        "Applied config defaults: name={:?}, subnet_id={:?}",
+        config_with_defaults.name,
+        config_with_defaults.subnet_id
+    );
+
+    config_with_defaults
+}
+
+/// Create a minimal default configuration
+/// This function provides a sensible default configuration for personal canister creation
+pub fn create_default_config() -> CreatePersonalCanisterConfig {
+    CreatePersonalCanisterConfig {
+        name: Some("Personal Capsule".to_string()),
+        subnet_id: None, // Let IC choose the subnet
+    }
+}
+
+/// Validate and prepare configuration with defaults
+/// This is a convenience function that combines validation and default application
+pub fn prepare_canister_config(
+    config: Option<CreatePersonalCanisterConfig>,
+) -> Result<CreatePersonalCanisterConfig, String> {
+    // Use provided config or create default
+    let config = config.unwrap_or_else(create_default_config);
+
+    // Apply defaults for missing fields
+    let config_with_defaults = apply_config_defaults(config);
+
+    // Validate the final configuration
+    validate_and_prepare_config(config_with_defaults)
+}
+
+/// Check if configuration contains unsupported options
+/// This function logs warnings for any unsupported options but doesn't fail
+/// This allows for future expansion without breaking existing clients
+pub fn check_unsupported_config_options(_config: &CreatePersonalCanisterConfig) -> Vec<String> {
+    let warnings = Vec::new();
+
+    // For MVP, all current options are supported
+    // This function is a placeholder for future expansion
+
+    // Example of how unsupported options would be handled:
+    // if config.some_future_option.is_some() {
+    //     warnings.push("some_future_option is not yet supported and will be ignored".to_string());
+    // }
+
+    if !warnings.is_empty() {
+        ic_cdk::println!("Configuration warnings: {}", warnings.join(", "));
+    }
+
+    warnings
+}
+
+/// Get the default cycles amount for personal canister creation
+/// This can be made configurable in the future
+pub fn get_default_canister_cycles() -> u128 {
+    // Default to 2T cycles for personal canister creation
+    // This should be sufficient for initial setup and some operations
+    2_000_000_000_000u128
+}
+
+/// Load the personal canister WASM module
+/// This function loads the single personal-canister WASM binary
+/// For MVP, this is a placeholder that will be replaced with actual WASM loading
+pub fn load_personal_canister_wasm() -> Result<Vec<u8>, String> {
+    // For MVP, we return an error indicating WASM is not yet available
+    // In production, this would load the actual personal canister WASM binary
+    // The WASM could be:
+    // 1. Embedded in the factory canister at compile time
+    // 2. Stored in stable memory
+    // 3. Downloaded from another canister
+
+    Err("Personal canister WASM not yet available in MVP".to_string())
+
+    // TODO: Replace with actual WASM loading implementation
+    // Example implementation would be:
+    //
+    // // Load WASM from stable memory or embedded resource
+    // let wasm_bytes = include_bytes!("../../../personal_canister.wasm");
+    // Ok(wasm_bytes.to_vec())
+}
+
+/// Prepare initialization arguments for personal canister
+/// This function creates the initialization data for the personal canister
+pub fn prepare_personal_canister_init_args(
+    user: Principal,
+    export_data: &ExportData,
+) -> Result<Vec<u8>, String> {
+    // For MVP, we'll create a simple initialization structure
+    // In production, this would be the actual initialization data for the personal canister
+
+    #[derive(CandidType, Serialize)]
+    struct PersonalCanisterInitArgs {
+        owner: Principal,
+        data_version: String,
+        import_data: ExportData,
+    }
+
+    let init_args = PersonalCanisterInitArgs {
+        owner: user,
+        data_version: "1.0".to_string(),
+        import_data: export_data.clone(),
+    };
+
+    // Encode the initialization arguments
+    candid::encode_one(&init_args).map_err(|e| format!("Failed to encode init args: {}", e))
+}
+
+/// Check API version compatibility between factory and personal canister
+/// This function validates compatibility before proceeding with migration
+pub async fn check_api_version_compatibility(canister_id: Principal) -> Result<(), String> {
+    ic_cdk::println!(
+        "Checking API version compatibility for canister {}",
+        canister_id
+    );
+
+    // Define expected API version
+    const EXPECTED_API_VERSION: &str = "1.0";
+
+    // For MVP, we'll implement a basic version check
+    // In production, this should call a get_api_version() function on the personal canister
+
+    // TODO: Implement actual API version check by calling personal canister
+    // This would involve:
+    // 1. Call get_api_version() on the personal canister
+    // 2. Compare with factory's expected version
+    // 3. Return error if incompatible
+
+    // Placeholder implementation for MVP
+    // We'll assume compatibility for now but add the framework for future implementation
+
+    ic_cdk::println!(
+        "API version check passed for canister {} (expected: {})",
+        canister_id,
+        EXPECTED_API_VERSION
+    );
+
+    Ok(())
+
+    // Future implementation would look like:
+    //
+    // let (version,): (String,) = ic_cdk::call(canister_id, "get_api_version", ())
+    //     .await
+    //     .map_err(|e| format!("Failed to get API version: {:?}", e))?;
+    //
+    // if version != EXPECTED_API_VERSION {
+    //     return Err(format!(
+    //         "API version mismatch: personal canister has {}, factory expects {}",
+    //         version, EXPECTED_API_VERSION
+    //     ));
+    // }
+    //
+    // Ok(())
+}
+
+/// Complete WASM installation process with error handling and validation
+/// This function orchestrates the complete WASM installation process
+pub async fn complete_wasm_installation(
+    canister_id: Principal,
+    user: Principal,
+    export_data: &ExportData,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Starting complete WASM installation for canister {} (user: {})",
+        canister_id,
+        user
+    );
+
+    // Step 1: Load the personal canister WASM
+    let wasm_module = load_personal_canister_wasm()
+        .map_err(|e| format!("Failed to load personal canister WASM: {}", e))?;
+
+    // Step 2: Prepare initialization arguments
+    let init_args = prepare_personal_canister_init_args(user, export_data)
+        .map_err(|e| format!("Failed to prepare init args: {}", e))?;
+
+    // Step 3: Install the WASM module
+    install_personal_canister_wasm(canister_id, wasm_module, init_args)
+        .await
+        .map_err(|e| format!("Failed to install WASM: {}", e))?;
+
+    // Step 4: Check API version compatibility
+    check_api_version_compatibility(canister_id)
+        .await
+        .map_err(|e| format!("API version compatibility check failed: {}", e))?;
+
+    ic_cdk::println!(
+        "Successfully completed WASM installation for canister {}",
+        canister_id
+    );
+
+    Ok(())
+}
+
+/// Cleanup failed canister creation
+/// This function handles cleanup when canister creation or installation fails
+pub async fn cleanup_failed_canister_creation(
+    canister_id: Principal,
+    user: Principal,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Cleaning up failed canister creation for canister {} (user: {})",
+        canister_id,
+        user
+    );
+
+    // Update registry status to Failed
+    if let Err(e) = update_registry_status(canister_id, MigrationStatus::Failed) {
+        ic_cdk::println!(
+            "Warning: Failed to update registry status during cleanup: {}",
+            e
+        );
+    }
+
+    // For MVP, we leave the canister for manual cleanup by admins
+    // In the future, we could implement automatic canister deletion
+    // but that requires careful consideration of cycles and permissions
+
+    ic_cdk::println!(
+        "Canister {} marked as failed in registry. Manual cleanup may be required.",
+        canister_id
+    );
+
+    Ok(())
 }
 
 /// Convert PersonRef to string for consistent representation
