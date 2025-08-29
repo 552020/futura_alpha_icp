@@ -30,16 +30,16 @@
     - Add admin query to fetch registry entries by user principal and by status for ops
     - _Requirements: 6.1_
 
-- [ ] 3. Implement cycles reserve management
+- [x] 3. Implement cycles reserve management
 
-  - [ ] 3.1 Create cycles reserve checking functions
+  - [x] 3.1 Create cycles reserve checking functions
 
     - Implement `preflight_cycles_reserve` function for threshold checking
     - Add `consume_cycles_from_reserve` function
     - Create admin functions for reserve management and monitoring
     - _Requirements: 2.1, 2.2, 2.3, 6.3_
 
-  - [ ] 3.2 Add cycles reserve monitoring and alerts
+  - [x] 3.2 Add cycles reserve monitoring and alerts
     - Implement reserve threshold checking
     - Add logging for cycles consumption
     - Create admin notification system for low reserves
