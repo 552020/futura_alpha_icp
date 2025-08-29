@@ -7,23 +7,23 @@
   - Add module import to `src/backend/src/lib.rs`
   - _Requirements: 1.5, 5.1_
 
-- [ ] 2. Implement migration state management and registry
+- [x] 2. Implement migration state management and registry
 
-  - [ ] 2.1 Create migration state storage structures
+  - [x] 2.1 Create migration state storage structures
 
     - Define `MigrationState`, `MigrationConfig`, and `PersonalCanisterRecord` structs
     - Extend existing `State` struct with migration fields and personal canisters registry
     - Implement default values and initialization
     - _Requirements: 1.5, 5.4, 6.1_
 
-  - [ ] 2.2 Add migration state persistence to upgrade hooks
+  - [x] 2.2 Add migration state persistence to upgrade hooks
 
     - Update `pre_upgrade` function to include migration state and registry
     - Update `post_upgrade` function to restore migration state and registry
     - Test state preservation across canister upgrades
     - _Requirements: 5.6_
 
-  - [ ] 2.3 Implement personal canister registry management
+  - [x] 2.3 Implement personal canister registry management
     - Create functions to persist registry entries with canister_id, created_by, created_at, status, cycles_consumed
     - Add registry update functions for status transitions
     - Implement registry query functions for admin monitoring

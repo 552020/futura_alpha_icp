@@ -151,21 +151,25 @@ fn init() {
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Serialize capsules and admins before upgrade
+    // Serialize capsules, admins, and migration state before upgrade
     let capsule_data = capsule::export_capsules_for_upgrade();
     let admin_data = admin::export_admins_for_upgrade();
-    ic_cdk::storage::stable_save((capsule_data, admin_data))
+    let migration_data = canister_factory::export_migration_state_for_upgrade();
+    ic_cdk::storage::stable_save((capsule_data, admin_data, migration_data))
         .expect("Failed to save data to stable storage");
 }
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
-    // Restore capsules and admins after upgrade
-    if let Ok((capsule_data, admin_data)) =
-        ic_cdk::storage::stable_restore::<(Vec<(String, types::Capsule)>, Vec<Principal>)>()
-    {
+    // Restore capsules, admins, and migration state after upgrade
+    if let Ok((capsule_data, admin_data, migration_data)) = ic_cdk::storage::stable_restore::<(
+        Vec<(String, types::Capsule)>,
+        Vec<Principal>,
+        canister_factory::MigrationStateData,
+    )>() {
         capsule::import_capsules_from_upgrade(capsule_data);
         admin::import_admins_from_upgrade(admin_data);
+        canister_factory::import_migration_state_from_upgrade(migration_data);
     }
     // If restore fails, start with empty state (no panic)
 }
