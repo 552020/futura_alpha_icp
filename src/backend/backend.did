@@ -139,6 +139,41 @@ type VideoMetadata = record {
   base : MemoryMetadataBase;
   width : opt nat32;
 };
+type MigrationResponse = record {
+  success : bool;
+  canister_id : opt principal;
+  message : text;
+};
+type MigrationStatus = variant {
+  NotStarted;
+  Exporting;
+  Creating;
+  Installing;
+  Importing;
+  Verifying;
+  Completed;
+  Failed;
+};
+type MigrationStatusResponse = record {
+  status : MigrationStatus;
+  canister_id : opt principal;
+  message : opt text;
+};
+type DetailedMigrationStatus = record {
+  status : MigrationStatus;
+  canister_id : opt principal;
+  created_at : nat64;
+  completed_at : opt nat64;
+  cycles_consumed : nat;
+  error_message : opt text;
+  progress_message : text;
+};
+type MigrationStats = record {
+  total_attempts : nat64;
+  total_successes : nat64;
+  total_failures : nat64;
+  total_cycles_consumed : nat;
+};
 service : () -> {
   add_admin : (principal) -> (bool);
   create_capsule : (PersonRef) -> (CapsuleCreationResult);
@@ -158,4 +193,17 @@ service : () -> {
   remove_admin : (principal) -> (bool);
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;
+  migrate_capsule : () -> (MigrationResponse);
+  get_migration_status : () -> (opt MigrationStatusResponse) query;
+  get_personal_canister_id : (principal) -> (opt principal) query;
+  get_my_personal_canister_id : () -> (opt principal) query;
+  get_detailed_migration_status : () -> (opt DetailedMigrationStatus) query;
+  get_user_migration_status : (principal) -> (variant { Ok : opt DetailedMigrationStatus; Err : text }) query;
+  list_all_migration_states : () -> (variant { Ok : vec record { principal; DetailedMigrationStatus }; Err : text }) query;
+  get_migration_states_by_status : (MigrationStatus) -> (variant { Ok : vec record { principal; DetailedMigrationStatus }; Err : text }) query;
+  clear_migration_state : (principal) -> (variant { Ok : bool; Err : text });
+  set_migration_enabled : (bool) -> (variant { Ok : null; Err : text });
+  get_migration_stats : () -> (variant { Ok : MigrationStats; Err : text }) query;
+  is_migration_enabled : () -> (bool) query;
+  get_api_version : () -> (text) query;
 }

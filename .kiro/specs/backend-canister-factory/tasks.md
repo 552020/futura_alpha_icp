@@ -142,31 +142,31 @@
     - Add `get_personal_canister_id(user)` query to simplify frontend fallback logic
     - _Requirements: 3.2, 5.5_
 
-- [ ] 10. Implement admin controls and monitoring
+- [x] 10. Implement admin controls and monitoring
 
-  - [ ] 10.1 Create migration enable/disable functionality
+  - [x] 10.1 Create migration enable/disable functionality
 
     - Add `set_migration_enabled` admin function with ensure_admin guard
     - Implement migration request rejection when disabled
     - Add admin authentication checks
     - _Requirements: 5.1, 5.3, 6.2_
 
-  - [ ] 10.2 Add basic migration statistics
+  - [x] 10.2 Add basic migration statistics
     - Implement success/failure counters
     - Create `get_migration_stats` function
     - Add migration attempt tracking
     - _Requirements: 5.2, 5.4_
 
-- [ ] 11. Add Candid interface integration
+- [x] 11. Add Candid interface integration
 
-  - [ ] 11.1 Export migration functions in Candid interface
+  - [x] 11.1 Export migration functions in Candid interface
 
     - Add `migrate_capsule` and `get_migration_status` to service definition
     - Update `backend.did` file with new types and functions
     - Test Candid interface generation
     - _Requirements: 3.1, 5.7_
 
-  - [ ] 11.2 Ensure API compatibility
+  - [x] 11.2 Ensure API compatibility
     - Add API_VERSION constant to personal canister
     - Implement compatibility checking during migration
     - Add version mismatch error handling

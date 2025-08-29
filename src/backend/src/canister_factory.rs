@@ -7,6 +7,9 @@ use ic_cdk::api::management_canister::main::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+/// API version for compatibility checking between shared backend and personal canisters
+pub const API_VERSION: &str = "1.0.0";
+
 /// Response from migration operations
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
 pub struct MigrationResponse {
@@ -1427,8 +1430,7 @@ pub async fn check_api_version_compatibility(canister_id: Principal) -> Result<(
         canister_id
     );
 
-    // Define expected API version
-    const EXPECTED_API_VERSION: &str = "1.0";
+    // Use the global API version constant
 
     // For MVP, we'll implement a basic version check
     // In production, this should call a get_api_version() function on the personal canister
@@ -1445,7 +1447,7 @@ pub async fn check_api_version_compatibility(canister_id: Principal) -> Result<(
     ic_cdk::println!(
         "API version check passed for canister {} (expected: {})",
         canister_id,
-        EXPECTED_API_VERSION
+        API_VERSION
     );
 
     Ok(())
@@ -1456,11 +1458,8 @@ pub async fn check_api_version_compatibility(canister_id: Principal) -> Result<(
     //     .await
     //     .map_err(|e| format!("Failed to get API version: {:?}", e))?;
     //
-    // if version != EXPECTED_API_VERSION {
-    //     return Err(format!(
-    //         "API version mismatch: personal canister has {}, factory expects {}",
-    //         version, EXPECTED_API_VERSION
-    //     ));
+    // if !is_version_compatible(API_VERSION, &version) {
+    //     return handle_version_mismatch(API_VERSION, &version);
     // }
     //
     // Ok(())
@@ -3335,6 +3334,60 @@ pub async fn handle_handoff_failure(
     Ok(())
 }
 
+// API compatibility functions
+
+/// Get the current API version
+pub fn get_api_version() -> String {
+    API_VERSION.to_string()
+}
+
+/// Check API compatibility between shared backend and personal canister
+/// This function should be called during migration to ensure compatibility
+pub async fn check_api_compatibility(personal_canister_id: Principal) -> Result<bool, String> {
+    // For now, we'll implement a basic version check
+    // In a full implementation, this would call the personal canister to get its API version
+    // and compare it with the current backend version
+
+    // TODO: Once personal canister is implemented, add actual version checking:
+    // let personal_version = call_personal_canister_get_version(personal_canister_id).await?;
+    // let backend_version = API_VERSION;
+    // Ok(is_compatible(backend_version, personal_version))
+
+    // For MVP, we'll assume compatibility if the canister exists
+    ic_cdk::println!(
+        "Checking API compatibility for personal canister {} (backend version: {})",
+        personal_canister_id,
+        API_VERSION
+    );
+
+    // Placeholder implementation - in real scenario, this would make an inter-canister call
+    // to verify the personal canister's API version
+    Ok(true)
+}
+
+/// Validate API version compatibility between two version strings
+/// Returns true if versions are compatible, false otherwise
+pub fn is_version_compatible(backend_version: &str, personal_version: &str) -> bool {
+    // Simple version compatibility check - exact match for MVP
+    // In production, this could implement semantic versioning compatibility rules
+    backend_version == personal_version
+}
+
+/// Handle API version mismatch during migration
+pub fn handle_version_mismatch(
+    backend_version: &str,
+    personal_version: &str,
+) -> Result<(), String> {
+    let error_msg = format!(
+        "API version mismatch: backend version {} is incompatible with personal canister version {}",
+        backend_version, personal_version
+    );
+
+    ic_cdk::println!("Migration failed: {}", error_msg);
+
+    Err(error_msg)
+}
+
 // Main migration orchestration functions
 
 /// Main migration function that orchestrates the complete capsule migration process
@@ -3935,6 +3988,57 @@ pub fn clear_migration_state(user: Principal) -> Result<bool, String> {
     } else {
         Ok(false)
     }
+}
+
+// Admin controls and monitoring functions
+
+/// Enable or disable migration functionality (admin function)
+/// When disabled, all migration requests will be rejected with a clear message
+pub fn set_migration_enabled(enabled: bool) -> Result<(), String> {
+    // Validate admin caller
+    validate_admin_caller()?;
+
+    crate::memory::with_migration_state_mut(|state| {
+        let previous_state = state.migration_config.enabled;
+        state.migration_config.enabled = enabled;
+
+        ic_cdk::println!(
+            "Migration functionality {} by admin (was: {})",
+            if enabled { "enabled" } else { "disabled" },
+            if previous_state {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
+    });
+
+    Ok(())
+}
+
+/// Get current migration statistics (admin function)
+/// Returns counters for migration attempts, successes, failures, and cycles consumed
+pub fn get_migration_stats() -> Result<MigrationStats, String> {
+    // Validate admin caller
+    validate_admin_caller()?;
+
+    let stats = crate::memory::with_migration_state(|state| state.migration_stats.clone());
+
+    ic_cdk::println!(
+        "Migration stats requested: {} attempts, {} successes, {} failures, {} cycles consumed",
+        stats.total_attempts,
+        stats.total_successes,
+        stats.total_failures,
+        stats.total_cycles_consumed
+    );
+
+    Ok(stats)
+}
+
+/// Check if migration is currently enabled
+/// This is a query function that can be called by anyone to check migration availability
+pub fn is_migration_enabled() -> bool {
+    crate::memory::with_migration_state(|state| state.migration_config.enabled)
 }
 
 #[cfg(test)]

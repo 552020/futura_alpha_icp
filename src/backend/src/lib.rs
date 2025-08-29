@@ -141,6 +141,11 @@ pub async fn migrate_capsule() -> canister_factory::MigrationResponse {
 }
 
 #[ic_cdk::query]
+pub fn get_api_version() -> String {
+    canister_factory::get_api_version()
+}
+
+#[ic_cdk::query]
 pub fn get_migration_status() -> Option<canister_factory::MigrationStatusResponse> {
     canister_factory::get_migration_status()
 }
@@ -184,6 +189,22 @@ pub fn get_migration_states_by_status(
 #[ic_cdk::update]
 pub fn clear_migration_state(user: Principal) -> Result<bool, String> {
     canister_factory::clear_migration_state(user)
+}
+
+// Admin controls for migration
+#[ic_cdk::update]
+pub fn set_migration_enabled(enabled: bool) -> Result<(), String> {
+    canister_factory::set_migration_enabled(enabled)
+}
+
+#[ic_cdk::query]
+pub fn get_migration_stats() -> Result<canister_factory::MigrationStats, String> {
+    canister_factory::get_migration_stats()
+}
+
+#[ic_cdk::query]
+pub fn is_migration_enabled() -> bool {
+    canister_factory::is_migration_enabled()
 }
 
 #[init]
