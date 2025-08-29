@@ -109,25 +109,25 @@
     - Create verification failure handling and cleanup
     - _Requirements: 1.5, 4.7_
 
-- [ ] 8. Implement controller handoff mechanism
+- [x] 8. Implement controller handoff mechanism
 
-  - [ ] 8.1 Create controller transition logic
+  - [x] 8.1 Create controller transition logic
 
     - Implement `handoff_controllers` function
     - Switch controllers from {factory, user} to {user} only
     - Add verification before handoff
     - _Requirements: 1.1, 4.7, 6.5_
 
-  - [ ] 8.2 Add handoff failure handling and registry finalization
+  - [x] 8.2 Add handoff failure handling and registry finalization
     - Implement rollback for failed handoffs
     - Add retry logic for controller updates
     - Create cleanup procedures for failed migrations
     - Update registry status to Completed and record cycles consumed
     - _Requirements: 1.7, 5.6, 6.1_
 
-- [ ] 9. Create main migration orchestration
+- [x] 9. Create main migration orchestration
 
-  - [ ] 9.1 Implement `migrate_capsule` function
+  - [x] 9.1 Implement `migrate_capsule` function
 
     - Create state machine progression: NotStarted → Exporting → Creating → Installing → Importing → Verifying → Completed/Failed
     - Add idempotency for repeated calls
@@ -135,7 +135,7 @@
     - Add access control validation using ensure_owner
     - _Requirements: 1.5, 1.6, 6.2_
 
-  - [ ] 9.2 Add migration status tracking
+  - [x] 9.2 Add migration status tracking
     - Implement `get_migration_status` function
     - Add progress reporting and error messages
     - Create status persistence across canister restarts

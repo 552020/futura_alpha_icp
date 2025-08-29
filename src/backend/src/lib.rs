@@ -127,6 +127,65 @@ pub fn list_my_capsules() -> Vec<types::CapsuleHeader> {
     capsule::list_my_capsules()
 }
 
+// Migration endpoints
+#[ic_cdk::update]
+pub async fn migrate_capsule() -> canister_factory::MigrationResponse {
+    match canister_factory::migrate_capsule().await {
+        Ok(response) => response,
+        Err(error) => canister_factory::MigrationResponse {
+            success: false,
+            canister_id: None,
+            message: format!("Migration failed: {}", error),
+        },
+    }
+}
+
+#[ic_cdk::query]
+pub fn get_migration_status() -> Option<canister_factory::MigrationStatusResponse> {
+    canister_factory::get_migration_status()
+}
+
+#[ic_cdk::query]
+pub fn get_personal_canister_id(user: Principal) -> Option<Principal> {
+    canister_factory::get_personal_canister_id(user)
+}
+
+#[ic_cdk::query]
+pub fn get_my_personal_canister_id() -> Option<Principal> {
+    canister_factory::get_my_personal_canister_id()
+}
+
+#[ic_cdk::query]
+pub fn get_detailed_migration_status() -> Option<canister_factory::DetailedMigrationStatus> {
+    canister_factory::get_detailed_migration_status()
+}
+
+// Admin migration functions
+#[ic_cdk::query]
+pub fn get_user_migration_status(
+    user: Principal,
+) -> Result<Option<canister_factory::DetailedMigrationStatus>, String> {
+    canister_factory::get_user_migration_status(user)
+}
+
+#[ic_cdk::query]
+pub fn list_all_migration_states(
+) -> Result<Vec<(Principal, canister_factory::DetailedMigrationStatus)>, String> {
+    canister_factory::list_all_migration_states()
+}
+
+#[ic_cdk::query]
+pub fn get_migration_states_by_status(
+    status: canister_factory::MigrationStatus,
+) -> Result<Vec<(Principal, canister_factory::DetailedMigrationStatus)>, String> {
+    canister_factory::get_migration_states_by_status(status)
+}
+
+#[ic_cdk::update]
+pub fn clear_migration_state(user: Principal) -> Result<bool, String> {
+    canister_factory::clear_migration_state(user)
+}
+
 #[init]
 fn init() {
     certified_data_set(&skip_certification_certified_data());
