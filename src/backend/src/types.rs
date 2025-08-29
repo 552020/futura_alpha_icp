@@ -318,3 +318,247 @@ pub struct Memory {
     pub access: MemoryAccess,     // who can access + temporal rules
     pub data: MemoryData,         // actual data + storage location
 }
+
+// ============================================================================
+// GALLERY SYSTEM - Minimal Abstraction Approach
+// ============================================================================
+
+// Gallery storage status for tracking where gallery data is stored
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub enum GalleryStorageStatus {
+    Web2Only,  // Stored only in Web2 database
+    ICPOnly,   // Stored only in ICP canister
+    Both,      // Stored in both Web2 and ICP
+    Migrating, // Currently being migrated from Web2 to ICP
+    Failed,    // Migration or storage failed
+}
+
+// Minimal extra data for gallery memory entries
+// Only stores what memories don't already have
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct GalleryMemoryEntry {
+    pub memory_id: String,               // Reference to existing memory
+    pub position: u32,                   // Gallery-specific ordering
+    pub gallery_caption: Option<String>, // Only if different from memory caption
+    pub is_featured: bool,               // Gallery-specific highlighting
+    pub gallery_metadata: String,        // JSON for gallery-specific annotations
+}
+
+// Main gallery structure with embedded memory entries
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct Gallery {
+    pub id: String,                              // unique gallery identifier
+    pub owner_principal: Principal,              // who owns this gallery
+    pub title: String,                           // gallery title
+    pub description: Option<String>,             // gallery description
+    pub is_public: bool,                         // whether gallery is publicly accessible
+    pub created_at: u64,                         // creation timestamp (nanoseconds)
+    pub updated_at: u64,                         // last update timestamp (nanoseconds)
+    pub storage_status: GalleryStorageStatus,    // where this gallery is stored
+    pub memory_entries: Vec<GalleryMemoryEntry>, // minimal extra data for each memory
+}
+
+// Gallery creation result
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct GalleryCreationResult {
+    pub success: bool,
+    pub gallery_id: Option<String>,
+    pub message: String,
+}
+
+// Gallery storage result for "Store Forever" feature
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct StoreGalleryResponse {
+    pub success: bool,
+    pub gallery_id: Option<String>,
+    pub icp_gallery_id: Option<String>, // ID in ICP canister
+    pub message: String,
+    pub storage_status: GalleryStorageStatus,
+}
+
+// Gallery update result
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct UpdateGalleryResponse {
+    pub success: bool,
+    pub gallery: Option<Gallery>,
+    pub message: String,
+}
+
+// Gallery deletion result
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct DeleteGalleryResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+// Gallery data for storage operations
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct GalleryData {
+    pub gallery: Gallery,
+    pub owner_principal: Principal,
+}
+
+// Gallery update data
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct GalleryUpdateData {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub is_public: Option<bool>,
+    pub memory_entries: Option<Vec<GalleryMemoryEntry>>,
+}
+
+// User principal management types
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct UserPrincipalData {
+    pub principal: Principal,
+    pub web2_user_id: Option<String>, // Link to Web2 user ID
+    pub registered_at: u64,           // Registration timestamp
+    pub last_activity_at: u64,        // Last activity timestamp
+    pub bound_to_web2: bool,          // Whether linked to Web2 account
+}
+
+// User principal registration result
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct RegisterUserResponse {
+    pub success: bool,
+    pub user_data: Option<UserPrincipalData>,
+    pub message: String,
+}
+
+// User principal linking result
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct LinkUserResponse {
+    pub success: bool,
+    pub user_data: Option<UserPrincipalData>,
+    pub message: String,
+}
+
+// Gallery verification result
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct VerificationResult {
+    pub success: bool,
+    pub verified_memories: u32,        // Number of memories verified
+    pub total_memories: u32,           // Total memories in gallery
+    pub missing_memories: Vec<String>, // Memory IDs that couldn't be verified
+    pub message: String,
+}
+
+// ============================================================================
+// TYPE MAPPING FUNCTIONS - Web2 ↔ ICP Conversion
+// ============================================================================
+
+impl Gallery {
+    /// Convert Web2 gallery data to ICP gallery format
+    pub fn from_web2(
+        web2_gallery: &Web2Gallery,
+        web2_items: &[Web2GalleryItem],
+        owner_principal: Principal,
+    ) -> Self {
+        let memory_entries: Vec<GalleryMemoryEntry> = web2_items
+            .iter()
+            .map(|item| GalleryMemoryEntry::from_web2(item))
+            .collect();
+
+        Self {
+            id: web2_gallery.id.clone(),
+            owner_principal,
+            title: web2_gallery.title.clone(),
+            description: web2_gallery.description.clone(),
+            is_public: web2_gallery.is_public,
+            created_at: Self::timestamp_to_nanoseconds(web2_gallery.created_at),
+            updated_at: Self::timestamp_to_nanoseconds(web2_gallery.updated_at),
+            storage_status: GalleryStorageStatus::Web2Only,
+            memory_entries,
+        }
+    }
+
+    /// Convert ICP gallery to Web2 format
+    pub fn to_web2(&self) -> (Web2Gallery, Vec<Web2GalleryItem>) {
+        let web2_gallery = Web2Gallery {
+            id: self.id.clone(),
+            owner_id: self.owner_principal.to_string(), // This would need proper mapping
+            title: self.title.clone(),
+            description: self.description.clone(),
+            is_public: self.is_public,
+            created_at: Self::nanoseconds_to_timestamp(self.created_at),
+            updated_at: Self::nanoseconds_to_timestamp(self.updated_at),
+        };
+
+        let web2_items: Vec<Web2GalleryItem> = self
+            .memory_entries
+            .iter()
+            .map(|entry| entry.to_web2(&self.id))
+            .collect();
+
+        (web2_gallery, web2_items)
+    }
+
+    /// Helper: Convert timestamp to nanoseconds
+    fn timestamp_to_nanoseconds(timestamp: u64) -> u64 {
+        timestamp * 1_000_000_000 // Convert seconds to nanoseconds
+    }
+
+    /// Helper: Convert nanoseconds to timestamp
+    fn nanoseconds_to_timestamp(nanoseconds: u64) -> u64 {
+        nanoseconds / 1_000_000_000 // Convert nanoseconds to seconds
+    }
+}
+
+impl GalleryMemoryEntry {
+    /// Convert Web2 gallery item to ICP gallery memory entry
+    pub fn from_web2(web2_item: &Web2GalleryItem) -> Self {
+        Self {
+            memory_id: web2_item.memory_id.clone(),
+            position: web2_item.position as u32,
+            gallery_caption: web2_item.caption.clone(),
+            is_featured: web2_item.is_featured,
+            gallery_metadata: serde_json::to_string(&web2_item.metadata)
+                .unwrap_or_else(|_| "{}".to_string()),
+        }
+    }
+
+    /// Convert ICP gallery memory entry to Web2 format
+    pub fn to_web2(&self, gallery_id: &str) -> Web2GalleryItem {
+        Web2GalleryItem {
+            id: uuid::Uuid::new_v4().to_string(), // Generate new ID for Web2
+            gallery_id: gallery_id.to_string(),
+            memory_id: self.memory_id.clone(),
+            memory_type: "image".to_string(), // This would need proper mapping
+            position: self.position as i32,
+            caption: self.gallery_caption.clone(),
+            is_featured: self.is_featured,
+            metadata: serde_json::from_str(&self.gallery_metadata)
+                .unwrap_or_else(|_| serde_json::json!({})),
+            created_at: 0, // This would need proper mapping
+            updated_at: 0, // This would need proper mapping
+        }
+    }
+}
+
+// Web2 data structures for type mapping (these would typically be in a separate module)
+// These are placeholder structures that match the Web2 database schema
+
+#[derive(Clone, Debug)]
+pub struct Web2Gallery {
+    pub id: String,
+    pub owner_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub is_public: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct Web2GalleryItem {
+    pub id: String,
+    pub gallery_id: String,
+    pub memory_id: String,
+    pub memory_type: String,
+    pub position: i32,
+    pub caption: Option<String>,
+    pub is_featured: bool,
+    pub metadata: serde_json::Value,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
