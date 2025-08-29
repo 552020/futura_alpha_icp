@@ -60,9 +60,9 @@
     - Create manifest generation for verification
     - _Requirements: 1.4, 4.7_
 
-- [ ] 5. Implement access control and guards
+- [x] 5. Implement access control and guards
 
-  - [ ] 5.1 Create access control functions
+  - [x] 5.1 Create access control functions
 
     - Implement `ensure_owner` function to verify caller owns capsule
     - Add `ensure_admin` function for admin-only operations

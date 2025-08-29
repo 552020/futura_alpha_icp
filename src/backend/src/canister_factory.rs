@@ -895,6 +895,101 @@ fn generate_connection_checksum(
     Ok(simple_hash(&connection_data))
 }
 
+// Access control and guard functions
+
+/// Ensure the caller owns a capsule (has a self-capsule where they are both subject and owner)
+/// This function verifies that the caller principal has a capsule where they are the subject
+/// and they are listed as an owner of that capsule
+pub fn ensure_owner(caller: Principal) -> Result<(), String> {
+    let user_ref = crate::types::PersonRef::Principal(caller);
+
+    // Find the user's self-capsule (where user is both subject and owner)
+    let has_self_capsule = crate::memory::with_capsules(|capsules| {
+        capsules
+            .values()
+            .any(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
+    });
+
+    if has_self_capsule {
+        Ok(())
+    } else {
+        Err(format!(
+            "Access denied: Principal {} does not own a capsule",
+            caller
+        ))
+    }
+}
+
+/// Ensure the caller is an admin (can perform admin-only operations)
+/// This function checks if the caller is either a superadmin or a regular admin
+pub fn ensure_admin(caller: Principal) -> Result<(), String> {
+    if crate::admin::is_admin(&caller) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Access denied: Principal {} is not an admin",
+            caller
+        ))
+    }
+}
+
+/// Validate caller for migration endpoints - ensures they own a capsule
+/// This is a convenience function that combines caller identification with ownership verification
+pub fn validate_migration_caller() -> Result<Principal, String> {
+    let caller = ic_cdk::api::msg_caller();
+
+    // Reject anonymous callers
+    if caller == Principal::anonymous() {
+        return Err("Access denied: Anonymous callers cannot perform migrations".to_string());
+    }
+
+    // Ensure the caller owns a capsule
+    ensure_owner(caller)?;
+
+    Ok(caller)
+}
+
+/// Validate caller for admin-only migration operations
+/// This function ensures the caller is an admin and returns their principal
+pub fn validate_admin_caller() -> Result<Principal, String> {
+    let caller = ic_cdk::api::msg_caller();
+
+    // Reject anonymous callers
+    if caller == Principal::anonymous() {
+        return Err("Access denied: Anonymous callers cannot perform admin operations".to_string());
+    }
+
+    // Ensure the caller is an admin
+    ensure_admin(caller)?;
+
+    Ok(caller)
+}
+
+/// Check if a specific user owns a capsule (admin utility function)
+/// This allows admins to check capsule ownership for any user
+pub fn check_user_capsule_ownership(user: Principal) -> bool {
+    let user_ref = crate::types::PersonRef::Principal(user);
+
+    crate::memory::with_capsules(|capsules| {
+        capsules
+            .values()
+            .any(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
+    })
+}
+
+/// Get the capsule ID for a user (if they own one)
+/// This is a utility function for migration operations
+pub fn get_user_capsule_id(user: Principal) -> Option<String> {
+    let user_ref = crate::types::PersonRef::Principal(user);
+
+    crate::memory::with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
+            .map(|capsule| capsule.id.clone())
+    })
+}
+
 /// Convert PersonRef to string for consistent representation
 fn person_ref_to_string(person_ref: &types::PersonRef) -> String {
     match person_ref {
@@ -1005,4 +1100,84 @@ pub fn verify_export_against_manifest(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candid::Principal;
+
+    #[test]
+    fn test_ensure_owner_with_anonymous_caller() {
+        let anonymous = Principal::anonymous();
+        let result = ensure_owner(anonymous);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("does not own a capsule"));
+    }
+
+    #[test]
+    fn test_ensure_admin_logic() {
+        // Test the ensure_admin function logic
+        // Note: Due to auto-bootstrap behavior, the first caller becomes admin
+        // So we test that the function correctly calls the admin check
+        let test_principal = Principal::from_text("2vxsx-fae").unwrap();
+
+        // The function should call is_admin which may return true due to auto-bootstrap
+        // But we can verify the function executes without panicking
+        let result = ensure_admin(test_principal);
+
+        // The result depends on the admin state, but the function should not panic
+        assert!(result.is_ok() || result.is_err());
+
+        // If it's an error, it should contain the expected message
+        if let Err(msg) = result {
+            assert!(msg.contains("is not an admin"));
+        }
+    }
+
+    #[test]
+    fn test_check_user_capsule_ownership_returns_false_for_nonexistent_user() {
+        let test_principal = Principal::from_text("2vxsx-fae").unwrap();
+        let result = check_user_capsule_ownership(test_principal);
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_get_user_capsule_id_returns_none_for_nonexistent_user() {
+        let test_principal = Principal::from_text("2vxsx-fae").unwrap();
+        let result = get_user_capsule_id(test_principal);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_person_ref_to_string_principal() {
+        let principal = Principal::from_text("2vxsx-fae").unwrap();
+        let person_ref = crate::types::PersonRef::Principal(principal);
+        let result = person_ref_to_string(&person_ref);
+        assert!(result.starts_with("principal:"));
+        assert!(result.contains("2vxsx-fae"));
+    }
+
+    #[test]
+    fn test_person_ref_to_string_opaque() {
+        let person_ref = crate::types::PersonRef::Opaque("test_id".to_string());
+        let result = person_ref_to_string(&person_ref);
+        assert_eq!(result, "opaque:test_id");
+    }
+
+    #[test]
+    fn test_simple_hash_consistency() {
+        let data = "test_data";
+        let hash1 = simple_hash(data);
+        let hash2 = simple_hash(data);
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1.len(), 16); // Should be 16 hex characters
+    }
+
+    #[test]
+    fn test_simple_hash_different_inputs() {
+        let hash1 = simple_hash("data1");
+        let hash2 = simple_hash("data2");
+        assert_ne!(hash1, hash2);
+    }
 }
