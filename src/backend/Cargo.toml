@@ -15,3 +15,10 @@ ic-cdk-timers = "0.12" # Feel free to remove this dependency if you don't need t
 serde = { version = "1.0", features = ["derive"] }
 ic-http-certification = "3.0.3"
 regex = "1.10"
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["full"] }
+mockall = "0.12"
+proptest = "1.0"

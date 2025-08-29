@@ -172,9 +172,9 @@
     - Add version mismatch error handling
     - _Requirements: 4.7_
 
-- [ ] 12. Create comprehensive error handling
+- [x] 12. Create comprehensive error handling
 
-  - [ ] 12.1 Define migration-specific error types
+  - [x] 12.1 Define migration-specific error types
 
     - Create typed MigrationError enum (ReserveInsufficient, CreateFailed, InstallFailed, ImportFailed, VerifyFailed, HandoffFailed, Disabled, Unauthorized)
     - Add error context and debugging information
@@ -182,39 +182,125 @@
     - Use error enum consistently across all migration functions
     - _Requirements: 1.6, 1.7_
 
-  - [ ] 12.2 Add error logging and monitoring
+  - [x] 12.2 Add error logging and monitoring
     - Implement error logging for debugging
     - Add error rate tracking
     - Create error notification system for admins
     - _Requirements: 2.4, 5.5_
 
-- [ ] 13. Write comprehensive tests
+- [x] 13. Refactor canister_factory into maintainable modules
 
-  - [ ] 13.1 Create unit tests for core functions
+  - [x] 13.1 Create module structure and extract types
 
-    - Test idempotent `migrate_capsule` behavior
+    - Create `src/backend/src/canister_factory/` directory
+    - Extract all types, enums, configs to `types.rs`
+    - Create `mod.rs` with public facade
+    - Update imports and ensure compilation
+    - _Requirements: 6.2 (maintainability)_
+
+  - [x] 13.2 Extract state management modules
+
+    - Extract registry functions to `registry.rs` (PersonalCanisterRecord CRUD)
+    - Extract cycles management to `cycles.rs` (reserve, preflight, consume)
+    - Extract auth functions to `auth.rs` (ensure_owner, ensure_admin)
+    - Update imports and ensure compilation
+    - _Requirements: 1.6, 4.7_
+
+  - [x] 13.3 Extract core functionality modules
+
+    - Extract factory functions to `factory.rs` (create canister, install WASM, handoff)
+    - Extract export functions to `export.rs` (export data, validation, manifest)
+    - Extract import functions to `import.rs` (sessions, chunks, assembly)
+    - Update imports and ensure compilation
+    - _Requirements: 2.1, 2.2, 5.6_
+
+  - [x] 13.4 Extract verification and orchestration
+    - Extract verification functions to `verify.rs` (data verification, health checks)
+    - Extract orchestration to `orchestrator.rs` (migrate_capsule state machine)
+    - Update imports and ensure compilation
+    - _Requirements: 6.1, 6.3_
+
+- [ ] 14. Write comprehensive unit tests for refactored modules
+
+  - [ ] 14.1 Test auth and access control
+
+    - Test `ensure_owner` and `ensure_admin` functions
+    - Test caller validation and authorization roles
+    - Test access control guards with various scenarios
+    - _Requirements: 1.6, 4.7_
+
+  - [ ] 14.2 Test cycles and registry management
+
+    - Test cycles reserve preflight and consumption
+    - Test registry CRUD operations
+    - Test registry queries by user and status
+    - Test cycles threshold monitoring and alerts
+    - _Requirements: 4.7, 6.2_
+
+  - [ ] 14.3 Test data export and validation
+
+    - Test capsule data export functionality
+    - Test export data validation and integrity checks
+    - Test manifest generation and verification
+    - _Requirements: 2.1, 2.2_
+
+  - [ ] 14.4 Test import session management
+
+    - Test import session creation and lifecycle
+    - Test chunk upload and assembly
+    - Test memory commit and finalization
+    - Test session cleanup and error handling
+    - _Requirements: 2.1, 2.2_
+
+  - [ ] 14.5 Test factory operations
+
+    - Test personal canister creation
+    - Test WASM installation and configuration
     - Test controller handoff logic
-    - Test data export and import verification
-    - Test access control guards (ensure_owner, ensure_admin)
-    - _Requirements: 1.6, 4.7, 6.2_
+    - Test cleanup on failure scenarios
+    - _Requirements: 5.6, 6.1_
 
-  - [ ] 13.2 Add integration tests
-    - Test complete migration flow end-to-end
-    - Test failure scenarios and recovery
-    - Test cycles reserve management and registry updates
-    - Include restart-resume testing (simulate mid-state + pre/post-upgrade) to verify idempotency across upgrades
+  - [ ] 14.6 Test verification and health checks
+    - Test data verification against manifests
+    - Test API compatibility checks
+    - Test canister health verification
+    - Test comprehensive verification flow
+    - _Requirements: 6.1, 6.3_
+
+- [ ] 15. Write integration tests for complete migration flow
+
+  - [ ] 15.1 Test end-to-end migration scenarios
+
+    - Test complete successful migration flow
+    - Test idempotent `migrate_capsule` behavior
+    - Test migration status tracking and updates
     - _Requirements: 2.1, 2.2, 5.6, 6.1, 6.3_
 
-- [ ] 14. Update dependencies and build configuration
+  - [ ] 15.2 Test failure scenarios and recovery
 
-  - [ ] 14.1 Add required dependencies to Cargo.toml
+    - Test failure at each migration stage
+    - Test cleanup and rollback procedures
+    - Test error logging and monitoring
+    - Test retry mechanisms and recovery strategies
+    - _Requirements: 6.1, 6.3_
+
+  - [ ] 15.3 Test upgrade resilience
+    - Test restart-resume functionality (simulate mid-state)
+    - Test pre/post-upgrade state persistence
+    - Test idempotency across canister upgrades
+    - Test migration state recovery after restart
+    - _Requirements: 6.2, 6.3_
+
+- [ ] 16. Update dependencies and build configuration
+
+  - [ ] 16.1 Add required dependencies to Cargo.toml
 
     - Add `sha2` for hash generation
     - Add `hex` for hash encoding
     - Update existing dependencies if needed
     - _Requirements: 4.2, 4.7_
 
-  - [ ] 14.2 Update build and deployment scripts
+  - [ ] 16.2 Update build and deployment scripts
     - Ensure migration module compiles correctly
     - Add feature flag support for migration functionality
     - Test deployment with migration features
