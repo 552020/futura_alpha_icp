@@ -15,7 +15,7 @@ pub struct MigrationResponse {
 }
 
 /// Migration status enum tracking the progression through migration states
-#[derive(CandidType, Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum MigrationStatus {
     NotStarted,
     Exporting,

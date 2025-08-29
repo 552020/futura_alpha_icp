@@ -222,14 +222,14 @@
 
 - [ ] 14. Write comprehensive unit tests for refactored modules
 
-  - [ ] 14.1 Test auth and access control
+  - [x] 14.1 Test auth and access control
 
     - Test `ensure_owner` and `ensure_admin` functions
     - Test caller validation and authorization roles
     - Test access control guards with various scenarios
     - _Requirements: 1.6, 4.7_
 
-  - [ ] 14.2 Test cycles and registry management
+  - [x] 14.2 Test cycles and registry management
 
     - Test cycles reserve preflight and consumption
     - Test registry CRUD operations
@@ -237,14 +237,14 @@
     - Test cycles threshold monitoring and alerts
     - _Requirements: 4.7, 6.2_
 
-  - [ ] 14.3 Test data export and validation
+  - [x] 14.3 Test data export and validation
 
     - Test capsule data export functionality
     - Test export data validation and integrity checks
     - Test manifest generation and verification
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 14.4 Test import session management
+  - [x] 14.4 Test import session management
 
     - Test import session creation and lifecycle
     - Test chunk upload and assembly
@@ -252,7 +252,7 @@
     - Test session cleanup and error handling
     - _Requirements: 2.1, 2.2_
 
-  - [ ] 14.5 Test factory operations
+  - [x] 14.5 Test factory operations
 
     - Test personal canister creation
     - Test WASM installation and configuration
@@ -260,7 +260,7 @@
     - Test cleanup on failure scenarios
     - _Requirements: 5.6, 6.1_
 
-  - [ ] 14.6 Test verification and health checks
+  - [x] 14.6 Test verification and health checks
     - Test data verification against manifests
     - Test API compatibility checks
     - Test canister health verification

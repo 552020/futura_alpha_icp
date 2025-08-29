@@ -229,3 +229,433 @@ pub async fn verify_handoff_readiness(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::canister_factory::export::*;
+    use crate::types;
+    use candid::Principal;
+
+    // Test helper functions
+    fn create_test_principal(id: u8) -> Principal {
+        Principal::from_slice(&[id; 29])
+    }
+
+    fn create_test_capsule() -> types::Capsule {
+        let mut owners = std::collections::HashMap::new();
+        owners.insert(
+            types::PersonRef::Principal(create_test_principal(1)),
+            types::OwnerState {
+                since: 1000000000,
+                last_activity_at: 1000000000,
+            },
+        );
+
+        types::Capsule {
+            id: "test_capsule".to_string(),
+            subject: types::PersonRef::Principal(create_test_principal(1)),
+            owners,
+            controllers: std::collections::HashMap::new(),
+            connections: std::collections::HashMap::new(),
+            connection_groups: std::collections::HashMap::new(),
+            memories: std::collections::HashMap::new(),
+            created_at: 1000000000,
+            updated_at: 1000000000,
+            bound_to_web2: false,
+        }
+    }
+
+    fn create_test_memory(id: &str) -> types::Memory {
+        types::Memory {
+            id: id.to_string(),
+            info: types::MemoryInfo {
+                memory_type: types::MemoryType::Note,
+                name: format!("Memory {}", id),
+                content_type: "text/plain".to_string(),
+                created_at: 1000000000,
+                updated_at: 1000000000,
+                uploaded_at: 1000000000,
+                date_of_memory: Some(1000000000),
+            },
+            metadata: types::MemoryMetadata::Note(types::NoteMetadata {
+                base: types::MemoryMetadataBase {
+                    size: 100,
+                    mime_type: "text/plain".to_string(),
+                    original_name: format!("memory_{}.txt", id),
+                    uploaded_at: "2023-01-01T00:00:00Z".to_string(),
+                    date_of_memory: Some("2023-01-01".to_string()),
+                    people_in_memory: None,
+                    format: Some("text".to_string()),
+                },
+                tags: Some(vec!["test".to_string()]),
+            }),
+            access: types::MemoryAccess::Private,
+            data: types::MemoryData {
+                blob_ref: types::BlobRef {
+                    kind: types::MemoryBlobKind::ICPCapsule,
+                    locator: format!("memory_{}", id),
+                    hash: None,
+                },
+                data: Some(format!("Content for memory {}", id).into_bytes()),
+            },
+        }
+    }
+
+    fn create_test_connection(person_ref: &types::PersonRef) -> types::Connection {
+        types::Connection {
+            peer: person_ref.clone(),
+            status: types::ConnectionStatus::Accepted,
+            created_at: 1000000000,
+            updated_at: 1000000000,
+        }
+    }
+
+    fn create_test_export_data() -> ExportData {
+        let capsule = create_test_capsule();
+        let memories = vec![
+            ("mem1".to_string(), create_test_memory("mem1")),
+            ("mem2".to_string(), create_test_memory("mem2")),
+        ];
+        let person_ref = types::PersonRef::Opaque("person1".to_string());
+        let connections = vec![(person_ref.clone(), create_test_connection(&person_ref))];
+
+        ExportData {
+            capsule,
+            memories,
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: create_test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 1024,
+            },
+        }
+    }
+
+    fn create_test_manifest() -> DataManifest {
+        DataManifest {
+            capsule_checksum: "test_capsule_checksum".to_string(),
+            memory_count: 2,
+            memory_checksums: vec![
+                ("mem1".to_string(), "mem1_checksum".to_string()),
+                ("mem2".to_string(), "mem2_checksum".to_string()),
+            ],
+            connection_count: 1,
+            connection_checksums: vec![("person1".to_string(), "connection_checksum".to_string())],
+            total_size_bytes: 1024,
+            manifest_version: "1.0".to_string(),
+        }
+    }
+
+    // Test data verification against manifests
+    #[tokio::test]
+    async fn test_verify_transferred_data_success() {
+        let manifest = create_test_manifest();
+        let canister_id = create_test_principal(42);
+
+        let result = verify_transferred_data(&manifest, canister_id).await;
+        assert!(
+            result.is_ok(),
+            "Verification should succeed with valid manifest"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verify_transferred_data_empty_manifest() {
+        let manifest = DataManifest {
+            capsule_checksum: "empty".to_string(),
+            memory_count: 0,
+            memory_checksums: vec![],
+            connection_count: 0,
+            connection_checksums: vec![],
+            total_size_bytes: 0,
+            manifest_version: "1.0".to_string(),
+        };
+        let canister_id = create_test_principal(42);
+
+        let result = verify_transferred_data(&manifest, canister_id).await;
+        assert!(
+            result.is_err(),
+            "Verification should fail with empty manifest"
+        );
+        assert!(result
+            .unwrap_err()
+            .contains("Manifest indicates no data to verify"));
+    }
+
+    #[tokio::test]
+    async fn test_verify_transferred_data_unsupported_version() {
+        let mut manifest = create_test_manifest();
+        manifest.manifest_version = "2.0".to_string();
+        let canister_id = create_test_principal(42);
+
+        let result = verify_transferred_data(&manifest, canister_id).await;
+        assert!(
+            result.is_err(),
+            "Verification should fail with unsupported version"
+        );
+        assert!(result.unwrap_err().contains("Unsupported manifest version"));
+    }
+
+    // Test API compatibility checks
+    #[tokio::test]
+    async fn test_check_api_version_compatibility_success() {
+        let canister_id = create_test_principal(42);
+
+        let result = check_api_version_compatibility(canister_id).await;
+        assert!(
+            result.is_ok(),
+            "API version check should succeed with matching versions"
+        );
+    }
+
+    // Test canister health verification
+    #[tokio::test]
+    async fn test_perform_canister_health_check_success() {
+        let canister_id = create_test_principal(42);
+
+        let result = perform_canister_health_check(canister_id).await;
+        assert!(
+            result.is_ok(),
+            "Health check should succeed for responsive canister"
+        );
+    }
+
+    // Test migration data verification
+    #[tokio::test]
+    async fn test_verify_migration_data_success() {
+        let export_data = create_test_export_data();
+        let canister_id = create_test_principal(42);
+
+        let result = verify_migration_data(canister_id, &export_data).await;
+        assert!(
+            result.is_ok(),
+            "Migration data verification should succeed with valid data"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verify_migration_data_empty_export() {
+        let mut export_data = create_test_export_data();
+        export_data.memories.clear();
+        export_data.connections.clear();
+        let canister_id = create_test_principal(42);
+
+        let result = verify_migration_data(canister_id, &export_data).await;
+        // Should still succeed as empty data is valid
+        assert!(
+            result.is_ok(),
+            "Migration data verification should succeed with empty data"
+        );
+    }
+
+    // Test comprehensive verification flow
+    #[tokio::test]
+    async fn test_verify_complete_migration_success() {
+        let export_data = create_test_export_data();
+        let manifest = create_test_manifest();
+        let canister_id = create_test_principal(42);
+
+        let result = verify_complete_migration(canister_id, &export_data, &manifest).await;
+        assert!(
+            result.is_ok(),
+            "Complete migration verification should succeed with valid data"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verify_complete_migration_with_empty_manifest() {
+        let export_data = create_test_export_data();
+        let manifest = DataManifest {
+            capsule_checksum: "empty".to_string(),
+            memory_count: 0,
+            memory_checksums: vec![],
+            connection_count: 0,
+            connection_checksums: vec![],
+            total_size_bytes: 0,
+            manifest_version: "1.0".to_string(),
+        };
+        let canister_id = create_test_principal(42);
+
+        let result = verify_complete_migration(canister_id, &export_data, &manifest).await;
+        assert!(
+            result.is_err(),
+            "Complete migration verification should fail with empty manifest"
+        );
+    }
+
+    // Test handoff readiness verification
+    #[tokio::test]
+    async fn test_verify_handoff_readiness_no_registry_entry() {
+        let canister_id = create_test_principal(42);
+        let user = create_test_principal(1);
+
+        let result = verify_handoff_readiness(canister_id, user).await;
+        assert!(
+            result.is_err(),
+            "Handoff readiness should fail when no registry entry exists"
+        );
+        assert!(result
+            .unwrap_err()
+            .contains("No registry entry found for canister"));
+    }
+
+    // Test verification with different manifest versions
+    #[tokio::test]
+    async fn test_verify_with_different_manifest_versions() {
+        let versions = vec!["0.9", "1.1", "2.0", "invalid"];
+        let canister_id = create_test_principal(42);
+
+        for version in versions {
+            let mut manifest = create_test_manifest();
+            manifest.manifest_version = version.to_string();
+
+            let result = verify_transferred_data(&manifest, canister_id).await;
+            if version == "1.0" {
+                assert!(result.is_ok(), "Version 1.0 should be supported");
+            } else {
+                assert!(
+                    result.is_err(),
+                    "Version {} should not be supported",
+                    version
+                );
+            }
+        }
+    }
+
+    // Test verification with various data sizes
+    #[tokio::test]
+    async fn test_verify_with_different_data_sizes() {
+        let canister_id = create_test_principal(42);
+
+        // Test with different memory counts
+        for memory_count in [0, 1, 10, 100] {
+            let manifest = DataManifest {
+                capsule_checksum: "test".to_string(),
+                memory_count,
+                memory_checksums: (0..memory_count)
+                    .map(|i| (format!("mem{}", i), format!("checksum{}", i)))
+                    .collect(),
+                connection_count: 1,
+                connection_checksums: vec![("conn1".to_string(), "checksum".to_string())],
+                total_size_bytes: 1024,
+                manifest_version: "1.0".to_string(),
+            };
+
+            let result = verify_transferred_data(&manifest, canister_id).await;
+            if memory_count == 0 {
+                // Should fail because both memory and connection count can't be 0
+                let manifest_empty = DataManifest {
+                    connection_count: 0,
+                    connection_checksums: vec![],
+                    ..manifest
+                };
+                let result_empty = verify_transferred_data(&manifest_empty, canister_id).await;
+                assert!(result_empty.is_err(), "Empty manifest should fail");
+            } else {
+                assert!(
+                    result.is_ok(),
+                    "Verification should succeed with {} memories",
+                    memory_count
+                );
+            }
+        }
+    }
+
+    // Test verification error handling
+    #[tokio::test]
+    async fn test_verification_error_messages() {
+        let canister_id = create_test_principal(42);
+
+        // Test unsupported version error message
+        let mut manifest = create_test_manifest();
+        manifest.manifest_version = "2.0".to_string();
+        let result = verify_transferred_data(&manifest, canister_id).await;
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("Unsupported manifest version: 2.0"));
+
+        // Test empty data error message
+        let empty_manifest = DataManifest {
+            capsule_checksum: "empty".to_string(),
+            memory_count: 0,
+            memory_checksums: vec![],
+            connection_count: 0,
+            connection_checksums: vec![],
+            total_size_bytes: 0,
+            manifest_version: "1.0".to_string(),
+        };
+        let result = verify_transferred_data(&empty_manifest, canister_id).await;
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.contains("Manifest indicates no data to verify"));
+    }
+
+    // Test comprehensive verification with edge cases
+    #[tokio::test]
+    async fn test_comprehensive_verification_edge_cases() {
+        let canister_id = create_test_principal(42);
+
+        // Test with minimal valid data
+        let minimal_export = ExportData {
+            capsule: create_test_capsule(),
+            memories: vec![("single_mem".to_string(), create_test_memory("single_mem"))],
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: create_test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 100,
+            },
+        };
+
+        let minimal_manifest = DataManifest {
+            capsule_checksum: "minimal".to_string(),
+            memory_count: 1,
+            memory_checksums: vec![("single_mem".to_string(), "checksum".to_string())],
+            connection_count: 0,
+            connection_checksums: vec![],
+            total_size_bytes: 100,
+            manifest_version: "1.0".to_string(),
+        };
+
+        let result =
+            verify_complete_migration(canister_id, &minimal_export, &minimal_manifest).await;
+        assert!(
+            result.is_ok(),
+            "Comprehensive verification should succeed with minimal valid data"
+        );
+    }
+
+    // Test verification performance with large datasets
+    #[tokio::test]
+    async fn test_verification_with_large_dataset() {
+        let canister_id = create_test_principal(42);
+
+        // Create export data with many memories and connections
+        let mut export_data = create_test_export_data();
+
+        // Add many memories
+        for i in 0..50 {
+            export_data.memories.push((
+                format!("mem_{}", i),
+                create_test_memory(&format!("mem_{}", i)),
+            ));
+        }
+
+        // Add many connections
+        for i in 0..20 {
+            let person_ref = types::PersonRef::Opaque(format!("person_{}", i));
+            export_data
+                .connections
+                .push((person_ref.clone(), create_test_connection(&person_ref)));
+        }
+
+        let result = verify_migration_data(canister_id, &export_data).await;
+        assert!(
+            result.is_ok(),
+            "Verification should handle large datasets efficiently"
+        );
+    }
+}

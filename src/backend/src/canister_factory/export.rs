@@ -2,6 +2,28 @@ use crate::canister_factory::types::*;
 use crate::types;
 use candid::Principal;
 
+/// Get current time - can be mocked in tests
+#[cfg(not(test))]
+fn get_current_time() -> u64 {
+    ic_cdk::api::time()
+}
+
+#[cfg(test)]
+fn get_current_time() -> u64 {
+    1000000000 // Fixed timestamp for tests
+}
+
+/// Get current canister ID - can be mocked in tests
+#[cfg(not(test))]
+fn get_current_canister_id() -> Principal {
+    ic_cdk::api::canister_self()
+}
+
+#[cfg(test)]
+fn get_current_canister_id() -> Principal {
+    Principal::from_slice(&[99; 29]) // Fixed canister ID for tests
+}
+
 /// Export user's capsule data for migration
 /// This function serializes all capsule data including metadata, memories, and connections
 pub fn export_user_capsule_data(user: Principal) -> Result<ExportData, String> {
@@ -39,8 +61,8 @@ pub fn export_user_capsule_data(user: Principal) -> Result<ExportData, String> {
 
     // Generate export metadata
     let metadata = ExportMetadata {
-        export_timestamp: ic_cdk::api::time(),
-        original_canister_id: ic_cdk::api::canister_self(),
+        export_timestamp: get_current_time(),
+        original_canister_id: get_current_canister_id(),
         data_version: "1.0".to_string(), // Version for compatibility checking
         total_size_bytes,
     };
@@ -468,4 +490,1061 @@ pub fn verify_export_against_manifest(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{
+        AudioMetadata, BlobRef, Connection, ConnectionStatus, ImageMetadata, Memory, MemoryAccess,
+        MemoryBlobKind, MemoryData, MemoryInfo, MemoryMetadata, MemoryMetadataBase, MemoryType,
+        OwnerState, PersonRef,
+    };
+    use candid::Principal;
+    use std::collections::HashMap;
+
+    // Helper function to create a test principal
+    fn test_principal(id: u8) -> Principal {
+        Principal::from_slice(&[id; 29])
+    }
+
+    // Helper function to create a test capsule with given subject and owners
+    fn create_test_capsule(
+        id: &str,
+        subject: PersonRef,
+        owners: Vec<PersonRef>,
+        memories: Vec<(String, Memory)>,
+        connections: Vec<(PersonRef, Connection)>,
+    ) -> types::Capsule {
+        let mut owner_map = HashMap::new();
+        for owner in owners {
+            owner_map.insert(
+                owner,
+                OwnerState {
+                    since: 1000000000,
+                    last_activity_at: 1000000000,
+                },
+            );
+        }
+
+        let mut memory_map = HashMap::new();
+        for (memory_id, memory) in memories {
+            memory_map.insert(memory_id, memory);
+        }
+
+        let mut connection_map = HashMap::new();
+        for (person_ref, connection) in connections {
+            connection_map.insert(person_ref, connection);
+        }
+
+        types::Capsule {
+            id: id.to_string(),
+            subject,
+            owners: owner_map,
+            controllers: HashMap::new(),
+            connections: connection_map,
+            connection_groups: HashMap::new(),
+            memories: memory_map,
+            created_at: 1000000000,
+            updated_at: 1000000000,
+            bound_to_web2: false,
+        }
+    }
+
+    // Helper function to create a test memory
+    fn create_test_memory(
+        id: &str,
+        name: &str,
+        memory_type: MemoryType,
+        content_type: &str,
+        data_size: usize,
+    ) -> Memory {
+        let base_metadata = MemoryMetadataBase {
+            size: data_size as u64,
+            mime_type: content_type.to_string(),
+            original_name: name.to_string(),
+            uploaded_at: "2024-01-01T00:00:00Z".to_string(),
+            date_of_memory: Some("2024-01-01".to_string()),
+            people_in_memory: Some(vec!["test_person".to_string()]),
+            format: Some("test_format".to_string()),
+        };
+
+        let metadata = match memory_type {
+            MemoryType::Image => MemoryMetadata::Image(ImageMetadata {
+                base: base_metadata,
+                dimensions: Some((1920, 1080)),
+            }),
+            MemoryType::Audio => MemoryMetadata::Audio(AudioMetadata {
+                base: base_metadata,
+                duration: Some(120),
+                format: Some("mp3".to_string()),
+                bitrate: Some(320),
+                sample_rate: Some(44100),
+                channels: Some(2),
+            }),
+            _ => MemoryMetadata::Image(ImageMetadata {
+                base: base_metadata,
+                dimensions: None,
+            }),
+        };
+
+        let test_data = vec![0u8; data_size];
+
+        Memory {
+            id: id.to_string(),
+            info: MemoryInfo {
+                memory_type,
+                name: name.to_string(),
+                content_type: content_type.to_string(),
+                created_at: 1000000000,
+                updated_at: 1000000000,
+                uploaded_at: 1000000000,
+                date_of_memory: Some(1000000000),
+            },
+            metadata,
+            access: MemoryAccess::Private,
+            data: MemoryData {
+                blob_ref: BlobRef {
+                    kind: MemoryBlobKind::ICPCapsule,
+                    locator: format!("test_locator_{}", id),
+                    hash: None,
+                },
+                data: Some(test_data),
+            },
+        }
+    }
+
+    // Helper function to create a test connection
+    fn create_test_connection(peer: PersonRef, status: ConnectionStatus) -> Connection {
+        Connection {
+            peer,
+            status,
+            created_at: 1000000000,
+            updated_at: 1000000000,
+        }
+    }
+
+    // Helper function to setup test capsules in memory
+    fn setup_test_capsule_with_data() -> (Principal, types::Capsule) {
+        let user = test_principal(1);
+        let user_ref = PersonRef::Principal(user);
+
+        // Create test memories
+        let memory1 = create_test_memory(
+            "mem1",
+            "test_image.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        let memory2 = create_test_memory(
+            "mem2",
+            "test_audio.mp3",
+            MemoryType::Audio,
+            "audio/mpeg",
+            2048,
+        );
+
+        // Create test connections
+        let peer1 = PersonRef::Principal(test_principal(2));
+        let peer2 = PersonRef::Opaque("friend_123".to_string());
+        let connection1 = create_test_connection(peer1.clone(), ConnectionStatus::Accepted);
+        let connection2 = create_test_connection(peer2.clone(), ConnectionStatus::Pending);
+
+        let capsule = create_test_capsule(
+            "test_capsule",
+            user_ref.clone(),
+            vec![user_ref],
+            vec![("mem1".to_string(), memory1), ("mem2".to_string(), memory2)],
+            vec![(peer1, connection1), (peer2, connection2)],
+        );
+
+        (user, capsule)
+    }
+
+    #[test]
+    fn test_export_user_capsule_data_success() {
+        let (user, capsule) = setup_test_capsule_with_data();
+
+        // Store capsule in memory
+        crate::memory::with_capsules_mut(|capsules| {
+            capsules.insert("test_capsule".to_string(), capsule.clone());
+        });
+
+        // Test export
+        let result = export_user_capsule_data(user);
+        assert!(result.is_ok(), "Export should succeed");
+
+        let export_data = result.unwrap();
+
+        // Verify capsule data
+        assert_eq!(export_data.capsule.id, "test_capsule");
+        assert_eq!(export_data.capsule.subject, PersonRef::Principal(user));
+
+        // Verify memories
+        assert_eq!(export_data.memories.len(), 2);
+        let memory_ids: Vec<&String> = export_data.memories.iter().map(|(id, _)| id).collect();
+        assert!(memory_ids.contains(&&"mem1".to_string()));
+        assert!(memory_ids.contains(&&"mem2".to_string()));
+
+        // Verify connections
+        assert_eq!(export_data.connections.len(), 2);
+
+        // Verify metadata
+        assert!(export_data.metadata.export_timestamp > 0);
+        assert_eq!(export_data.metadata.data_version, "1.0");
+        assert!(export_data.metadata.total_size_bytes > 0);
+
+        // Clean up
+        crate::memory::with_capsules_mut(|capsules| {
+            capsules.clear();
+        });
+    }
+
+    #[test]
+    fn test_export_user_capsule_data_no_self_capsule() {
+        let user = test_principal(1);
+        let other_user = test_principal(2);
+        let user_ref = PersonRef::Principal(user);
+        let other_user_ref = PersonRef::Principal(other_user);
+
+        // Create a capsule where user is NOT the subject (not a self-capsule)
+        let capsule = create_test_capsule(
+            "other_capsule",
+            other_user_ref, // subject is different from user
+            vec![user_ref], // but user is an owner
+            vec![],
+            vec![],
+        );
+
+        // Store capsule in memory
+        crate::memory::with_capsules_mut(|capsules| {
+            capsules.insert("other_capsule".to_string(), capsule);
+        });
+
+        // Test export - should fail because no self-capsule found
+        let result = export_user_capsule_data(user);
+        assert!(
+            result.is_err(),
+            "Export should fail when no self-capsule exists"
+        );
+        assert!(result.unwrap_err().contains("No self-capsule found"));
+
+        // Clean up
+        crate::memory::with_capsules_mut(|capsules| {
+            capsules.clear();
+        });
+    }
+
+    #[test]
+    fn test_export_user_capsule_data_not_owner() {
+        let user = test_principal(1);
+        let other_user = test_principal(2);
+        let user_ref = PersonRef::Principal(user);
+        let other_user_ref = PersonRef::Principal(other_user);
+
+        // Create a capsule where user is the subject but NOT an owner
+        let capsule = create_test_capsule(
+            "not_owned_capsule",
+            user_ref,             // subject is user
+            vec![other_user_ref], // but other_user is the owner
+            vec![],
+            vec![],
+        );
+
+        // Store capsule in memory
+        crate::memory::with_capsules_mut(|capsules| {
+            capsules.insert("not_owned_capsule".to_string(), capsule);
+        });
+
+        // Test export - should fail because user doesn't own the capsule
+        let result = export_user_capsule_data(user);
+        assert!(
+            result.is_err(),
+            "Export should fail when user doesn't own their capsule"
+        );
+
+        // Clean up
+        crate::memory::with_capsules_mut(|capsules| {
+            capsules.clear();
+        });
+    }
+
+    #[test]
+    fn test_calculate_export_data_size() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let size = calculate_export_data_size(&capsule, &memories, &connections);
+
+        // Should be greater than 0 and account for memory data
+        assert!(size > 0, "Calculated size should be greater than 0");
+
+        // Should include the memory data sizes (1024 + 2048 = 3072 bytes minimum)
+        assert!(size >= 3072, "Size should include memory data: {}", size);
+    }
+
+    #[test]
+    fn test_generate_export_manifest() {
+        let (user, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 5000,
+            },
+        };
+
+        let result = generate_export_manifest(&export_data);
+        assert!(result.is_ok(), "Manifest generation should succeed");
+
+        let manifest = result.unwrap();
+
+        // Verify manifest structure
+        assert!(
+            !manifest.capsule_checksum.is_empty(),
+            "Capsule checksum should not be empty"
+        );
+        assert_eq!(manifest.memory_count, 2, "Should have 2 memories");
+        assert_eq!(manifest.connection_count, 2, "Should have 2 connections");
+        assert_eq!(
+            manifest.memory_checksums.len(),
+            2,
+            "Should have 2 memory checksums"
+        );
+        assert_eq!(
+            manifest.connection_checksums.len(),
+            2,
+            "Should have 2 connection checksums"
+        );
+        assert_eq!(
+            manifest.total_size_bytes, 5000,
+            "Should match metadata size"
+        );
+        assert_eq!(
+            manifest.manifest_version, "1.0",
+            "Should have correct version"
+        );
+
+        // Verify checksums are not empty
+        for (memory_id, checksum) in &manifest.memory_checksums {
+            assert!(!memory_id.is_empty(), "Memory ID should not be empty");
+            assert!(!checksum.is_empty(), "Memory checksum should not be empty");
+        }
+
+        for (person_ref_str, checksum) in &manifest.connection_checksums {
+            assert!(
+                !person_ref_str.is_empty(),
+                "Person ref string should not be empty"
+            );
+            assert!(
+                !checksum.is_empty(),
+                "Connection checksum should not be empty"
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_export_data_success() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let calculated_size = calculate_export_data_size(&capsule, &memories, &connections);
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: calculated_size,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(result.is_ok(), "Validation should succeed for valid data");
+    }
+
+    #[test]
+    fn test_validate_export_data_empty_capsule_id() {
+        let (_, mut capsule) = setup_test_capsule_with_data();
+        capsule.id = "".to_string(); // Make capsule ID empty
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 1000,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_err(),
+            "Validation should fail for empty capsule ID"
+        );
+        assert!(result.unwrap_err().contains("Capsule ID is empty"));
+    }
+
+    #[test]
+    fn test_validate_export_data_no_owners() {
+        let (_, mut capsule) = setup_test_capsule_with_data();
+        capsule.owners.clear(); // Remove all owners
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 1000,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_err(),
+            "Validation should fail for capsule with no owners"
+        );
+        assert!(result.unwrap_err().contains("Capsule has no owners"));
+    }
+
+    #[test]
+    fn test_validate_export_data_invalid_timestamp() {
+        let (_, capsule) = setup_test_capsule_with_data();
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 0, // Invalid timestamp
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 1000,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_err(),
+            "Validation should fail for invalid timestamp"
+        );
+        assert!(result.unwrap_err().contains("Invalid export timestamp"));
+    }
+
+    #[test]
+    fn test_validate_export_data_empty_data_version() {
+        let (_, capsule) = setup_test_capsule_with_data();
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "".to_string(), // Empty version
+                total_size_bytes: 1000,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_err(),
+            "Validation should fail for empty data version"
+        );
+        assert!(result.unwrap_err().contains("Data version is empty"));
+    }
+
+    #[test]
+    fn test_validate_export_data_memory_id_mismatch() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let mut memory =
+            create_test_memory("mem1", "test.jpg", MemoryType::Image, "image/jpeg", 1024);
+        memory.id = "different_id".to_string(); // Make memory ID different from key
+
+        let memories = vec![("mem1".to_string(), memory)];
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 1000,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_err(),
+            "Validation should fail for memory ID mismatch"
+        );
+        assert!(result.unwrap_err().contains("Memory ID mismatch"));
+    }
+
+    #[test]
+    fn test_validate_export_data_connection_peer_mismatch() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let peer1 = PersonRef::Principal(test_principal(2));
+        let peer2 = PersonRef::Principal(test_principal(3));
+        let mut connection = create_test_connection(peer2.clone(), ConnectionStatus::Accepted);
+        connection.peer = peer2; // Connection peer doesn't match the key
+
+        let connections = vec![(peer1, connection)]; // Key is peer1 but connection.peer is peer2
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 1000,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_err(),
+            "Validation should fail for connection peer mismatch"
+        );
+        assert!(result.unwrap_err().contains("Connection peer mismatch"));
+    }
+
+    #[test]
+    fn test_validate_export_data_size_variance_within_tolerance() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let calculated_size = calculate_export_data_size(&capsule, &memories, &connections);
+        // Use a size within 10% variance
+        let metadata_size = calculated_size + (calculated_size / 20); // 5% difference
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: metadata_size,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_ok(),
+            "Validation should succeed for size variance within tolerance"
+        );
+    }
+
+    #[test]
+    fn test_validate_export_data_size_variance_exceeds_tolerance() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let calculated_size = calculate_export_data_size(&capsule, &memories, &connections);
+        // Use a size that exceeds 10% variance
+        let metadata_size = calculated_size + (calculated_size / 5); // 20% difference
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: metadata_size,
+            },
+        };
+
+        let result = validate_export_data(&export_data);
+        assert!(
+            result.is_err(),
+            "Validation should fail for size variance exceeding tolerance"
+        );
+        assert!(result.unwrap_err().contains("Data size mismatch"));
+    }
+
+    #[test]
+    fn test_verify_export_against_manifest_success() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 5000,
+            },
+        };
+
+        // Generate manifest from the same data
+        let manifest = generate_export_manifest(&export_data).unwrap();
+
+        // Verify against the manifest
+        let result = verify_export_against_manifest(&export_data, &manifest);
+        assert!(
+            result.is_ok(),
+            "Verification should succeed for matching data and manifest"
+        );
+    }
+
+    #[test]
+    fn test_verify_export_against_manifest_memory_count_mismatch() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 5000,
+            },
+        };
+
+        // Create manifest with wrong memory count
+        let mut manifest = generate_export_manifest(&export_data).unwrap();
+        manifest.memory_count = 5; // Wrong count
+
+        let result = verify_export_against_manifest(&export_data, &manifest);
+        assert!(
+            result.is_err(),
+            "Verification should fail for memory count mismatch"
+        );
+        assert!(result.unwrap_err().contains("Memory count mismatch"));
+    }
+
+    #[test]
+    fn test_verify_export_against_manifest_connection_count_mismatch() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 5000,
+            },
+        };
+
+        // Create manifest with wrong connection count
+        let mut manifest = generate_export_manifest(&export_data).unwrap();
+        manifest.connection_count = 10; // Wrong count
+
+        let result = verify_export_against_manifest(&export_data, &manifest);
+        assert!(
+            result.is_err(),
+            "Verification should fail for connection count mismatch"
+        );
+        assert!(result.unwrap_err().contains("Connection count mismatch"));
+    }
+
+    #[test]
+    fn test_verify_export_against_manifest_capsule_checksum_mismatch() {
+        let (_, capsule) = setup_test_capsule_with_data();
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 5000,
+            },
+        };
+
+        // Create manifest with wrong capsule checksum
+        let mut manifest = generate_export_manifest(&export_data).unwrap();
+        manifest.capsule_checksum = "wrong_checksum".to_string();
+
+        let result = verify_export_against_manifest(&export_data, &manifest);
+        assert!(
+            result.is_err(),
+            "Verification should fail for capsule checksum mismatch"
+        );
+        assert!(result.unwrap_err().contains("Capsule checksum mismatch"));
+    }
+
+    #[test]
+    fn test_verify_export_against_manifest_memory_checksum_mismatch() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memories: Vec<(String, types::Memory)> = capsule
+            .memories
+            .iter()
+            .map(|(id, memory)| (id.clone(), memory.clone()))
+            .collect();
+
+        let export_data = ExportData {
+            capsule,
+            memories,
+            connections: vec![],
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 5000,
+            },
+        };
+
+        // Create manifest with wrong memory checksum
+        let mut manifest = generate_export_manifest(&export_data).unwrap();
+        if let Some((_, checksum)) = manifest.memory_checksums.get_mut(0) {
+            *checksum = "wrong_checksum".to_string();
+        }
+
+        let result = verify_export_against_manifest(&export_data, &manifest);
+        assert!(
+            result.is_err(),
+            "Verification should fail for memory checksum mismatch"
+        );
+        assert!(result.unwrap_err().contains("checksum mismatch"));
+    }
+
+    #[test]
+    fn test_verify_export_against_manifest_connection_checksum_mismatch() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let connections: Vec<(types::PersonRef, types::Connection)> = capsule
+            .connections
+            .iter()
+            .map(|(person_ref, connection)| (person_ref.clone(), connection.clone()))
+            .collect();
+
+        let export_data = ExportData {
+            capsule,
+            memories: vec![],
+            connections,
+            metadata: ExportMetadata {
+                export_timestamp: 1000000000,
+                original_canister_id: test_principal(99),
+                data_version: "1.0".to_string(),
+                total_size_bytes: 5000,
+            },
+        };
+
+        // Create manifest with wrong connection checksum
+        let mut manifest = generate_export_manifest(&export_data).unwrap();
+        if let Some((_, checksum)) = manifest.connection_checksums.get_mut(0) {
+            *checksum = "wrong_checksum".to_string();
+        }
+
+        let result = verify_export_against_manifest(&export_data, &manifest);
+        assert!(
+            result.is_err(),
+            "Verification should fail for connection checksum mismatch"
+        );
+        assert!(result.unwrap_err().contains("checksum mismatch"));
+    }
+
+    #[test]
+    fn test_validate_memory_data_success() {
+        let memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        let result = validate_memory_data(&memory);
+        assert!(
+            result.is_ok(),
+            "Memory validation should succeed for valid memory"
+        );
+    }
+
+    #[test]
+    fn test_validate_memory_data_empty_id() {
+        let mut memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        memory.id = "".to_string();
+
+        let result = validate_memory_data(&memory);
+        assert!(
+            result.is_err(),
+            "Memory validation should fail for empty ID"
+        );
+        assert!(result.unwrap_err().contains("Memory ID is empty"));
+    }
+
+    #[test]
+    fn test_validate_memory_data_empty_name() {
+        let mut memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        memory.info.name = "".to_string();
+
+        let result = validate_memory_data(&memory);
+        assert!(
+            result.is_err(),
+            "Memory validation should fail for empty name"
+        );
+        assert!(result.unwrap_err().contains("has empty name"));
+    }
+
+    #[test]
+    fn test_validate_memory_data_empty_content_type() {
+        let mut memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        memory.info.content_type = "".to_string();
+
+        let result = validate_memory_data(&memory);
+        assert!(
+            result.is_err(),
+            "Memory validation should fail for empty content_type"
+        );
+        assert!(result.unwrap_err().contains("has empty content_type"));
+    }
+
+    #[test]
+    fn test_validate_memory_data_invalid_created_at() {
+        let mut memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        memory.info.created_at = 0;
+
+        let result = validate_memory_data(&memory);
+        assert!(
+            result.is_err(),
+            "Memory validation should fail for invalid created_at"
+        );
+        assert!(result.unwrap_err().contains("has invalid created_at"));
+    }
+
+    #[test]
+    fn test_validate_memory_data_invalid_uploaded_at() {
+        let mut memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        memory.info.uploaded_at = 0;
+
+        let result = validate_memory_data(&memory);
+        assert!(
+            result.is_err(),
+            "Memory validation should fail for invalid uploaded_at"
+        );
+        assert!(result.unwrap_err().contains("has invalid uploaded_at"));
+    }
+
+    #[test]
+    fn test_validate_memory_data_empty_blob_locator() {
+        let mut memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        memory.data.blob_ref.locator = "".to_string();
+
+        let result = validate_memory_data(&memory);
+        assert!(
+            result.is_err(),
+            "Memory validation should fail for empty blob locator"
+        );
+        assert!(result.unwrap_err().contains("has empty blob locator"));
+    }
+
+    #[test]
+    fn test_checksum_functions_consistency() {
+        let (_, capsule) = setup_test_capsule_with_data();
+        let memory = create_test_memory(
+            "test_mem",
+            "test.jpg",
+            MemoryType::Image,
+            "image/jpeg",
+            1024,
+        );
+        let peer = PersonRef::Principal(test_principal(2));
+        let connection = create_test_connection(peer.clone(), ConnectionStatus::Accepted);
+
+        // Generate checksums multiple times - should be consistent
+        let checksum1 = generate_capsule_checksum(&capsule).unwrap();
+        let checksum2 = generate_capsule_checksum(&capsule).unwrap();
+        assert_eq!(
+            checksum1, checksum2,
+            "Capsule checksums should be consistent"
+        );
+
+        let mem_checksum1 = generate_memory_checksum("test_mem", &memory).unwrap();
+        let mem_checksum2 = generate_memory_checksum("test_mem", &memory).unwrap();
+        assert_eq!(
+            mem_checksum1, mem_checksum2,
+            "Memory checksums should be consistent"
+        );
+
+        let conn_checksum1 = generate_connection_checksum(&peer, &connection).unwrap();
+        let conn_checksum2 = generate_connection_checksum(&peer, &connection).unwrap();
+        assert_eq!(
+            conn_checksum1, conn_checksum2,
+            "Connection checksums should be consistent"
+        );
+    }
+
+    #[test]
+    fn test_person_ref_to_string() {
+        let principal = test_principal(1);
+        let principal_ref = PersonRef::Principal(principal);
+        let opaque_ref = PersonRef::Opaque("test_id_123".to_string());
+
+        let principal_str = person_ref_to_string(&principal_ref);
+        let opaque_str = person_ref_to_string(&opaque_ref);
+
+        assert!(
+            principal_str.starts_with("principal:"),
+            "Principal ref should start with 'principal:'"
+        );
+        assert!(
+            opaque_str.starts_with("opaque:"),
+            "Opaque ref should start with 'opaque:'"
+        );
+        assert_eq!(
+            opaque_str, "opaque:test_id_123",
+            "Opaque ref should match expected format"
+        );
+    }
+
+    #[test]
+    fn test_simple_hash_function() {
+        let data1 = "test_data_123";
+        let data2 = "test_data_456";
+        let data3 = "test_data_123"; // Same as data1
+
+        let hash1 = simple_hash(data1);
+        let hash2 = simple_hash(data2);
+        let hash3 = simple_hash(data3);
+
+        // Same data should produce same hash
+        assert_eq!(hash1, hash3, "Same data should produce same hash");
+
+        // Different data should produce different hash
+        assert_ne!(hash1, hash2, "Different data should produce different hash");
+
+        // Hash should be 16 characters (hex format)
+        assert_eq!(hash1.len(), 16, "Hash should be 16 characters long");
+
+        // Hash should be valid hex
+        assert!(
+            hash1.chars().all(|c| c.is_ascii_hexdigit()),
+            "Hash should be valid hex"
+        );
+    }
 }

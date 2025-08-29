@@ -1,6 +1,8 @@
 // Public facade for the canister factory module
 // This module provides a clean interface to the migration functionality
 
+#![allow(dead_code)] // Many functions will be used in upcoming tasks
+
 pub mod auth;
 pub mod cycles;
 pub mod export;
@@ -11,18 +13,16 @@ pub mod registry;
 pub mod types;
 pub mod verify;
 
+#[cfg(test)]
+pub mod integration_tests;
+
 // Re-export commonly used types
 pub use types::*;
 
-// Re-export module functions for backward compatibility
-pub use auth::*;
-pub use cycles::*;
-pub use export::*;
-pub use factory::*;
-pub use import::*;
-pub use orchestrator::*;
-pub use registry::*;
-pub use verify::*;
+// Re-export only the functions that are actually used
+pub use orchestrator::{
+    get_migration_status, get_my_personal_canister_id, get_personal_canister_id, migrate_capsule,
+};
 
 // use crate::types as crate_types; // Will be used when implementing actual functions
 use candid::Principal;
