@@ -1,8 +1,8 @@
 use crate::types;
 use candid::{CandidType, Principal};
 use ic_cdk::api::management_canister::main::{
-    create_canister, install_code, CanisterInstallMode, CanisterSettings, CreateCanisterArgument,
-    InstallCodeArgument,
+    create_canister, install_code, update_settings, CanisterInstallMode, CanisterSettings,
+    CreateCanisterArgument, InstallCodeArgument, UpdateSettingsArgument,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -2950,6 +2950,355 @@ pub fn get_verification_stats() -> VerificationStats {
         hash_match_rate: 0.0,
         most_common_failures: Vec::new(),
     }
+}
+
+// Controller handoff mechanism
+
+/// Handoff controllers from {factory, user} to {user} only
+/// This function performs the controller transition after successful verification
+pub async fn handoff_controllers(canister_id: Principal, user: Principal) -> Result<(), String> {
+    ic_cdk::println!(
+        "Starting controller handoff for canister {} to user {}",
+        canister_id,
+        user
+    );
+
+    // Verify preconditions before handoff
+    verify_handoff_preconditions(canister_id, user).await?;
+
+    // Perform the controller update
+    let settings = CanisterSettings {
+        controllers: Some(vec![user]),
+        compute_allocation: None,
+        memory_allocation: None,
+        freezing_threshold: None,
+        reserved_cycles_limit: None,
+        log_visibility: None,
+        wasm_memory_limit: None,
+    };
+
+    let update_args = UpdateSettingsArgument {
+        canister_id,
+        settings,
+    };
+
+    match update_settings(update_args).await {
+        Ok(()) => {
+            ic_cdk::println!(
+                "Successfully handed off controllers for canister {} to user {}",
+                canister_id,
+                user
+            );
+
+            // Update registry status to reflect successful handoff
+            update_registry_status(canister_id, MigrationStatus::Completed)?;
+
+            // Log the successful handoff
+            log_controller_handoff_success(canister_id, user);
+
+            Ok(())
+        }
+        Err((rejection_code, msg)) => {
+            let error_msg = format!(
+                "Failed to update canister settings for handoff: {:?} - {}",
+                rejection_code, msg
+            );
+
+            ic_cdk::println!("Controller handoff failed: {}", error_msg);
+
+            // Update registry to reflect handoff failure
+            update_registry_status(canister_id, MigrationStatus::Failed)?;
+
+            Err(error_msg)
+        }
+    }
+}
+
+/// Verify preconditions before attempting controller handoff
+async fn verify_handoff_preconditions(
+    canister_id: Principal,
+    user: Principal,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Verifying handoff preconditions for canister {} and user {}",
+        canister_id,
+        user
+    );
+
+    // Check that the registry entry exists and is in the right state
+    let registry_entry = get_registry_entry(canister_id)
+        .ok_or_else(|| format!("No registry entry found for canister {}", canister_id))?;
+
+    // Verify the user matches the registry
+    if registry_entry.created_by != user {
+        return Err(format!(
+            "User mismatch: registry shows canister {} was created by {}, but handoff requested for {}",
+            canister_id, registry_entry.created_by, user
+        ));
+    }
+
+    // Verify the canister is in a state ready for handoff
+    match registry_entry.status {
+        MigrationStatus::Verifying => {
+            // This is the expected state for handoff
+            ic_cdk::println!(
+                "Canister {} is in Verifying state, ready for handoff",
+                canister_id
+            );
+        }
+        MigrationStatus::Completed => {
+            // Already completed, this might be a retry
+            ic_cdk::println!("Canister {} is already in Completed state", canister_id);
+            return Err("Controller handoff already completed".to_string());
+        }
+        MigrationStatus::Failed => {
+            return Err("Cannot handoff controllers for failed migration".to_string());
+        }
+        other_status => {
+            return Err(format!(
+                "Cannot handoff controllers: canister {} is in {:?} state, expected Verifying",
+                canister_id, other_status
+            ));
+        }
+    }
+
+    // Verify the canister is responsive (basic health check)
+    match perform_canister_health_check(canister_id).await {
+        Ok(()) => {
+            ic_cdk::println!(
+                "Canister {} passed health check before handoff",
+                canister_id
+            );
+        }
+        Err(e) => {
+            return Err(format!(
+                "Canister {} failed health check before handoff: {}",
+                canister_id, e
+            ));
+        }
+    }
+
+    ic_cdk::println!(
+        "All handoff preconditions verified for canister {}",
+        canister_id
+    );
+    Ok(())
+}
+
+/// Log successful controller handoff for monitoring
+fn log_controller_handoff_success(canister_id: Principal, user: Principal) {
+    ic_cdk::println!(
+        "CONTROLLER_HANDOFF_SUCCESS: canister={}, user={}, timestamp={}",
+        canister_id,
+        user,
+        ic_cdk::api::time()
+    );
+
+    // Update migration stats
+    crate::memory::with_migration_state_mut(|state| {
+        state.migration_stats.total_successes += 1;
+    });
+}
+
+/// Attempt controller handoff with retry logic
+/// This function implements retry logic for controller updates that may fail transiently
+pub async fn handoff_controllers_with_retry(
+    canister_id: Principal,
+    user: Principal,
+    max_retries: u32,
+) -> Result<(), String> {
+    let mut last_error = String::new();
+
+    for attempt in 1..=max_retries {
+        ic_cdk::println!(
+            "Controller handoff attempt {} of {} for canister {}",
+            attempt,
+            max_retries,
+            canister_id
+        );
+
+        match handoff_controllers(canister_id, user).await {
+            Ok(()) => {
+                if attempt > 1 {
+                    ic_cdk::println!(
+                        "Controller handoff succeeded on attempt {} for canister {}",
+                        attempt,
+                        canister_id
+                    );
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                last_error = e.clone();
+                ic_cdk::println!(
+                    "Controller handoff attempt {} failed for canister {}: {}",
+                    attempt,
+                    canister_id,
+                    e
+                );
+
+                // If this isn't the last attempt, wait before retrying
+                if attempt < max_retries {
+                    // In a real implementation, we might want to add a delay here
+                    // For now, we'll just continue to the next attempt
+                    ic_cdk::println!("Retrying controller handoff in next attempt...");
+                }
+            }
+        }
+    }
+
+    // All retries failed
+    let final_error = format!(
+        "Controller handoff failed after {} attempts. Last error: {}",
+        max_retries, last_error
+    );
+
+    ic_cdk::println!("{}", final_error);
+
+    // Update registry to reflect final failure
+    if let Err(registry_error) = update_registry_status(canister_id, MigrationStatus::Failed) {
+        ic_cdk::println!(
+            "Failed to update registry status after handoff failure: {}",
+            registry_error
+        );
+    }
+
+    Err(final_error)
+}
+
+/// Rollback controller handoff in case of failure
+/// This function attempts to restore the original controller configuration
+pub async fn rollback_controller_handoff(
+    canister_id: Principal,
+    user: Principal,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Attempting to rollback controller handoff for canister {}",
+        canister_id
+    );
+
+    let factory_principal = ic_cdk::api::canister_self();
+
+    // Restore original controllers: {factory, user}
+    let settings = CanisterSettings {
+        controllers: Some(vec![factory_principal, user]),
+        compute_allocation: None,
+        memory_allocation: None,
+        freezing_threshold: None,
+        reserved_cycles_limit: None,
+        log_visibility: None,
+        wasm_memory_limit: None,
+    };
+
+    let update_args = UpdateSettingsArgument {
+        canister_id,
+        settings,
+    };
+
+    match update_settings(update_args).await {
+        Ok(()) => {
+            ic_cdk::println!(
+                "Successfully rolled back controllers for canister {} to {{factory, user}}",
+                canister_id
+            );
+
+            // Update registry status to reflect rollback
+            update_registry_status(canister_id, MigrationStatus::Failed)?;
+
+            Ok(())
+        }
+        Err((rejection_code, msg)) => {
+            let error_msg = format!(
+                "Failed to rollback controller settings: {:?} - {}",
+                rejection_code, msg
+            );
+
+            ic_cdk::println!("Controller rollback failed: {}", error_msg);
+            Err(error_msg)
+        }
+    }
+}
+
+/// Finalize registry after successful migration
+/// This function updates the registry with final status and cycles consumed
+pub fn finalize_registry_after_migration(
+    canister_id: Principal,
+    cycles_consumed: u128,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Finalizing registry for canister {} with {} cycles consumed",
+        canister_id,
+        cycles_consumed
+    );
+
+    // Update cycles consumed in registry
+    update_registry_cycles_consumed(canister_id, cycles_consumed)?;
+
+    // Ensure status is set to Completed
+    update_registry_status(canister_id, MigrationStatus::Completed)?;
+
+    ic_cdk::println!(
+        "Registry finalized for canister {} - status: Completed, cycles: {}",
+        canister_id,
+        cycles_consumed
+    );
+
+    Ok(())
+}
+
+/// Cleanup procedures for failed migrations
+/// This function handles cleanup when migration fails at various stages
+pub async fn cleanup_failed_migration(
+    canister_id: Principal,
+    user: Principal,
+    failure_stage: &str,
+    error_message: &str,
+) -> Result<(), String> {
+    ic_cdk::println!(
+        "Starting cleanup for failed migration: canister={}, user={}, stage={}, error={}",
+        canister_id,
+        user,
+        failure_stage,
+        error_message
+    );
+
+    // Update registry to reflect failure
+    if let Err(e) = update_registry_status(canister_id, MigrationStatus::Failed) {
+        ic_cdk::println!("Failed to update registry status during cleanup: {}", e);
+    }
+
+    // Update migration stats
+    crate::memory::with_migration_state_mut(|state| {
+        state.migration_stats.total_failures += 1;
+    });
+
+    // Log the failure for monitoring
+    ic_cdk::println!(
+        "MIGRATION_FAILURE: canister={}, user={}, stage={}, error={}, timestamp={}",
+        canister_id,
+        user,
+        failure_stage,
+        error_message,
+        ic_cdk::api::time()
+    );
+
+    // Attempt to rollback controllers if the failure happened after handoff
+    if failure_stage == "post_handoff" {
+        ic_cdk::println!("Attempting controller rollback due to post-handoff failure");
+        if let Err(rollback_error) = rollback_controller_handoff(canister_id, user).await {
+            ic_cdk::println!("Controller rollback failed: {}", rollback_error);
+            // Continue with cleanup even if rollback fails
+        }
+    }
+
+    // For MVP, we keep the canister for manual review rather than deleting it
+    // In production, we might want to implement canister deletion for certain failure types
+    ic_cdk::println!(
+        "Cleanup completed for failed migration. Canister {} preserved for manual review.",
+        canister_id
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]
