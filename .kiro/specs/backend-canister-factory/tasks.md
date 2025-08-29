@@ -45,16 +45,16 @@
     - Create admin notification system for low reserves
     - _Requirements: 2.4, 2.7_
 
-- [ ] 4. Create data export functionality
+- [x] 4. Create data export functionality
 
-  - [ ] 4.1 Implement capsule data serialization
+  - [x] 4.1 Implement capsule data serialization
 
     - Create `export_user_capsule_data` function
     - Serialize capsule metadata, memories, and connections
     - Generate export metadata with timestamps and checksums
     - _Requirements: 1.2, 1.4_
 
-  - [ ] 4.2 Add data validation and integrity checks
+  - [x] 4.2 Add data validation and integrity checks
     - Implement data completeness validation
     - Add checksum generation for exported data
     - Create manifest generation for verification
