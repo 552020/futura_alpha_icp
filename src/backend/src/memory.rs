@@ -14,8 +14,6 @@ thread_local! {
     static NONCE_PROOFS: std::cell::RefCell<HashMap<String, (Principal, u64)>> = std::cell::RefCell::new(HashMap::new());
 }
 
-
-
 // Access functions for centralized storage
 pub fn with_capsules_mut<F, R>(f: F) -> R
 where

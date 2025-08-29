@@ -144,7 +144,6 @@ service : () -> {
   create_capsule : (PersonRef) -> (CapsuleCreationResult);
   get_capsule : (text) -> (opt Capsule) query;
   get_user : () -> (opt CapsuleInfo) query;
-  get_user_by_principal : (principal) -> (opt CapsuleInfo) query;
   greet : (text) -> (text) query;
   list_admins : () -> (vec principal) query;
   list_my_capsules : () -> (vec CapsuleHeader) query;
@@ -153,11 +152,10 @@ service : () -> {
   mark_bound : () -> (bool);
   mark_capsule_bound_to_web2 : () -> (bool);
   prove_nonce : (text) -> (bool);
-  register : () -> (CapsuleRegistrationResult);
+  register : () -> (bool);
   register_capsule : () -> (CapsuleRegistrationResult);
   register_with_nonce : (text) -> (bool);
   remove_admin : (principal) -> (bool);
-  user_stats : () -> (vec record { text; nat64 }) query;
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;
 }
