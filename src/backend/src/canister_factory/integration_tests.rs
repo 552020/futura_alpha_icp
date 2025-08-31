@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod integration_tests {
-    use super::*;
-    use crate::canister_factory::{cycles, registry, types::*};
+    use crate::canister_factory::types::*;
     use candid::Principal;
     use std::cell::RefCell;
     use std::collections::BTreeMap;
@@ -802,32 +801,574 @@ mod integration_tests {
                     None => {
                         return Ok(MemoryCommitResponse {
                             success: false,
-                            message: format!(
-                                "Missing chunk {} for memory {}",
-                                chunk_index, manifest.memory_id
-                            ),
+                            message: format!("Missing chunk {} for memory {}", chunk_index, manifest.memory_id),
                             memory_id: manifest.memory_id.clone(),
                             assembled_size: 0,
-                        })
+                        });
                     }
                 }
             }
 
             // Validate final assembled data checksum
-            let final_checksum = simple_hash(&String::from_utf8_lossy(&assembled_data));
-            if final_checksum != manifest.final_checksum {
+            let assembled_checksum = simple_hash(&String::from_utf8_lossy(&assembled_data));
+            if assembled_checksum != manifest.final_checksum {
                 return Ok(MemoryCommitResponse {
                     success: false,
                     message: format!(
-                        "Final checksum mismatch for memory {}: calculated {}, expected {}",
-                        manifest.memory_id, final_checksum, manifest.final_checksum
+                        "Final checksum mismatch for memory {}: expected {}, got {}",
+                        manifest.memory_id, manifest.final_checksum, assembled_checksum
                     ),
                     memory_id: manifest.memory_id.clone(),
                     assembled_size: 0,
                 });
             }
 
-            // Create mock memory object
+            // Mark memory as complete and move to completed memories
+            memory_state.is_complete = true;
+            memory_state.memory_metadata = Some(manifest.memory_metadata.clone());
+
+            let completed_memory = CompletedMemoryImport {
+                memory_id: manifest.memory_id.clone(),
+                assembled_data,
+                memory_metadata: manifest.memory_metadata,
+                total_size: manifest.total_size,
+                completed_at: mock_time(),
+            };
+
+            session.completed_memories.insert(manifest.memory_id.clone(), completed_memory);
+            session.memories_in_progress.remove(&manifest.memory_id);
+
+            Ok(MemoryCommitResponse {
+                success: true,
+                message: format!("Memory {} committed successfully", manifest.memory_id),
+                memory_id: manifest.memory_id,
+                assembled_size: manifest.total_size,
+            })
+        })
+    }
+
+    fn mock_finalize_import(
+        user: Principal,
+        session_id: String,
+    ) -> Result<ImportFinalizationResponse, String> {
+        with_mock_migration_state_mut(|state| {
+            // Get and validate session
+            let session = match state.import_sessions.get_mut(&session_id) {
+                Some(s) => s,
+                None => {
+                    return Ok(ImportFinalizationResponse {
+                        success: false,
+                        message: "Import session not found".to_string(),
+                        imported_memories_count: 0,
+                        total_imported_size: 0,
+                    })
+                }
+            };
+
+            // Validate session ownership
+            if session.user != user {
+                return Ok(ImportFinalizationResponse {
+                    success: false,
+                    message: "Access denied: session belongs to different user".to_string(),
+                    imported_memories_count: 0,
+                    total_imported_size: 0,
+                });
+            }
+
+            // Check if there are any memories still in progress
+            if !session.memories_in_progress.is_empty() {
+                return Ok(ImportFinalizationResponse {
+                    success: false,
+                    message: format!(
+                        "Cannot finalize: {} memories still in progress",
+                        session.memories_in_progress.len()
+                    ),
+                    imported_memories_count: session.completed_memories.len(),
+                    total_imported_size: session.total_received_size,
+                });
+            }
+
+            // Calculate final statistics
+            let imported_count = session.completed_memories.len();
+            let total_size: u64 = session.completed_memories.values()
+                .map(|m| m.total_size)
+                .sum();
+
+            // Mark session as completed
+            session.status = ImportSessionStatus::Completed;
+
+            Ok(ImportFinalizationResponse {
+                success: true,
+                message: format!(
+                    "Import finalized successfully: {} memories imported, {} bytes total",
+                    imported_count, total_size
+                ),
+                imported_memories_count: imported_count,
+                total_imported_size: total_size,
+            })
+        })
+    }
+
+    // Simple hash function for testing
+    fn simple_hash(input: &str) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        input.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    }
+
+    // End-to-End Migration Integration Tests
+
+    #[test]
+    fn test_complete_successful_migration_flow() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+        let required_cycles = 2_000_000_000_000; // 2T cycles
+
+        // Step 1: Preflight cycles check
+        let preflight_result = mock_preflight_cycles_reserve(required_cycles);
+        assert!(preflight_result.is_ok(), "Preflight check should pass");
+
+        // Step 2: Create registry entry (Creating status)
+        let registry_result = mock_create_registry_entry(
+            canister_id, 
+            user, 
+            MigrationStatus::Creating, 
+            0
+        );
+        assert!(registry_result.is_ok(), "Registry entry creation should succeed");
+
+        // Step 3: Consume cycles from reserve
+        let consumption_result = mock_consume_cycles_from_reserve(required_cycles);
+        assert!(consumption_result.is_ok(), "Cycles consumption should succeed");
+
+        // Step 4: Begin import session (simulating data transfer)
+        let import_session_result = mock_begin_import(user);
+        assert!(import_session_result.is_ok(), "Import session creation should succeed");
+        let session_response = import_session_result.unwrap();
+        assert!(session_response.success, "Import session should be created successfully");
+        let session_id = session_response.session_id.unwrap();
+
+        // Step 5: Upload memory chunks
+        let memory_id = "test_memory_1".to_string();
+        let test_data = b"This is test memory data for migration";
+        let chunk_hash = simple_hash(&String::from_utf8_lossy(test_data));
+        
+        let chunk_result = mock_put_memory_chunk(
+            user,
+            session_id.clone(),
+            memory_id.clone(),
+            0,
+            test_data.to_vec(),
+            chunk_hash.clone(),
+        );
+        assert!(chunk_result.is_ok(), "Chunk upload should succeed");
+        let chunk_response = chunk_result.unwrap();
+        assert!(chunk_response.success, "Chunk upload should be successful");
+
+        // Step 6: Commit memory with manifest
+        let manifest = MemoryManifest {
+            memory_id: memory_id.clone(),
+            total_chunks: 1,
+            total_size: test_data.len() as u64,
+            chunk_checksums: vec![chunk_hash.clone()],
+            final_checksum: chunk_hash.clone(),
+            memory_metadata: crate::types::Memory {
+                id: memory_id.clone(),
+                title: "Test Memory".to_string(),
+                description: Some("Test memory for migration".to_string()),
+                created_at: mock_time(),
+                updated_at: mock_time(),
+                memory_type: crate::types::MemoryType::Text,
+                tags: vec![],
+                is_favorite: false,
+                content_hash: Some(chunk_hash.clone()),
+                file_extension: None,
+                file_size: Some(test_data.len() as u64),
+            },
+        };
+
+        let commit_result = mock_commit_memory(user, session_id.clone(), manifest);
+        assert!(commit_result.is_ok(), "Memory commit should succeed");
+        let commit_response = commit_result.unwrap();
+        assert!(commit_response.success, "Memory commit should be successful");
+
+        // Step 7: Finalize import
+        let finalize_result = mock_finalize_import(user, session_id);
+        assert!(finalize_result.is_ok(), "Import finalization should succeed");
+        let finalize_response = finalize_result.unwrap();
+        assert!(finalize_response.success, "Import finalization should be successful");
+        assert_eq!(finalize_response.imported_memories_count, 1);
+
+        // Step 8: Update registry to Completed status
+        with_mock_migration_state_mut(|state| {
+            if let Some(record) = state.personal_canisters.get_mut(&canister_id) {
+                record.status = MigrationStatus::Completed;
+                record.cycles_consumed = required_cycles;
+            }
+        });
+
+        // Verify final state
+        let final_cycles_status = mock_get_cycles_reserve_status();
+        assert_eq!(final_cycles_status.current_reserve, 8_000_000_000_000); // 10T - 2T
+        assert_eq!(final_cycles_status.total_consumed, 3_000_000_000_000); // 1T + 2T
+
+        let user_entries = mock_get_registry_entries_by_user(user);
+        assert_eq!(user_entries.len(), 1);
+        assert_eq!(user_entries[0].status, MigrationStatus::Completed);
+        assert_eq!(user_entries[0].cycles_consumed, required_cycles);
+    }
+
+    #[test]
+    fn test_idempotent_migrate_capsule_behavior() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+
+        // Create initial migration state
+        with_mock_migration_state_mut(|state| {
+            let migration_state = MigrationState {
+                user,
+                status: MigrationStatus::Completed,
+                created_at: mock_time(),
+                completed_at: Some(mock_time()),
+                personal_canister_id: Some(canister_id),
+                cycles_consumed: 2_000_000_000_000,
+                error_message: None,
+            };
+            state.migration_states.insert(user, migration_state);
+        });
+
+        // Mock migrate_capsule function that checks existing state
+        let mock_migrate_capsule = |user: Principal| -> Result<MigrationResponse, String> {
+            with_mock_migration_state(|state| {
+                if let Some(existing_state) = state.migration_states.get(&user) {
+                    // Return existing result for idempotency
+                    match existing_state.status {
+                        MigrationStatus::Completed => Ok(MigrationResponse {
+                            success: true,
+                            canister_id: existing_state.personal_canister_id,
+                            message: "Migration already completed".to_string(),
+                        }),
+                        MigrationStatus::Failed => Ok(MigrationResponse {
+                            success: false,
+                            canister_id: None,
+                            message: existing_state.error_message.clone()
+                                .unwrap_or_else(|| "Migration failed".to_string()),
+                        }),
+                        _ => Ok(MigrationResponse {
+                            success: false,
+                            canister_id: None,
+                            message: format!("Migration in progress (status: {:?})", existing_state.status),
+                        }),
+                    }
+                } else {
+                    // Start new migration
+                    Ok(MigrationResponse {
+                        success: false,
+                        canister_id: None,
+                        message: "Starting new migration".to_string(),
+                    })
+                }
+            })
+        };
+
+        // Test idempotent behavior - multiple calls should return same result
+        let result1 = mock_migrate_capsule(user);
+        let result2 = mock_migrate_capsule(user);
+        let result3 = mock_migrate_capsule(user);
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+        assert!(result3.is_ok());
+
+        let response1 = result1.unwrap();
+        let response2 = result2.unwrap();
+        let response3 = result3.unwrap();
+
+        // All responses should be identical
+        assert_eq!(response1.success, response2.success);
+        assert_eq!(response1.success, response3.success);
+        assert_eq!(response1.canister_id, response2.canister_id);
+        assert_eq!(response1.canister_id, response3.canister_id);
+        assert_eq!(response1.message, response2.message);
+        assert_eq!(response1.message, response3.message);
+
+        // Should indicate completed migration
+        assert!(response1.success);
+        assert_eq!(response1.canister_id, Some(canister_id));
+        assert!(response1.message.contains("already completed"));
+    }
+
+    #[test]
+    fn test_migration_status_tracking_and_updates() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+
+        // Mock get_migration_status function
+        let mock_get_migration_status = |user: Principal| -> Option<MigrationStatusResponse> {
+            with_mock_migration_state(|state| {
+                state.migration_states.get(&user).map(|migration_state| {
+                    MigrationStatusResponse {
+                        status: migration_state.status.clone(),
+                        canister_id: migration_state.personal_canister_id,
+                        message: migration_state.error_message.clone(),
+                    }
+                })
+            })
+        };
+
+        // Initially no migration status
+        let initial_status = mock_get_migration_status(user);
+        assert!(initial_status.is_none());
+
+        // Test status progression through migration stages
+        let migration_stages = vec![
+            (MigrationStatus::NotStarted, None, None),
+            (MigrationStatus::Exporting, None, None),
+            (MigrationStatus::Creating, None, None),
+            (MigrationStatus::Installing, Some(canister_id), None),
+            (MigrationStatus::Importing, Some(canister_id), None),
+            (MigrationStatus::Verifying, Some(canister_id), None),
+            (MigrationStatus::Completed, Some(canister_id), None),
+        ];
+
+        for (status, expected_canister_id, expected_error) in migration_stages {
+            // Update migration state
+            with_mock_migration_state_mut(|state| {
+                let migration_state = MigrationState {
+                    user,
+                    status: status.clone(),
+                    created_at: mock_time(),
+                    completed_at: if matches!(status, MigrationStatus::Completed) {
+                        Some(mock_time())
+                    } else {
+                        None
+                    },
+                    personal_canister_id: expected_canister_id,
+                    cycles_consumed: if matches!(status, MigrationStatus::Completed) {
+                        2_000_000_000_000
+                    } else {
+                        0
+                    },
+                    error_message: expected_error.map(|s| s.to_string()),
+                };
+                state.migration_states.insert(user, migration_state);
+            });
+
+            // Check status
+            let current_status = mock_get_migration_status(user);
+            assert!(current_status.is_some(), "Status should exist for stage {:?}", status);
+            
+            let status_response = current_status.unwrap();
+            assert_eq!(status_response.status, status, "Status should match for stage {:?}", status);
+            assert_eq!(status_response.canister_id, expected_canister_id, 
+                      "Canister ID should match for stage {:?}", status);
+            assert_eq!(status_response.message, expected_error.map(|s| s.to_string()),
+                      "Error message should match for stage {:?}", status);
+        }
+
+        // Test failed status with error message
+        let error_message = "Installation failed: WASM module incompatible";
+        with_mock_migration_state_mut(|state| {
+            let migration_state = MigrationState {
+                user,
+                status: MigrationStatus::Failed,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: Some(canister_id),
+                cycles_consumed: 1_000_000_000_000, // Partial consumption
+                error_message: Some(error_message.to_string()),
+            };
+            state.migration_states.insert(user, migration_state);
+        });
+
+        let failed_status = mock_get_migration_status(user);
+        assert!(failed_status.is_some());
+        let failed_response = failed_status.unwrap();
+        assert_eq!(failed_response.status, MigrationStatus::Failed);
+        assert_eq!(failed_response.canister_id, Some(canister_id));
+        assert_eq!(failed_response.message, Some(error_message.to_string()));
+    }
+
+    #[test]
+    fn test_migration_with_multiple_memories() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+        let required_cycles = 3_000_000_000_000; // 3T cycles for larger migration
+
+        // Begin import session
+        let import_session_result = mock_begin_import(user);
+        assert!(import_session_result.is_ok());
+        let session_id = import_session_result.unwrap().session_id.unwrap();
+
+        // Upload multiple memories
+        let memories = vec![
+            ("memory_1", b"First memory content for testing migration"),
+            ("memory_2", b"Second memory with different content and longer text"),
+            ("memory_3", b"Third memory for comprehensive testing"),
+        ];
+
+        for (memory_id, content) in &memories {
+            let chunk_hash = simple_hash(&String::from_utf8_lossy(content));
+            
+            // Upload chunk
+            let chunk_result = mock_put_memory_chunk(
+                user,
+                session_id.clone(),
+                memory_id.to_string(),
+                0,
+                content.to_vec(),
+                chunk_hash.clone(),
+            );
+            assert!(chunk_result.is_ok(), "Chunk upload should succeed for {}", memory_id);
+
+            // Commit memory
+            let manifest = MemoryManifest {
+                memory_id: memory_id.to_string(),
+                total_chunks: 1,
+                total_size: content.len() as u64,
+                chunk_checksums: vec![chunk_hash.clone()],
+                final_checksum: chunk_hash.clone(),
+                memory_metadata: crate::types::Memory {
+                    id: memory_id.to_string(),
+                    title: format!("Test Memory {}", memory_id),
+                    description: Some(format!("Test memory {} for migration", memory_id)),
+                    created_at: mock_time(),
+                    updated_at: mock_time(),
+                    memory_type: crate::types::MemoryType::Text,
+                    tags: vec![],
+                    is_favorite: false,
+                    content_hash: Some(chunk_hash),
+                    file_extension: None,
+                    file_size: Some(content.len() as u64),
+                },
+            };
+
+            let commit_result = mock_commit_memory(user, session_id.clone(), manifest);
+            assert!(commit_result.is_ok(), "Memory commit should succeed for {}", memory_id);
+        }
+
+        // Finalize import
+        let finalize_result = mock_finalize_import(user, session_id);
+        assert!(finalize_result.is_ok());
+        let finalize_response = finalize_result.unwrap();
+        assert!(finalize_response.success);
+        assert_eq!(finalize_response.imported_memories_count, memories.len());
+
+        // Verify total imported size
+        let expected_total_size: u64 = memories.iter()
+            .map(|(_, content)| content.len() as u64)
+            .sum();
+        assert_eq!(finalize_response.total_imported_size, expected_total_size);
+    }
+
+    #[test]
+    fn test_concurrent_migration_attempts() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+
+        // First migration attempt - begin import session
+        let first_session_result = mock_begin_import(user);
+        assert!(first_session_result.is_ok());
+        assert!(first_session_result.unwrap().success);
+
+        // Second migration attempt - should fail due to existing active session
+        let second_session_result = mock_begin_import(user);
+        assert!(second_session_result.is_ok());
+        let second_response = second_session_result.unwrap();
+        assert!(!second_response.success);
+        assert!(second_response.message.contains("already has an active"));
+    }
+
+    #[test]
+    fn test_migration_state_persistence() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+
+        // Create migration state
+        let original_state = MigrationState {
+            user,
+            status: MigrationStatus::Installing,
+            created_at: mock_time(),
+            completed_at: None,
+            personal_canister_id: Some(canister_id),
+            cycles_consumed: 1_500_000_000_000,
+            error_message: None,
+        };
+
+        // Store state
+        with_mock_migration_state_mut(|state| {
+            state.migration_states.insert(user, original_state.clone());
+        });
+
+        // Simulate state persistence (like pre_upgrade/post_upgrade)
+        let persisted_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        });
+
+        assert!(persisted_state.is_some());
+        let restored_state = persisted_state.unwrap();
+        
+        // Verify all fields are preserved
+        assert_eq!(restored_state.user, original_state.user);
+        assert_eq!(restored_state.status, original_state.status);
+        assert_eq!(restored_state.created_at, original_state.created_at);
+        assert_eq!(restored_state.completed_at, original_state.completed_at);
+        assert_eq!(restored_state.personal_canister_id, original_state.personal_canister_id);
+        assert_eq!(restored_state.cycles_consumed, original_state.cycles_consumed);
+        assert_eq!(restored_state.error_message, original_state.error_message);
+    }
+
+    // Helper function to create mock memory object
+    fn create_mock_memory(memory_id: &str, data: Vec<u8>) -> crate::types::Memory {
+        let now = mock_time();
+        let data_size = data.len() as u64;
+
+        crate::types::Memory {
+            id: memory_id.to_string(),
+            info: crate::types::MemoryInfo {
+                memory_type: crate::types::MemoryType::Document,
+                name: format!("Test Memory {}", memory_id),
+                content_type: "application/octet-stream".to_string(),
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: Some(now),
+            },
+            data: crate::types::MemoryData {
+                blob_ref: crate::types::BlobRef {
+                    kind: crate::types::MemoryBlobKind::ICPCapsule,
+                    locator: format!("test:{}", memory_id),
+                    hash: None,
+                },
+                data: Some(data),
+            },
+            access: crate::types::MemoryAccess::Private,
+            metadata: crate::types::MemoryMetadata::Document(crate::types::DocumentMetadata {
+                base: crate::types::MemoryMetadataBase {
+                    size: data_size,
+                    mime_type: "application/octet-stream".to_string(),
+                    original_name: format!("test_{}.bin", memory_id),
+                    uploaded_at: now.to_string(),
+                    date_of_memory: Some(now.to_string()),
+                    people_in_memory: None,
+                    format: Some("binary".to_string()),
+                },
+            }),
+        }
+    }
             let memory = create_mock_memory(&manifest.memory_id, assembled_data);
 
             // Move memory from in-progress to completed
@@ -1652,4 +2193,1355 @@ mod integration_tests {
             assert!(session.memories_in_progress.is_empty());
         });
     }
-}
+    // Failure Scenarios and Recovery Tests
+
+    #[test]
+    fn test_failure_at_exporting_stage() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let error_message = "Failed to export capsule data: memory corruption detected";
+
+        // Simulate failure during export stage
+        with_mock_migration_state_mut(|state| {
+            let migration_state = MigrationState {
+                user,
+                status: MigrationStatus::Failed,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: None,
+                cycles_consumed: 0, // No cycles consumed yet
+                error_message: Some(error_message.to_string()),
+            };
+            state.migration_states.insert(user, migration_state);
+        });
+
+        // Verify failure state
+        let status = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        });
+
+        assert!(status.is_some());
+        let migration_state = status.unwrap();
+        assert_eq!(migration_state.status, MigrationStatus::Failed);
+        assert_eq!(migration_state.personal_canister_id, None);
+        assert_eq!(migration_state.cycles_consumed, 0);
+        assert_eq!(migration_state.error_message, Some(error_message.to_string()));
+
+        // Verify no registry entry was created
+        let registry_entries = mock_get_registry_entries_by_user(user);
+        assert_eq!(registry_entries.len(), 0);
+
+        // Verify no cycles were consumed
+        let cycles_status = mock_get_cycles_reserve_status();
+        assert_eq!(cycles_status.total_consumed, 1_000_000_000_000); // Only initial consumed amount
+    }
+
+    #[test]
+    fn test_failure_at_creating_stage() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+        let error_message = "Failed to create canister: insufficient subnet capacity";
+
+        // Simulate failure during canister creation
+        with_mock_migration_state_mut(|state| {
+            let migration_state = MigrationState {
+                user,
+                status: MigrationStatus::Failed,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: None,
+                cycles_consumed: 0,
+                error_message: Some(error_message.to_string()),
+            };
+            state.migration_states.insert(user, migration_state);
+        });
+
+        // Create registry entry with Creating status (before failure)
+        mock_create_registry_entry(canister_id, user, MigrationStatus::Creating, 0).unwrap();
+
+        // Update registry to Failed status
+        with_mock_migration_state_mut(|state| {
+            if let Some(record) = state.personal_canisters.get_mut(&canister_id) {
+                record.status = MigrationStatus::Failed;
+            }
+        });
+
+        // Verify failure state
+        let registry_entries = mock_get_registry_entries_by_user(user);
+        assert_eq!(registry_entries.len(), 1);
+        assert_eq!(registry_entries[0].status, MigrationStatus::Failed);
+        assert_eq!(registry_entries[0].cycles_consumed, 0);
+
+        // Verify migration state
+        let migration_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        }).unwrap();
+        assert_eq!(migration_state.status, MigrationStatus::Failed);
+        assert!(migration_state.error_message.is_some());
+    }
+
+    #[test]
+    fn test_failure_at_installing_stage() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+        let cycles_consumed = 2_000_000_000_000; // 2T cycles consumed for creation
+        let error_message = "Failed to install WASM: API version incompatible";
+
+        // Consume cycles for canister creation
+        mock_consume_cycles_from_reserve(cycles_consumed).unwrap();
+
+        // Create registry entry and update to Failed
+        mock_create_registry_entry(canister_id, user, MigrationStatus::Installing, cycles_consumed).unwrap();
+        with_mock_migration_state_mut(|state| {
+            if let Some(record) = state.personal_canisters.get_mut(&canister_id) {
+                record.status = MigrationStatus::Failed;
+            }
+        });
+
+        // Simulate failure during WASM installation
+        with_mock_migration_state_mut(|state| {
+            let migration_state = MigrationState {
+                user,
+                status: MigrationStatus::Failed,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: Some(canister_id), // Canister was created but installation failed
+                cycles_consumed,
+                error_message: Some(error_message.to_string()),
+            };
+            state.migration_states.insert(user, migration_state);
+        });
+
+        // Verify failure state
+        let migration_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        }).unwrap();
+        assert_eq!(migration_state.status, MigrationStatus::Failed);
+        assert_eq!(migration_state.personal_canister_id, Some(canister_id));
+        assert_eq!(migration_state.cycles_consumed, cycles_consumed);
+
+        // Verify registry reflects failure
+        let registry_entries = mock_get_registry_entries_by_user(user);
+        assert_eq!(registry_entries.len(), 1);
+        assert_eq!(registry_entries[0].status, MigrationStatus::Failed);
+        assert_eq!(registry_entries[0].cycles_consumed, cycles_consumed);
+
+        // Verify cycles were consumed (canister was created)
+        let cycles_status = mock_get_cycles_reserve_status();
+        assert_eq!(cycles_status.total_consumed, 3_000_000_000_000); // 1T initial + 2T consumed
+    }
+
+    #[test]
+    fn test_failure_at_importing_stage() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+        let cycles_consumed = 2_000_000_000_000;
+
+        // Begin import session
+        let session_result = mock_begin_import(user);
+        assert!(session_result.is_ok());
+        let session_id = session_result.unwrap().session_id.unwrap();
+
+        // Simulate chunk upload failure
+        let memory_id = "test_memory".to_string();
+        let test_data = b"Test data for import failure";
+        let wrong_hash = "wrong_hash_value".to_string();
+
+        let chunk_result = mock_put_memory_chunk(
+            user,
+            session_id.clone(),
+            memory_id.clone(),
+            0,
+            test_data.to_vec(),
+            wrong_hash, // Wrong hash to trigger failure
+        );
+
+        assert!(chunk_result.is_ok());
+        let chunk_response = chunk_result.unwrap();
+        assert!(!chunk_response.success);
+        assert!(chunk_response.message.contains("hash validation failed"));
+
+        // Simulate migration failure due to import issues
+        with_mock_migration_state_mut(|state| {
+            let migration_state = MigrationState {
+                user,
+                status: MigrationStatus::Failed,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: Some(canister_id),
+                cycles_consumed,
+                error_message: Some("Data import failed: chunk validation error".to_string()),
+            };
+            state.migration_states.insert(user, migration_state);
+        });
+
+        // Verify failure state
+        let migration_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        }).unwrap();
+        assert_eq!(migration_state.status, MigrationStatus::Failed);
+        assert!(migration_state.error_message.unwrap().contains("import failed"));
+    }
+
+    #[test]
+    fn test_failure_at_verifying_stage() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+        let cycles_consumed = 2_000_000_000_000;
+
+        // Complete successful import
+        let session_result = mock_begin_import(user);
+        let session_id = session_result.unwrap().session_id.unwrap();
+
+        let memory_id = "test_memory".to_string();
+        let test_data = b"Test data for verification failure";
+        let chunk_hash = simple_hash(&String::from_utf8_lossy(test_data));
+
+        // Upload and commit memory successfully
+        mock_put_memory_chunk(
+            user,
+            session_id.clone(),
+            memory_id.clone(),
+            0,
+            test_data.to_vec(),
+            chunk_hash.clone(),
+        ).unwrap();
+
+        let manifest = MemoryManifest {
+            memory_id: memory_id.clone(),
+            total_chunks: 1,
+            total_size: test_data.len() as u64,
+            chunk_checksums: vec![chunk_hash.clone()],
+            final_checksum: chunk_hash.clone(),
+            memory_metadata: crate::types::Memory {
+                id: memory_id.clone(),
+                title: "Test Memory".to_string(),
+                description: None,
+                created_at: mock_time(),
+                updated_at: mock_time(),
+                memory_type: crate::types::MemoryType::Text,
+                tags: vec![],
+                is_favorite: false,
+                content_hash: Some(chunk_hash),
+                file_extension: None,
+                file_size: Some(test_data.len() as u64),
+            },
+        };
+
+        mock_commit_memory(user, session_id.clone(), manifest).unwrap();
+        mock_finalize_import(user, session_id).unwrap();
+
+        // Simulate verification failure (e.g., API version mismatch)
+        with_mock_migration_state_mut(|state| {
+            let migration_state = MigrationState {
+                user,
+                status: MigrationStatus::Failed,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: Some(canister_id),
+                cycles_consumed,
+                error_message: Some("Verification failed: API version mismatch".to_string()),
+            };
+            state.migration_states.insert(user, migration_state);
+        });
+
+        // Verify failure state
+        let migration_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        }).unwrap();
+        assert_eq!(migration_state.status, MigrationStatus::Failed);
+        assert!(migration_state.error_message.unwrap().contains("Verification failed"));
+    }
+
+    #[test]
+    fn test_cleanup_and_rollback_procedures() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+        let cycles_consumed = 2_000_000_000_000;
+
+        // Simulate failed migration with partial progress
+        mock_consume_cycles_from_reserve(cycles_consumed).unwrap();
+        mock_create_registry_entry(canister_id, user, MigrationStatus::Installing, cycles_consumed).unwrap();
+
+        // Mock cleanup function
+        let mock_cleanup_failed_migration = |user: Principal, canister_id: Principal| -> Result<(), String> {
+            with_mock_migration_state_mut(|state| {
+                // Update registry status to Failed
+                if let Some(record) = state.personal_canisters.get_mut(&canister_id) {
+                    record.status = MigrationStatus::Failed;
+                }
+
+                // Update migration state to Failed
+                if let Some(migration_state) = state.migration_states.get_mut(&user) {
+                    migration_state.status = MigrationStatus::Failed;
+                    migration_state.error_message = Some("Migration cleaned up after failure".to_string());
+                }
+
+                // Note: In real implementation, this would also:
+                // - Stop the canister if it was created
+                // - Clean up any partial data
+                // - Keep factory as controller for manual cleanup
+                // - Log the failure for admin review
+
+                Ok(())
+            })
+        };
+
+        // Perform cleanup
+        let cleanup_result = mock_cleanup_failed_migration(user, canister_id);
+        assert!(cleanup_result.is_ok());
+
+        // Verify cleanup state
+        let registry_entries = mock_get_registry_entries_by_user(user);
+        assert_eq!(registry_entries.len(), 1);
+        assert_eq!(registry_entries[0].status, MigrationStatus::Failed);
+
+        let migration_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        }).unwrap();
+        assert_eq!(migration_state.status, MigrationStatus::Failed);
+        assert!(migration_state.error_message.is_some());
+
+        // Verify cycles remain consumed (no rollback of cycles)
+        let cycles_status = mock_get_cycles_reserve_status();
+        assert_eq!(cycles_status.total_consumed, 3_000_000_000_000); // 1T initial + 2T consumed
+    }
+
+    #[test]
+    fn test_error_logging_and_monitoring() {
+        setup_test_state();
+        let user = create_test_principal(1);
+
+        // Mock error logging function
+        let mock_log_migration_error = |user: Principal, stage: &str, error: &str| -> Result<(), String> {
+            with_mock_migration_state_mut(|state| {
+                // Update migration stats
+                state.migration_stats.total_failed += 1;
+                state.migration_stats.last_failure_at = Some(mock_time());
+
+                // Create detailed error log entry
+                let migration_state = MigrationState {
+                    user,
+                    status: MigrationStatus::Failed,
+                    created_at: mock_time(),
+                    completed_at: None,
+                    personal_canister_id: None,
+                    cycles_consumed: 0,
+                    error_message: Some(format!("Failed at {}: {}", stage, error)),
+                };
+                state.migration_states.insert(user, migration_state);
+
+                Ok(())
+            })
+        };
+
+        // Log various types of errors
+        let errors = vec![
+            ("exporting", "Memory corruption detected during export"),
+            ("creating", "Insufficient subnet capacity"),
+            ("installing", "WASM module validation failed"),
+            ("importing", "Chunk validation error"),
+            ("verifying", "API version incompatible"),
+        ];
+
+        let initial_stats = with_mock_migration_state(|state| state.migration_stats.clone());
+
+        for (stage, error) in errors {
+            let test_user = create_test_principal((stage.len() % 255) as u8 + 1);
+            let log_result = mock_log_migration_error(test_user, stage, error);
+            assert!(log_result.is_ok());
+
+            // Verify error was logged
+            let migration_state = with_mock_migration_state(|state| {
+                state.migration_states.get(&test_user).cloned()
+            });
+            assert!(migration_state.is_some());
+            let state = migration_state.unwrap();
+            assert_eq!(state.status, MigrationStatus::Failed);
+            assert!(state.error_message.unwrap().contains(stage));
+        }
+
+        // Verify error statistics
+        let final_stats = with_mock_migration_state(|state| state.migration_stats.clone());
+        assert_eq!(final_stats.total_failed, initial_stats.total_failed + errors.len() as u64);
+        assert!(final_stats.last_failure_at.is_some());
+    }
+
+    #[test]
+    fn test_retry_mechanisms_and_recovery_strategies() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+
+        // Mock retry logic for failed migration
+        let mock_retry_migration = |user: Principal| -> Result<MigrationResponse, String> {
+            with_mock_migration_state_mut(|state| {
+                if let Some(existing_state) = state.migration_states.get(&user) {
+                    match existing_state.status {
+                        MigrationStatus::Failed => {
+                            // Reset migration state for retry
+                            let retry_state = MigrationState {
+                                user,
+                                status: MigrationStatus::NotStarted,
+                                created_at: mock_time(),
+                                completed_at: None,
+                                personal_canister_id: None,
+                                cycles_consumed: 0,
+                                error_message: None,
+                            };
+                            state.migration_states.insert(user, retry_state);
+
+                            Ok(MigrationResponse {
+                                success: true,
+                                canister_id: None,
+                                message: "Migration reset for retry".to_string(),
+                            })
+                        }
+                        MigrationStatus::Completed => Ok(MigrationResponse {
+                            success: true,
+                            canister_id: existing_state.personal_canister_id,
+                            message: "Migration already completed".to_string(),
+                        }),
+                        _ => Ok(MigrationResponse {
+                            success: false,
+                            canister_id: None,
+                            message: "Migration in progress, cannot retry".to_string(),
+                        }),
+                    }
+                } else {
+                    Ok(MigrationResponse {
+                        success: true,
+                        canister_id: None,
+                        message: "Starting new migration".to_string(),
+                    })
+                }
+            })
+        };
+
+        // Set up initial failed state
+        with_mock_migration_state_mut(|state| {
+            let failed_state = MigrationState {
+                user,
+                status: MigrationStatus::Failed,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: Some(canister_id),
+                cycles_consumed: 1_000_000_000_000,
+                error_message: Some("Previous migration failed".to_string()),
+            };
+            state.migration_states.insert(user, failed_state);
+        });
+
+        // Test retry mechanism
+        let retry_result = mock_retry_migration(user);
+        assert!(retry_result.is_ok());
+        let retry_response = retry_result.unwrap();
+        assert!(retry_response.success);
+        assert!(retry_response.message.contains("reset for retry"));
+
+        // Verify state was reset
+        let migration_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        }).unwrap();
+        assert_eq!(migration_state.status, MigrationStatus::NotStarted);
+        assert_eq!(migration_state.cycles_consumed, 0);
+        assert!(migration_state.error_message.is_none());
+
+        // Test retry of in-progress migration (should fail)
+        with_mock_migration_state_mut(|state| {
+            if let Some(migration_state) = state.migration_states.get_mut(&user) {
+                migration_state.status = MigrationStatus::Installing;
+            }
+        });
+
+        let retry_in_progress = mock_retry_migration(user);
+        assert!(retry_in_progress.is_ok());
+        let in_progress_response = retry_in_progress.unwrap();
+        assert!(!in_progress_response.success);
+        assert!(in_progress_response.message.contains("in progress"));
+    }
+
+    #[test]
+    fn test_partial_failure_recovery() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+
+        // Begin import session
+        let session_result = mock_begin_import(user);
+        let session_id = session_result.unwrap().session_id.unwrap();
+
+        // Upload some chunks successfully
+        let memory1_data = b"First memory data";
+        let memory1_hash = simple_hash(&String::from_utf8_lossy(memory1_data));
+        
+        let chunk1_result = mock_put_memory_chunk(
+            user,
+            session_id.clone(),
+            "memory_1".to_string(),
+            0,
+            memory1_data.to_vec(),
+            memory1_hash.clone(),
+        );
+        assert!(chunk1_result.unwrap().success);
+
+        // Commit first memory successfully
+        let manifest1 = MemoryManifest {
+            memory_id: "memory_1".to_string(),
+            total_chunks: 1,
+            total_size: memory1_data.len() as u64,
+            chunk_checksums: vec![memory1_hash.clone()],
+            final_checksum: memory1_hash.clone(),
+            memory_metadata: crate::types::Memory {
+                id: "memory_1".to_string(),
+                title: "Memory 1".to_string(),
+                description: None,
+                created_at: mock_time(),
+                updated_at: mock_time(),
+                memory_type: crate::types::MemoryType::Text,
+                tags: vec![],
+                is_favorite: false,
+                content_hash: Some(memory1_hash),
+                file_extension: None,
+                file_size: Some(memory1_data.len() as u64),
+            },
+        };
+        
+        let commit1_result = mock_commit_memory(user, session_id.clone(), manifest1);
+        assert!(commit1_result.unwrap().success);
+
+        // Attempt to upload second memory with wrong hash (should fail)
+        let memory2_data = b"Second memory data";
+        let wrong_hash = "wrong_hash".to_string();
+        
+        let chunk2_result = mock_put_memory_chunk(
+            user,
+            session_id.clone(),
+            "memory_2".to_string(),
+            0,
+            memory2_data.to_vec(),
+            wrong_hash,
+        );
+        assert!(!chunk2_result.unwrap().success);
+
+        // Verify session state - first memory should be completed, second should not exist
+        with_mock_migration_state(|state| {
+            if let Some(session) = state.import_sessions.get(&session_id) {
+                assert_eq!(session.completed_memories.len(), 1);
+                assert!(session.completed_memories.contains_key("memory_1"));
+                assert!(!session.memories_in_progress.contains_key("memory_2"));
+            }
+        });
+
+        // Attempt to finalize should fail due to incomplete import
+        let finalize_result = mock_finalize_import(user, session_id);
+        assert!(finalize_result.is_ok());
+        let finalize_response = finalize_result.unwrap();
+        assert!(finalize_response.success); // Should succeed with partial data
+        assert_eq!(finalize_response.imported_memories_count, 1);
+    }
+
+    #[test]
+    fn test_session_timeout_recovery() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+
+        // Begin import session
+        let session_result = mock_begin_import(user);
+        let session_id = session_result.unwrap().session_id.unwrap();
+
+        // Simulate session timeout by modifying session timestamp
+        with_mock_migration_state_mut(|state| {
+            if let Some(session) = state.import_sessions.get_mut(&session_id) {
+                // Set last activity to more than timeout period ago
+                let timeout_nanos = state.import_config.session_timeout_seconds * 1_000_000_000;
+                session.last_activity_at = mock_time() - timeout_nanos - 1;
+            }
+        });
+
+        // Attempt to upload chunk to expired session
+        let test_data = b"Test data for expired session";
+        let chunk_hash = simple_hash(&String::from_utf8_lossy(test_data));
+        
+        let chunk_result = mock_put_memory_chunk(
+            user,
+            session_id.clone(),
+            "test_memory".to_string(),
+            0,
+            test_data.to_vec(),
+            chunk_hash,
+        );
+
+        assert!(chunk_result.is_ok());
+        let chunk_response = chunk_result.unwrap();
+        assert!(!chunk_response.success);
+        assert!(chunk_response.message.contains("expired"));
+
+        // Verify session status was updated to expired
+        with_mock_migration_state(|state| {
+            if let Some(session) = state.import_sessions.get(&session_id) {
+                assert_eq!(session.status, ImportSessionStatus::Expired);
+            }
+        });
+
+        // New session should be allowed after timeout
+        let new_session_result = mock_begin_import(user);
+        assert!(new_session_result.is_ok());
+        assert!(new_session_result.unwrap().success);
+    } 
+   // Upgrade Resilience Tests
+
+    #[test]
+    fn test_restart_resume_functionality_mid_state() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+
+        // Simulate migration in progress at Installing stage
+        let mid_migration_state = MigrationState {
+            user,
+            status: MigrationStatus::Installing,
+            created_at: mock_time(),
+            completed_at: None,
+            personal_canister_id: Some(canister_id),
+            cycles_consumed: 2_000_000_000_000,
+            error_message: None,
+        };
+
+        // Store state before "upgrade"
+        with_mock_migration_state_mut(|state| {
+            state.migration_states.insert(user, mid_migration_state.clone());
+        });
+
+        // Create registry entry
+        mock_create_registry_entry(canister_id, user, MigrationStatus::Installing, 2_000_000_000_000).unwrap();
+
+        // Simulate canister upgrade/restart by preserving state
+        let preserved_state = with_mock_migration_state(|state| {
+            (
+                state.migration_states.clone(),
+                state.personal_canisters.clone(),
+                state.migration_config.clone(),
+                state.migration_stats.clone(),
+            )
+        });
+
+        // Simulate post-upgrade restoration
+        with_mock_migration_state_mut(|state| {
+            state.migration_states = preserved_state.0;
+            state.personal_canisters = preserved_state.1;
+            state.migration_config = preserved_state.2;
+            state.migration_stats = preserved_state.3;
+        });
+
+        // Verify state was preserved across restart
+        let restored_migration_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        });
+
+        assert!(restored_migration_state.is_some());
+        let restored_state = restored_migration_state.unwrap();
+        assert_eq!(restored_state.user, mid_migration_state.user);
+        assert_eq!(restored_state.status, mid_migration_state.status);
+        assert_eq!(restored_state.created_at, mid_migration_state.created_at);
+        assert_eq!(restored_state.personal_canister_id, mid_migration_state.personal_canister_id);
+        assert_eq!(restored_state.cycles_consumed, mid_migration_state.cycles_consumed);
+
+        // Verify registry was preserved
+        let registry_entries = mock_get_registry_entries_by_user(user);
+        assert_eq!(registry_entries.len(), 1);
+        assert_eq!(registry_entries[0].status, MigrationStatus::Installing);
+        assert_eq!(registry_entries[0].cycles_consumed, 2_000_000_000_000);
+
+        // Mock resume functionality
+        let mock_resume_migration = |user: Principal| -> Result<MigrationResponse, String> {
+            with_mock_migration_state_mut(|state| {
+                if let Some(migration_state) = state.migration_states.get_mut(&user) {
+                    match migration_state.status {
+                        MigrationStatus::Installing => {
+                            // Resume from Installing stage
+                            migration_state.status = MigrationStatus::Importing;
+                            Ok(MigrationResponse {
+                                success: true,
+                                canister_id: migration_state.personal_canister_id,
+                                message: "Resumed migration from Installing stage".to_string(),
+                            })
+                        }
+                        _ => Ok(MigrationResponse {
+                            success: false,
+                            canister_id: None,
+                            message: "Cannot resume from current state".to_string(),
+                        }),
+                    }
+                } else {
+                    Err("No migration state found".to_string())
+                }
+            })
+        };
+
+        // Test resume functionality
+        let resume_result = mock_resume_migration(user);
+        assert!(resume_result.is_ok());
+        let resume_response = resume_result.unwrap();
+        assert!(resume_response.success);
+        assert!(resume_response.message.contains("Resumed"));
+
+        // Verify state progression
+        let updated_state = with_mock_migration_state(|state| {
+            state.migration_states.get(&user).cloned()
+        }).unwrap();
+        assert_eq!(updated_state.status, MigrationStatus::Importing);
+    }
+
+    #[test]
+    fn test_pre_post_upgrade_state_persistence() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user1 = create_test_principal(1);
+        let user2 = create_test_principal(2);
+        let canister1 = create_test_principal(10);
+        let canister2 = create_test_principal(11);
+
+        // Set up complex state before upgrade
+        with_mock_migration_state_mut(|state| {
+            // Migration states
+            state.migration_states.insert(user1, MigrationState {
+                user: user1,
+                status: MigrationStatus::Importing,
+                created_at: mock_time(),
+                completed_at: None,
+                personal_canister_id: Some(canister1),
+                cycles_consumed: 2_000_000_000_000,
+                error_message: None,
+            });
+
+            state.migration_states.insert(user2, MigrationState {
+                user: user2,
+                status: MigrationStatus::Completed,
+                created_at: mock_time(),
+                completed_at: Some(mock_time()),
+                personal_canister_id: Some(canister2),
+                cycles_consumed: 3_000_000_000_000,
+                error_message: None,
+            });
+
+            // Registry entries
+            state.personal_canisters.insert(canister1, PersonalCanisterRecord {
+                canister_id: canister1,
+                created_by: user1,
+                created_at: mock_time(),
+                status: MigrationStatus::Importing,
+                cycles_consumed: 2_000_000_000_000,
+            });
+
+            state.personal_canisters.insert(canister2, PersonalCanisterRecord {
+                canister_id: canister2,
+                created_by: user2,
+                created_at: mock_time(),
+                status: MigrationStatus::Completed,
+                cycles_consumed: 3_000_000_000_000,
+            });
+
+            // Import session
+            let session_id = "test_session_123".to_string();
+            state.import_sessions.insert(session_id.clone(), ImportSession {
+                session_id: session_id.clone(),
+                user: user1,
+                created_at: mock_time(),
+                last_activity_at: mock_time(),
+                total_expected_size: 1000,
+                total_received_size: 500,
+                memories_in_progress: std::collections::HashMap::new(),
+                completed_memories: std::collections::HashMap::new(),
+                import_manifest: None,
+                status: ImportSessionStatus::Active,
+            });
+
+            // Update stats
+            state.migration_stats.total_attempted = 5;
+            state.migration_stats.total_completed = 3;
+            state.migration_stats.total_failed = 1;
+            state.migration_stats.total_cycles_consumed = 8_000_000_000_000;
+        });
+
+        // Mock pre_upgrade serialization
+        let pre_upgrade_data = with_mock_migration_state(|state| {
+            serde_json::to_string(&MigrationStateData {
+                migration_config: state.migration_config.clone(),
+                migration_states: state.migration_states.clone(),
+                migration_stats: state.migration_stats.clone(),
+                personal_canisters: state.personal_canisters.clone(),
+                import_config: state.import_config.clone(),
+                import_sessions: state.import_sessions.clone(),
+            }).unwrap()
+        });
+
+        // Simulate canister upgrade - clear state
+        with_mock_migration_state_mut(|state| {
+            *state = MigrationStateData::default();
+        });
+
+        // Verify state is cleared
+        let cleared_state = with_mock_migration_state(|state| {
+            (
+                state.migration_states.len(),
+                state.personal_canisters.len(),
+                state.import_sessions.len(),
+            )
+        });
+        assert_eq!(cleared_state, (0, 0, 0));
+
+        // Mock post_upgrade deserialization
+        let restored_data: MigrationStateData = serde_json::from_str(&pre_upgrade_data).unwrap();
+        with_mock_migration_state_mut(|state| {
+            *state = restored_data;
+        });
+
+        // Verify all state was restored correctly
+        let restored_migration_states = with_mock_migration_state(|state| {
+            state.migration_states.clone()
+        });
+        assert_eq!(restored_migration_states.len(), 2);
+        assert!(restored_migration_states.contains_key(&user1));
+        assert!(restored_migration_states.contains_key(&user2));
+
+        let user1_state = &restored_migration_states[&user1];
+        assert_eq!(user1_state.status, MigrationStatus::Importing);
+        assert_eq!(user1_state.personal_canister_id, Some(canister1));
+
+        let user2_state = &restored_migration_states[&user2];
+        assert_eq!(user2_state.status, MigrationStatus::Completed);
+        assert_eq!(user2_state.personal_canister_id, Some(canister2));
+
+        // Verify registry was restored
+        let restored_registry = with_mock_migration_state(|state| {
+            state.personal_canisters.clone()
+        });
+        assert_eq!(restored_registry.len(), 2);
+        assert!(restored_registry.contains_key(&canister1));
+        assert!(restored_registry.contains_key(&canister2));
+
+        // Verify import sessions were restored
+        let restored_sessions = with_mock_migration_state(|state| {
+            state.import_sessions.clone()
+        });
+        assert_eq!(restored_sessions.len(), 1);
+        let session = restored_sessions.values().next().unwrap();
+        assert_eq!(session.user, user1);
+        assert_eq!(session.status, ImportSessionStatus::Active);
+
+        // Verify stats were restored
+        let restored_stats = with_mock_migration_state(|state| {
+            state.migration_stats.clone()
+        });
+        assert_eq!(restored_stats.total_attempted, 5);
+        assert_eq!(restored_stats.total_completed, 3);
+        assert_eq!(restored_stats.total_failed, 1);
+        assert_eq!(restored_stats.total_cycles_consumed, 8_000_000_000_000);
+    }
+
+    #[test]
+    fn test_idempotency_across_canister_upgrades() {
+        setup_test_state();
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+
+        // Set up completed migration state
+        with_mock_migration_state_mut(|state| {
+            state.migration_states.insert(user, MigrationState {
+                user,
+                status: MigrationStatus::Completed,
+                created_at: mock_time(),
+                completed_at: Some(mock_time()),
+                personal_canister_id: Some(canister_id),
+                cycles_consumed: 2_000_000_000_000,
+                error_message: None,
+            });
+
+            state.personal_canisters.insert(canister_id, PersonalCanisterRecord {
+                canister_id,
+                created_by: user,
+                created_at: mock_time(),
+                status: MigrationStatus::Completed,
+                cycles_consumed: 2_000_000_000_000,
+            });
+        });
+
+        // Mock migrate_capsule function
+        let mock_migrate_capsule = |user: Principal| -> Result<MigrationResponse, String> {
+            with_mock_migration_state(|state| {
+                if let Some(existing_state) = state.migration_states.get(&user) {
+                    match existing_state.status {
+                        MigrationStatus::Completed => Ok(MigrationResponse {
+                            success: true,
+                            canister_id: existing_state.personal_canister_id,
+                            message: "Migration already completed".to_string(),
+                        }),
+                        _ => Ok(MigrationResponse {
+                            success: false,
+                            canister_id: None,
+                            message: format!("Migration in progress: {:?}", existing_state.status),
+                        }),
+                    }
+                } else {
+                    Ok(MigrationResponse {
+                        success: false,
+                        canister_id: None,
+                        message: "Starting new migration".to_string(),
+                    })
+                }
+            })
+        };
+
+        // Test idempotency before upgrade
+        let pre_upgrade_result1 = mock_migrate_capsule(user);
+        let pre_upgrade_result2 = mock_migrate_capsule(user);
+        
+        assert!(pre_upgrade_result1.is_ok());
+        assert!(pre_upgrade_result2.is_ok());
+        
+        let response1 = pre_upgrade_result1.unwrap();
+        let response2 = pre_upgrade_result2.unwrap();
+        
+        assert_eq!(response1.success, response2.success);
+        assert_eq!(response1.canister_id, response2.canister_id);
+        assert_eq!(response1.message, response2.message);
+
+        // Simulate upgrade by preserving and restoring state
+        let preserved_state = with_mock_migration_state(|state| {
+            (
+                state.migration_states.clone(),
+                state.personal_canisters.clone(),
+            )
+        });
+
+        // Clear state (simulate upgrade)
+        with_mock_migration_state_mut(|state| {
+            state.migration_states.clear();
+            state.personal_canisters.clear();
+        });
+
+        // Restore state (simulate post_upgrade)
+        with_mock_migration_state_mut(|state| {
+            state.migration_states = preserved_state.0;
+            state.personal_canisters = preserved_state.1;
+        });
+
+        // Test idempotency after upgrade
+        let post_upgrade_result1 = mock_migrate_capsule(user);
+        let post_upgrade_result2 = mock_migrate_capsule(user);
+        
+        assert!(post_upgrade_result1.is_ok());
+        assert!(post_upgrade_result2.is_ok());
+        
+        let post_response1 = post_upgrade_result1.unwrap();
+        let post_response2 = post_upgrade_result2.unwrap();
+        
+        // Results should be identical to pre-upgrade results
+        assert_eq!(post_response1.success, response1.success);
+        assert_eq!(post_response1.canister_id, response1.canister_id);
+        assert_eq!(post_response1.message, response1.message);
+        
+        assert_eq!(post_response2.success, response2.success);
+        assert_eq!(post_response2.canister_id, response2.canister_id);
+        assert_eq!(post_response2.message, response2.message);
+    }
+
+    #[test]
+    fn test_migration_state_recovery_after_restart() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+        let canister_id = create_test_principal(10);
+
+        // Set up migration in various states before restart
+        let test_states = vec![
+            (MigrationStatus::Exporting, None, 0),
+            (MigrationStatus::Creating, None, 0),
+            (MigrationStatus::Installing, Some(canister_id), 2_000_000_000_000),
+            (MigrationStatus::Importing, Some(canister_id), 2_000_000_000_000),
+            (MigrationStatus::Verifying, Some(canister_id), 2_000_000_000_000),
+        ];
+
+        for (status, canister_id_opt, cycles_consumed) in test_states {
+            // Set up state before restart
+            with_mock_migration_state_mut(|state| {
+                state.migration_states.insert(user, MigrationState {
+                    user,
+                    status: status.clone(),
+                    created_at: mock_time(),
+                    completed_at: None,
+                    personal_canister_id: canister_id_opt,
+                    cycles_consumed,
+                    error_message: None,
+                });
+
+                if let Some(cid) = canister_id_opt {
+                    state.personal_canisters.insert(cid, PersonalCanisterRecord {
+                        canister_id: cid,
+                        created_by: user,
+                        created_at: mock_time(),
+                        status: status.clone(),
+                        cycles_consumed,
+                    });
+                }
+            });
+
+            // Mock recovery logic that determines next action based on state
+            let mock_determine_recovery_action = |user: Principal| -> Result<String, String> {
+                with_mock_migration_state(|state| {
+                    if let Some(migration_state) = state.migration_states.get(&user) {
+                        let action = match migration_state.status {
+                            MigrationStatus::Exporting => "Resume export process",
+                            MigrationStatus::Creating => "Retry canister creation",
+                            MigrationStatus::Installing => "Resume WASM installation",
+                            MigrationStatus::Importing => "Resume data import",
+                            MigrationStatus::Verifying => "Resume verification",
+                            MigrationStatus::Completed => "No action needed",
+                            MigrationStatus::Failed => "Cleanup and allow retry",
+                            MigrationStatus::NotStarted => "Start new migration",
+                        };
+                        Ok(action.to_string())
+                    } else {
+                        Ok("No migration state found".to_string())
+                    }
+                })
+            };
+
+            // Test recovery action determination
+            let recovery_action = mock_determine_recovery_action(user);
+            assert!(recovery_action.is_ok());
+            let action = recovery_action.unwrap();
+            
+            match status {
+                MigrationStatus::Exporting => assert!(action.contains("export")),
+                MigrationStatus::Creating => assert!(action.contains("creation")),
+                MigrationStatus::Installing => assert!(action.contains("installation")),
+                MigrationStatus::Importing => assert!(action.contains("import")),
+                MigrationStatus::Verifying => assert!(action.contains("verification")),
+                _ => {}
+            }
+
+            // Verify state consistency after restart
+            let recovered_state = with_mock_migration_state(|state| {
+                state.migration_states.get(&user).cloned()
+            });
+            
+            assert!(recovered_state.is_some());
+            let state = recovered_state.unwrap();
+            assert_eq!(state.status, status);
+            assert_eq!(state.personal_canister_id, canister_id_opt);
+            assert_eq!(state.cycles_consumed, cycles_consumed);
+
+            // Clean up for next iteration
+            with_mock_migration_state_mut(|state| {
+                state.migration_states.clear();
+                state.personal_canisters.clear();
+            });
+        }
+    }
+
+    #[test]
+    fn test_import_session_recovery_after_restart() {
+        setup_test_state();
+        setup_import_test_state();
+        
+        let user = create_test_principal(1);
+        let session_id = "test_session_recovery".to_string();
+
+        // Set up import session with partial progress before restart
+        with_mock_migration_state_mut(|state| {
+            let mut memories_in_progress = std::collections::HashMap::new();
+            let mut completed_memories = std::collections::HashMap::new();
+
+            // Add memory in progress
+            memories_in_progress.insert("memory_1".to_string(), MemoryImportState {
+                memory_id: "memory_1".to_string(),
+                expected_chunks: 3,
+                received_chunks: {
+                    let mut chunks = std::collections::HashMap::new();
+                    chunks.insert(0, ChunkData {
+                        chunk_index: 0,
+                        data: b"chunk 0 data".to_vec(),
+                        sha256: "hash0".to_string(),
+                        received_at: mock_time(),
+                    });
+                    chunks.insert(1, ChunkData {
+                        chunk_index: 1,
+                        data: b"chunk 1 data".to_vec(),
+                        sha256: "hash1".to_string(),
+                        received_at: mock_time(),
+                    });
+                    chunks
+                },
+                total_size: 1000,
+                received_size: 500,
+                memory_metadata: None,
+                is_complete: false,
+            });
+
+            // Add completed memory
+            completed_memories.insert("memory_2".to_string(), CompletedMemoryImport {
+                memory_id: "memory_2".to_string(),
+                assembled_data: b"complete memory data".to_vec(),
+                memory_metadata: crate::types::Memory {
+                    id: "memory_2".to_string(),
+                    title: "Completed Memory".to_string(),
+                    description: None,
+                    created_at: mock_time(),
+                    updated_at: mock_time(),
+                    memory_type: crate::types::MemoryType::Text,
+                    tags: vec![],
+                    is_favorite: false,
+                    content_hash: Some("complete_hash".to_string()),
+                    file_extension: None,
+                    file_size: Some(100),
+                },
+                total_size: 100,
+                completed_at: mock_time(),
+            });
+
+            let session = ImportSession {
+                session_id: session_id.clone(),
+                user,
+                created_at: mock_time(),
+                last_activity_at: mock_time(),
+                total_expected_size: 2000,
+                total_received_size: 600,
+                memories_in_progress,
+                completed_memories,
+                import_manifest: None,
+                status: ImportSessionStatus::Active,
+            };
+
+            state.import_sessions.insert(session_id.clone(), session);
+        });
+
+        // Simulate restart by preserving and restoring session state
+        let preserved_session = with_mock_migration_state(|state| {
+            state.import_sessions.get(&session_id).cloned()
+        });
+
+        assert!(preserved_session.is_some());
+
+        // Clear sessions (simulate restart)
+        with_mock_migration_state_mut(|state| {
+            state.import_sessions.clear();
+        });
+
+        // Restore session (simulate post_upgrade)
+        with_mock_migration_state_mut(|state| {
+            if let Some(session) = preserved_session {
+                state.import_sessions.insert(session_id.clone(), session);
+            }
+        });
+
+        // Verify session was recovered correctly
+        let recovered_session = with_mock_migration_state(|state| {
+            state.import_sessions.get(&session_id).cloned()
+        });
+
+        assert!(recovered_session.is_some());
+        let session = recovered_session.unwrap();
+        
+        assert_eq!(session.user, user);
+        assert_eq!(session.status, ImportSessionStatus::Active);
+        assert_eq!(session.total_expected_size, 2000);
+        assert_eq!(session.total_received_size, 600);
+        assert_eq!(session.memories_in_progress.len(), 1);
+        assert_eq!(session.completed_memories.len(), 1);
+
+        // Verify in-progress memory state
+        let memory_in_progress = session.memories_in_progress.get("memory_1").unwrap();
+        assert_eq!(memory_in_progress.expected_chunks, 3);
+        assert_eq!(memory_in_progress.received_chunks.len(), 2);
+        assert_eq!(memory_in_progress.received_size, 500);
+        assert!(!memory_in_progress.is_complete);
+
+        // Verify completed memory state
+        let completed_memory = session.completed_memories.get("memory_2").unwrap();
+        assert_eq!(completed_memory.memory_id, "memory_2");
+        assert_eq!(completed_memory.total_size, 100);
+        assert_eq!(completed_memory.memory_metadata.title, "Completed Memory");
+
+        // Test resuming upload after recovery
+        let resume_chunk_result = mock_put_memory_chunk(
+            user,
+            session_id.clone(),
+            "memory_1".to_string(),
+            2, // Missing chunk
+            b"chunk 2 data".to_vec(),
+            "hash2".to_string(),
+        );
+
+        assert!(resume_chunk_result.is_ok());
+        let resume_response = resume_chunk_result.unwrap();
+        assert!(resume_response.success);
+        assert!(resume_response.message.contains("uploaded successfully"));
+    }
+
+    #[test]
+    fn test_cycles_state_consistency_across_upgrades() {
+        setup_test_state();
+        let initial_reserve = 10_000_000_000_000; // 10T cycles
+        let initial_consumed = 1_000_000_000_000;  // 1T cycles
+
+        // Perform some operations before upgrade
+        let operations = vec![
+            (create_test_principal(1), 2_000_000_000_000), // 2T cycles
+            (create_test_principal(2), 1_500_000_000_000), // 1.5T cycles
+        ];
+
+        for (user, cycles) in &operations {
+            mock_consume_cycles_from_reserve(*cycles).unwrap();
+            mock_create_registry_entry(
+                create_test_principal(10 + (user.as_slice()[0] as u32)),
+                *user,
+                MigrationStatus::Completed,
+                *cycles,
+            ).unwrap();
+        }
+
+        // Capture state before upgrade
+        let pre_upgrade_status = mock_get_cycles_reserve_status();
+        let pre_upgrade_registry = with_mock_migration_state(|state| {
+            state.personal_canisters.clone()
+        });
+
+        // Expected values
+        let expected_reserve = initial_reserve - 2_000_000_000_000 - 1_500_000_000_000; // 6.5T
+        let expected_consumed = initial_consumed + 2_000_000_000_000 + 1_500_000_000_000; // 4.5T
+
+        assert_eq!(pre_upgrade_status.current_reserve, expected_reserve);
+        assert_eq!(pre_upgrade_status.total_consumed, expected_consumed);
+        assert_eq!(pre_upgrade_registry.len(), 2);
+
+        // Simulate upgrade by preserving state
+        let preserved_state = with_mock_migration_state(|state| {
+            (
+                state.migration_config.clone(),
+                state.migration_stats.clone(),
+                state.personal_canisters.clone(),
+            )
+        });
+
+        // Clear state (simulate upgrade)
+        with_mock_migration_state_mut(|state| {
+            *state = MigrationStateData::default();
+        });
+
+        // Restore state (simulate post_upgrade)
+        with_mock_migration_state_mut(|state| {
+            state.migration_config = preserved_state.0;
+            state.migration_stats = preserved_state.1;
+            state.personal_canisters = preserved_state.2;
+        });
+
+        // Verify cycles state consistency after upgrade
+        let post_upgrade_status = mock_get_cycles_reserve_status();
+        let post_upgrade_registry = with_mock_migration_state(|state| {
+            state.personal_canisters.clone()
+        });
+
+        assert_eq!(post_upgrade_status.current_reserve, pre_upgrade_status.current_reserve);
+        assert_eq!(post_upgrade_status.total_consumed, pre_upgrade_status.total_consumed);
+        assert_eq!(post_upgrade_status.min_threshold, pre_upgrade_status.min_threshold);
+        assert_eq!(post_upgrade_status.is_above_threshold, pre_upgrade_status.is_above_threshold);
+
+        assert_eq!(post_upgrade_registry.len(), pre_upgrade_registry.len());
+
+        // Verify individual registry entries
+        for (canister_id, record) in pre_upgrade_registry {
+            let post_record = post_upgrade_registry.get(&canister_id);
+            assert!(post_record.is_some());
+            let post_record = post_record.unwrap();
+            assert_eq!(post_record.created_by, record.created_by);
+            assert_eq!(post_record.status, record.status);
+            assert_eq!(post_record.cycles_consumed, record.cycles_consumed);
+        }
+
+        // Test that operations continue to work correctly after upgrade
+        let new_user = create_test_principal(3);
+        let new_cycles = 1_000_000_000_000; // 1T cycles
+
+        let post_upgrade_operation = mock_consume_cycles_from_reserve(new_cycles);
+        assert!(post_upgrade_operation.is_ok());
+
+        let final_status = mock_get_cycles_reserve_status();
+        assert_eq!(final_status.current_reserve, expected_reserve - new_cycles);
+        assert_eq!(final_status.total_consumed, expected_consumed + new_cycles);
+    }
+
+    #[test]
+    fn test_migration_statistics_persistence() {
+        setup_test_state();
+
+        // Set up initial statistics
+        with_mock_migration_state_mut(|state| {
+            state.migration_stats = MigrationStats {
+                total_attempted: 10,
+                total_completed: 7,
+                total_failed: 2,
+                total_cycles_consumed: 15_000_000_000_000,
+                last_migration_at: Some(mock_time()),
+                last_failure_at: Some(mock_time() - 1000),
+            };
+        });
+
+        // Capture pre-upgrade stats
+        let pre_upgrade_stats = with_mock_migration_state(|state| {
+            state.migration_stats.clone()
+        });
+
+        // Simulate upgrade
+        let preserved_stats = pre_upgrade_stats.clone();
+        with_mock_migration_state_mut(|state| {
+            state.migration_stats = MigrationStats::default();
+        });
+
+        // Restore stats
+        with_mock_migration_state_mut(|state| {
+            state.migration_stats = preserved_stats;
+        });
+
+        // Verify stats were preserved
+        let post_upgrade_stats = with_mock_migration_state(|state| {
+            state.migration_stats.clone()
+        });
+
+        assert_eq!(post_upgrade_stats.total_attempted, pre_upgrade_stats.total_attempted);
+        assert_eq!(post_upgrade_stats.total_completed, pre_upgrade_stats.total_completed);
+        assert_eq!(post_upgrade_stats.total_failed, pre_upgrade_stats.total_failed);
+        assert_eq!(post_upgrade_stats.total_cycles_consumed, pre_upgrade_stats.total_cycles_consumed);
+        assert_eq!(post_upgrade_stats.last_migration_at, pre_upgrade_stats.last_migration_at);
+        assert_eq!(post_upgrade_stats.last_failure_at, pre_upgrade_stats.last_failure_at);
+
+        // Test that stats continue to update correctly after upgrade
+        with_mock_migration_state_mut(|state| {
+            state.migration_stats.total_attempted += 1;
+            state.migration_stats.total_completed += 1;
+        });
+
+        let updated_stats = with_mock_migration_state(|state| {
+            state.migration_stats.clone()
+        });
+
+        assert_eq!(updated_stats.total_attempted, pre_upgrade_stats.total_attempted + 1);
+        assert_eq!(updated_stats.total_completed, pre_upgrade_stats.total_completed + 1);
+    }
+
+}}

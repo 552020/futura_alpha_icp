@@ -151,8 +151,8 @@ pub fn finalize_registry_after_migration(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::canister_factory::types::*;
+
+    use crate::canister_factory::types::{MigrationStatus, PersonalCanisterRecord};
     use candid::Principal;
     use std::collections::BTreeMap;
 

@@ -260,7 +260,10 @@ pub fn get_default_canister_cycles() -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canister_factory::types::*;
+    use crate::canister_factory::types::{
+        CyclesAlertLevel, CyclesMonitoringReport, CyclesReserveStatus, MigrationConfig,
+        MigrationStateData,
+    };
     use candid::Principal;
 
     // Mock the memory functions for testing

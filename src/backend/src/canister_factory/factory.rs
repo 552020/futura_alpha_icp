@@ -1,9 +1,9 @@
 use crate::canister_factory::types::*;
 use crate::canister_factory::{cycles::*, registry::*};
 use candid::Principal;
-use ic_cdk::api::management_canister::main::{
+use ic_cdk::management_canister::{
     create_canister, install_code, update_settings, CanisterInstallMode, CanisterSettings,
-    CreateCanisterArgument, InstallCodeArgument, UpdateSettingsArgument,
+    CreateCanisterArgs, InstallCodeArgs, UpdateSettingsArgs,
 };
 
 /// Get current time - can be mocked in tests
@@ -43,10 +43,11 @@ pub async fn create_personal_canister(
         reserved_cycles_limit: None,
         log_visibility: None,
         wasm_memory_limit: None,
+        wasm_memory_threshold: None,
     };
 
     // Create canister creation arguments
-    let create_args = CreateCanisterArgument {
+    let create_args = CreateCanisterArgs {
         settings: Some(canister_settings),
     };
 
@@ -57,10 +58,10 @@ pub async fn create_personal_canister(
     );
 
     // Create the canister with cycles funding
-    let create_result = create_canister(create_args, cycles_to_fund).await;
+    let create_result = create_canister(&create_args).await;
 
     match create_result {
-        Ok((canister_record,)) => {
+        Ok(canister_record) => {
             let canister_id = canister_record.canister_id;
             ic_cdk::println!(
                 "Successfully created personal canister {} for user {}",
@@ -84,10 +85,10 @@ pub async fn create_personal_canister(
 
             Ok(canister_id)
         }
-        Err((rejection_code, message)) => {
+        Err(error) => {
             let error_msg = format!(
-                "Failed to create personal canister for user {}: {:?} - {}",
-                user, rejection_code, message
+                "Failed to create personal canister for user {}: {:?}",
+                user, error
             );
 
             ic_cdk::println!("{}", error_msg);
@@ -112,7 +113,7 @@ pub async fn install_personal_canister_wasm(
     );
 
     // Prepare installation arguments
-    let install_args = InstallCodeArgument {
+    let install_args = InstallCodeArgs {
         mode: CanisterInstallMode::Install,
         canister_id,
         wasm_module,
@@ -120,7 +121,7 @@ pub async fn install_personal_canister_wasm(
     };
 
     // Install the WASM module
-    let install_result = install_code(install_args).await;
+    let install_result = install_code(&install_args).await;
 
     match install_result {
         Ok(()) => {
@@ -134,10 +135,10 @@ pub async fn install_personal_canister_wasm(
 
             Ok(())
         }
-        Err((rejection_code, message)) => {
+        Err(error) => {
             let error_msg = format!(
-                "Failed to install WASM on personal canister {}: {:?} - {}",
-                canister_id, rejection_code, message
+                "Failed to install WASM on personal canister {}: {:?}",
+                canister_id, error
             );
 
             ic_cdk::println!("{}", error_msg);
@@ -171,14 +172,15 @@ pub async fn handoff_controllers(canister_id: Principal, user: Principal) -> Res
         reserved_cycles_limit: None,
         log_visibility: None,
         wasm_memory_limit: None,
+        wasm_memory_threshold: None,
     };
 
-    let update_args = UpdateSettingsArgument {
+    let update_args = UpdateSettingsArgs {
         canister_id,
         settings,
     };
 
-    match update_settings(update_args).await {
+    match update_settings(&update_args).await {
         Ok(()) => {
             ic_cdk::println!(
                 "Successfully handed off controllers for canister {} to user {}",
@@ -194,10 +196,10 @@ pub async fn handoff_controllers(canister_id: Principal, user: Principal) -> Res
 
             Ok(())
         }
-        Err((rejection_code, msg)) => {
+        Err(error) => {
             let error_msg = format!(
-                "Failed to update canister settings for handoff: {:?} - {}",
-                rejection_code, msg
+                "Failed to update canister settings for handoff: {:?}",
+                error
             );
 
             ic_cdk::println!("Controller handoff failed: {}", error_msg);

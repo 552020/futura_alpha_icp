@@ -795,7 +795,7 @@ mod tests {
 
     #[test]
     fn test_generate_export_manifest() {
-        let (user, capsule) = setup_test_capsule_with_data();
+        let (_user, capsule) = setup_test_capsule_with_data();
         let memories: Vec<(String, types::Memory)> = capsule
             .memories
             .iter()
