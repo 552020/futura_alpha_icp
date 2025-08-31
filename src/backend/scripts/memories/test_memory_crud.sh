@@ -17,13 +17,13 @@ FAILED_TESTS=0
 # Helper function to check if response indicates success
 is_success() {
     local response="$1"
-    echo "$response" | grep -q "3_092_129_219 = true"
+    echo "$response" | grep -q "success = true"
 }
 
 # Helper function to check if response indicates failure
 is_failure() {
     local response="$1"
-    echo "$response" | grep -q "3_092_129_219 = false"
+    echo "$response" | grep -q "success = false"
 }
 
 # Helper function to increment test counters
@@ -73,7 +73,7 @@ upload_test_memory() {
     local result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local memory_id=$(echo "$result" | grep -o '1_810_021_785 = opt "[^"]*"' | sed 's/1_810_021_785 = opt "\([^"]*\)"/\1/')
+        local memory_id=$(echo "$result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
         echo "$memory_id"
         return 0
     else
@@ -471,7 +471,7 @@ test_list_empty_memories() {
     local result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
     
     # Should return a successful response with memories array (empty or populated)
-    if echo "$result" | grep -q "3_092_129_219 = true" && echo "$result" | grep -q "2_357_035_423 = vec"; then
+    if echo "$result" | grep -q "success = true" && echo "$result" | grep -q "memories = vec"; then
         echo_info "Memory list query successful"
         return 0
     else
@@ -494,7 +494,7 @@ test_list_memories_after_upload() {
     local result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
     
     # Should return success and contain our uploaded memories
-    if echo "$result" | grep -q "3_092_129_219 = true" && echo "$result" | grep -q "2_357_035_423 = vec"; then
+    if echo "$result" | grep -q "success = true" && echo "$result" | grep -q "memories = vec"; then
         # Check if our memory IDs are in the result
         if echo "$result" | grep -q "$memory_id1" && echo "$result" | grep -q "$memory_id2"; then
             echo_info "Memory list contains uploaded memories"
@@ -522,9 +522,9 @@ test_list_memories_structure() {
     local result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
     
     # Check for expected structure fields
-    if echo "$result" | grep -q "3_092_129_219 = true" && \
-       echo "$result" | grep -q "2_357_035_423 = vec" && \
-       echo "$result" | grep -q "2_584_819_143 = "; then
+    if echo "$result" | grep -q "success = true" && \
+       echo "$result" | grep -q "memories = vec" && \
+       echo "$result" | grep -q "message = "; then
         echo_info "Memory list has correct response structure"
         return 0
     else

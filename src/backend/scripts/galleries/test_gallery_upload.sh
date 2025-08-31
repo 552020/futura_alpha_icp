@@ -72,8 +72,8 @@ upload_test_memory() {
     local memory_data=$(create_test_memory_data "$content" "$name")
     local result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
     
-    if echo "$result" | grep -q "3_092_129_219 = true"; then
-        local memory_id=$(echo "$result" | grep -o '1_810_021_785 = opt "[^"]*"' | sed 's/1_810_021_785 = opt "\([^"]*\)"/\1/')
+    if echo "$result" | grep -q "success = true"; then
+        local memory_id=$(echo "$result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
         echo "$memory_id"
         return 0
     else
