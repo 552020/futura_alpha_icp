@@ -443,7 +443,7 @@
     - _Requirements: 7.2_
     - _Commit: `test: add gallery upload functionality tests`_
 
-  - [ ] 18.5 Test gallery CRUD operations
+  - [x] 18.5 Test gallery CRUD operations
 
     - Create `test_gallery_crud.sh` for gallery management operations
     - Test `update_gallery` endpoint with different update scenarios

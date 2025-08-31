@@ -170,7 +170,7 @@ test_retrieve_uploaded_memory() {
     local retrieve_result=$(dfx canister call backend get_memory_from_capsule "\"$memory_id\"" 2>/dev/null)
     
     # Check if retrieval was successful
-    if echo "$retrieve_result" | grep -q "opt (record"; then
+    if echo "$retrieve_result" | grep -q "opt record" && echo "$retrieve_result" | grep -q "id = \"$memory_id\""; then
         echo_info "Memory retrieval successful for ID: $memory_id"
         return 0
     else
@@ -210,7 +210,7 @@ test_memory_storage_persistence() {
     for i in {1..3}; do
         local retrieve_result=$(dfx canister call backend get_memory_from_capsule "\"$memory_id\"" 2>/dev/null)
         
-        if ! echo "$retrieve_result" | grep -q "opt (record"; then
+        if ! echo "$retrieve_result" | grep -q "opt record"; then
             echo_info "Memory persistence failed on retrieval $i"
             return 1
         fi

@@ -14,6 +14,12 @@ echo "Canister ID: $CANISTER_ID"
 echo "Identity: $IDENTITY"
 echo ""
 
+# Register user first (required for memory operations)
+echo "👤 Registering user..."
+REGISTER_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID register)
+echo "Registration result: $REGISTER_RESULT"
+echo ""
+
 # Check if we have a memory ID from previous test
 if [ ! -f /tmp/test_memory_id.txt ]; then
     echo "❌ No memory ID found. Please run test_add_memory.sh first."
@@ -33,7 +39,7 @@ echo "$RESULT"
 echo ""
 
 # Check if the call was successful
-if echo "$RESULT" | grep -q '"success" : true'; then
+if echo "$RESULT" | grep -q 'success = true'; then
     echo "✅ Test PASSED: Memory deleted successfully"
     
     # Verify deletion by trying to get the memory again

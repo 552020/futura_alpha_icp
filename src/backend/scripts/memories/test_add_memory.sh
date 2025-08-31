@@ -14,38 +14,40 @@ echo "Canister ID: $CANISTER_ID"
 echo "Identity: $IDENTITY"
 echo ""
 
-# Create test memory data
+# Register user first (required for memory operations)
+echo "👤 Registering user..."
+REGISTER_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID register)
+echo "Registration result: $REGISTER_RESULT"
+echo ""
+
+# Create test memory data in Candid format
 echo "📝 Creating test memory data..."
-cat > /tmp/test_memory_data.json << 'EOF'
-{
-  "blob_ref": {
-    "kind": {
-      "ICPCapsule": null
-    },
-    "locator": "test_canister:test_key",
-    "hash": null
-  },
-  "data": "SGVsbG8gV29ybGQ="
-}
-EOF
+TEST_MEMORY_DATA='(record {
+  blob_ref = record {
+    kind = variant { ICPCapsule };
+    locator = "test_canister:test_key";
+    hash = null;
+  };
+  data = opt blob "SGVsbG8gV29ybGQ=";
+})'
 
 echo "✅ Test memory data created"
 echo ""
 
 # Call add_memory_to_capsule endpoint
 echo "🚀 Calling add_memory_to_capsule..."
-RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID add_memory_to_capsule "$(cat /tmp/test_memory_data.json)")
+RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID add_memory_to_capsule "$TEST_MEMORY_DATA")
 
 echo "📊 Result:"
 echo "$RESULT"
 echo ""
 
 # Check if the call was successful
-if echo "$RESULT" | grep -q '"success" : true'; then
+if echo "$RESULT" | grep -q 'success = true'; then
     echo "✅ Test PASSED: Memory added successfully"
     
     # Extract memory ID for further testing
-    MEMORY_ID=$(echo "$RESULT" | grep -o '"memory_id" : "[^"]*"' | cut -d'"' -f4)
+    MEMORY_ID=$(echo "$RESULT" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
     echo "📋 Memory ID: $MEMORY_ID"
     
     # Save memory ID for other tests

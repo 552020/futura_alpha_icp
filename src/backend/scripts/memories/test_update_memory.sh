@@ -14,63 +14,86 @@ echo "Canister ID: $CANISTER_ID"
 echo "Identity: $IDENTITY"
 echo ""
 
-# Check if we have a memory ID from previous test
+# Check if we have a memory ID from previous test, if not create one
 if [ ! -f /tmp/test_memory_id.txt ]; then
-    echo "❌ No memory ID found. Please run test_add_memory.sh first."
-    exit 1
+    echo "📝 No existing memory ID found. Creating a test memory first..."
+    
+    # Register user first (required for memory operations)
+    echo "👤 Registering user..."
+    REGISTER_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID register)
+    echo "Registration result: $REGISTER_RESULT"
+    
+    # Create test memory data in Candid format
+    TEST_MEMORY_DATA='(record {
+      blob_ref = record {
+        kind = variant { ICPCapsule };
+        locator = "test_update_memory:test_key";
+        hash = null;
+      };
+      data = opt blob "VGVzdCBtZW1vcnkgZm9yIHVwZGF0ZSB0ZXN0";
+    })'
+    
+    # Add the memory
+    echo "🚀 Adding test memory..."
+    ADD_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID add_memory_to_capsule "$TEST_MEMORY_DATA")
+    
+    if echo "$ADD_RESULT" | grep -q 'success = true'; then
+        MEMORY_ID=$(echo "$ADD_RESULT" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
+        echo "$MEMORY_ID" > /tmp/test_memory_id.txt
+        echo "✅ Test memory created with ID: $MEMORY_ID"
+    else
+        echo "❌ Failed to create test memory: $ADD_RESULT"
+        exit 1
+    fi
+else
+    MEMORY_ID=$(cat /tmp/test_memory_id.txt)
 fi
-
-MEMORY_ID=$(cat /tmp/test_memory_id.txt)
 echo "📋 Using Memory ID: $MEMORY_ID"
 echo ""
 
-# Create test update data
+# Create test update data in Candid format
 echo "📝 Creating test update data..."
-cat > /tmp/test_update_data.json << 'EOF'
-{
-  "info": {
-    "memory_type": {
-      "Note": null
-    },
-    "name": "Updated Test Memory",
-    "content_type": "text/plain",
-    "created_at": 0,
-    "updated_at": 0,
-    "uploaded_at": 0,
-    "date_of_memory": null
-  },
-  "metadata": null,
-  "access": null,
-  "data": null
-}
-EOF
+TEST_UPDATE_DATA='(record {
+  info = opt (record {
+    name = "Updated Test Memory";
+    content_type = "text/plain";
+    memory_type = variant { Note };
+    date_of_memory = null;
+    created_at = 1640995200000000000;
+    updated_at = 1640995200000000000;
+    uploaded_at = 1640995200000000000;
+  });
+  access = null;
+  metadata = null;
+  data = null;
+})'
 
 echo "✅ Test update data created"
 echo ""
 
 # Call update_memory_in_capsule endpoint
 echo "🚀 Calling update_memory_in_capsule..."
-RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID update_memory_in_capsule "(\"$MEMORY_ID\", $(cat /tmp/test_update_data.json))")
+RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID update_memory_in_capsule "(\"$MEMORY_ID\", $TEST_UPDATE_DATA)")
 
 echo "📊 Result:"
 echo "$RESULT"
 echo ""
 
 # Check if the call was successful
-if echo "$RESULT" | grep -q '"success" : true'; then
+if echo "$RESULT" | grep -q 'success = true'; then
     echo "✅ Test PASSED: Memory updated successfully"
     
     # Verify the update by getting the memory again
     echo "🔍 Verifying update by retrieving memory..."
     UPDATED_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID get_memory_from_capsule "(\"$MEMORY_ID\")")
     
-    if echo "$UPDATED_RESULT" | grep -q '"name" : "Updated Test Memory"'; then
+    if echo "$UPDATED_RESULT" | grep -q 'name = "Updated Test Memory"'; then
         echo "✅ Verification PASSED: Memory name updated correctly"
     else
         echo "⚠️  Verification WARNING: Memory name may not have been updated"
     fi
     
-    if echo "$UPDATED_RESULT" | grep -q '"Note"'; then
+    if echo "$UPDATED_RESULT" | grep -q 'variant { Note }'; then
         echo "✅ Verification PASSED: Memory type updated to Note"
     else
         echo "⚠️  Verification WARNING: Memory type may not have been updated"
