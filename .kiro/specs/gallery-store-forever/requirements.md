@@ -325,3 +325,15 @@ The "Store Forever" feature enables users to permanently store their photo galle
 3. WHEN querying storage status THEN ICP SHALL only report presence of individual memories, not gallery-level aggregations
 4. WHEN aggregating gallery status THEN Web2 SHALL compute gallery_presence via views that combine ICP presence with Web2 membership
 5. WHEN storing memories THEN ICP SHALL track only artifact presence (metadata, asset) per memory, not gallery relationships
+
+### Requirement 26
+
+**User Story:** As a system architect, I want Web2 and ICP to share canonical UUIDs for galleries and memories, so that data can be consistently referenced across both systems without ID mapping complexity.
+
+#### Acceptance Criteria
+
+1. WHEN Web2 creates galleries or memories THEN the system SHALL generate canonical lowercase hyphenated UUID v4 identifiers that will be used across both Web2 and ICP
+2. WHEN ICP receives gallery or memory data THEN the system SHALL accept and preserve the UUID provided by Web2 without generating new IDs
+3. WHEN ICP stores galleries THEN the system SHALL use the gallery.id provided in GalleryData without overwriting it with generated IDs
+4. WHEN ICP stores memories THEN the system SHALL accept memory_id as a parameter and use it as the canonical identifier without generating timestamp-based IDs
+5. WHEN the same UUID is used across systems THEN operations SHALL be idempotent, returning success for existing entities rather than creating duplicates

@@ -14,6 +14,99 @@ The "Store Forever" feature enables users to permanently store their photo galle
 - **Idempotent Operations**: All ICP writes are safe to retry with content hash verification
 - **Incremental Enhancement**: Build upon existing error handling rather than replacing it
 
+## UUID Mapping Strategy (CRITICAL)
+
+**Problem**: The current ICP backend generates its own IDs instead of accepting canonical UUIDs from Web2, which breaks the core requirement for shared identity between systems.
+
+**Current Issue (❌ WRONG)**:
+
+```rust
+// ICP Backend currently does this:
+let gallery_id = format!("gallery_{}", ic_cdk::api::time());  // ❌ Generates new ID
+let memory_id = format!("memory_{}", ic_cdk::api::time());    // ❌ Generates new ID
+
+// This breaks UUID mapping between Web2 and ICP!
+```
+
+**Required Solution (✅ CORRECT)**:
+
+```rust
+// ICP Backend should do this:
+pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
+    let gallery_id = gallery_data.gallery.id.clone();  // ✅ Use Web2 UUID
+    // Don't overwrite gallery.id - it's already set by Web2!
+}
+
+pub fn add_memory_to_capsule(memory_id: String, memory_data: MemoryData) -> MemoryOperationResponse {
+    // ✅ Accept memory_id parameter from Web2
+    // Use the canonical UUID provided by Web2
+}
+```
+
+**UUID Strategy Across Systems**:
+
+1. **Web2 (PostgreSQL)**:
+
+   - Stores UUIDs as `uuid` type (16-byte binary)
+   - Generates canonical lowercase hyphenated UUID v4 format
+   - Example: `550e8400-e29b-41d4-a716-446655440000`
+
+2. **ICP Canister**:
+
+   - Accepts UUIDs as `String` type (canonical string form)
+   - Must NOT generate new IDs - accepts from Web2
+   - Uses same UUID format as Web2
+
+3. **Frontend**:
+
+   - Treats UUIDs as strings throughout
+   - No conversion needed - passes UUIDs between systems
+
+4. **Conversion**:
+   - PostgreSQL → ICP: Use `uuid::text` for string conversion
+   - ICP → PostgreSQL: Direct string to UUID conversion
+
+**Idempotency Through UUID Sharing**:
+
+```rust
+// Check if entity already exists with this UUID
+if let Some(existing_gallery) = get_gallery_by_id(gallery_id.clone()) {
+    return StoreGalleryResponse {
+        success: true,
+        gallery_id: Some(gallery_id),
+        message: "Gallery already exists with this UUID".to_string(),
+        // Return success for idempotent operation
+    };
+}
+```
+
+**Required ICP Backend Changes**:
+
+- Remove all ID generation logic (`format!("gallery_{}", time)`)
+- Accept external UUIDs in function parameters
+- Don't overwrite `gallery.id` or `memory.id` fields
+- Add idempotent checks for existing UUIDs
+- Update function signatures to accept `memory_id: String` parameter
+
+**Function Signature Updates**:
+
+```rust
+// Gallery Functions - no signature change needed, just behavior change:
+pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
+    // Use gallery_data.gallery.id instead of generating new ID
+}
+
+// Memory Functions - signature change required:
+// CURRENT: pub fn add_memory_to_capsule(memory_data: MemoryData) -> MemoryOperationResponse
+// REQUIRED: pub fn add_memory_to_capsule(memory_id: String, memory_data: MemoryData) -> MemoryOperationResponse
+```
+
+**Files Requiring Changes**:
+
+- `src/backend/src/capsule.rs` - Remove ID generation, accept external UUIDs
+- `src/backend/src/types.rs` - No changes needed (already uses String)
+- All functions that create galleries/memories need UUID acceptance logic
+
 ## Architecture
 
 ### High-Level Architecture
@@ -295,26 +388,223 @@ function GalleryCard({ gallery }: { gallery: GalleryWithItems }) {
 
 ### 2. Backend API Components
 
-#### 2.1 New API Endpoints
+#### 2.1 Storage Status API Endpoints
 
-**Storage Status Endpoint** (`/api/galleries/[id]/storage-status`)
+**Design Considerations for Storage Status APIs:**
+
+The storage status API endpoints serve as the bridge between the frontend UI components and the database views that track ICP storage progress. These endpoints must be highly optimized since they'll be called frequently for gallery lists, detail pages, and real-time progress updates.
+
+**Performance Requirements:**
+
+- Sub-100ms response times for single gallery/memory queries
+- Batch endpoints must handle up to 100 items efficiently
+- Leverage existing optimized database views (`memory_presence`, `gallery_presence`)
+- Implement proper caching strategies for frequently accessed data
+
+**Security & Access Control:**
+
+- All endpoints require authentication via NextAuth session
+- Gallery endpoints: User must own gallery OR have shared access (public/direct/group/relationship)
+- Memory endpoints: User must own memory OR have access via gallery sharing
+- Batch endpoints: Filter results to only include accessible items (no 403 errors for inaccessible items)
+
+**API Design Patterns:**
+
+- Consistent response format: `{ success: boolean, data: T, error?: string }`
+- HTTP status codes: 200 (success), 401 (unauthorized), 404 (not found), 400 (bad request), 500 (server error)
+- Query parameters for filtering and pagination
+- Reuse existing utilities and maintain consistency with current API patterns
+
+**Detailed API Specifications:**
+
+**1. GET /api/galleries/[id]/storage-status**
 
 ```typescript
-// GET /api/galleries/[id]/storage-status
+// Purpose: Get storage status for a specific gallery
+// Authentication: Required (user must have gallery access)
+// Performance: Uses optimized gallery_presence view
 export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const session = await auth();
+  if (!session?.user?.id) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
   const galleryId = params.id;
 
-  // Query gallery_presence view
-  const status = await db.select().from(galleryPresence).where(eq(galleryPresence.galleryId, galleryId)).limit(1);
+  // Check gallery access (owner, public, or shared)
+  const hasAccess = await checkGalleryAccess(galleryId, session.user.id);
+  if (!hasAccess) return Response.json({ error: "Gallery not found" }, { status: 404 });
+
+  // Query gallery_presence view for optimized storage status
+  const result = await db.execute(getGalleryPresenceById(galleryId));
+  const status = result.rows[0] as DBGalleryPresence;
 
   return Response.json({
-    icp_complete: status[0]?.icp_complete || false,
-    partial: status[0]?.partial_icp || false,
-    memory_count: status[0]?.memory_count || 0,
-    icp_memory_count: status[0]?.icp_memory_count || 0,
+    success: true,
+    data: {
+      galleryId,
+      totalMemories: status?.total_memories || 0,
+      icpCompleteMemories: status?.icp_complete_memories || 0,
+      icpComplete: status?.icp_complete || false,
+      icpAny: status?.icp_any || false,
+      icpCompletePercentage: status ? Math.round((status.icp_complete_memories / status.total_memories) * 100) : 0,
+      status: status?.icp_complete ? "stored_forever" : status?.icp_any ? "partially_stored" : "web2_only",
+      lastUpdated: new Date(),
+    },
   });
 }
 ```
+
+**2. GET /api/memories/[id]/storage-status**
+
+```typescript
+// Purpose: Get storage status for a specific memory
+// Authentication: Required (user must have memory access)
+// Query params: ?type=image|video|note|document|audio (required)
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const { searchParams } = new URL(request.url);
+  const memoryType = searchParams.get("type");
+  const memoryId = params.id;
+
+  if (!memoryType || !["image", "video", "note", "document", "audio"].includes(memoryType)) {
+    return Response.json({ error: "Invalid or missing type parameter" }, { status: 400 });
+  }
+
+  // Check memory access via ownership or gallery sharing
+  const hasAccess = await checkMemoryAccess(memoryId, memoryType, session.user.id);
+  if (!hasAccess) return Response.json({ error: "Memory not found" }, { status: 404 });
+
+  // Query memory_presence view
+  const result = await db.execute(getMemoryPresenceById(memoryId, memoryType));
+  const presence = result.rows[0] as DBMemoryPresence;
+
+  return Response.json({
+    success: true,
+    data: {
+      memoryId,
+      memoryType,
+      metaNeon: presence?.meta_neon || false,
+      assetBlob: presence?.asset_blob || false,
+      metaIcp: presence?.meta_icp || false,
+      assetIcp: presence?.asset_icp || false,
+      storageStatus: {
+        neon: presence?.meta_neon || false,
+        blob: presence?.asset_blob || false,
+        icp: (presence?.meta_icp && presence?.asset_icp) || false,
+        icpPartial: presence?.meta_icp || presence?.asset_icp || false,
+      },
+      overallStatus:
+        presence?.meta_icp && presence?.asset_icp
+          ? "stored_forever"
+          : presence?.meta_icp || presence?.asset_icp
+          ? "partially_stored"
+          : "web2_only",
+    },
+  });
+}
+```
+
+**3. GET /api/galleries/storage-status (Batch)**
+
+```typescript
+// Purpose: Get storage status for multiple galleries
+// Query params: ?ids=gallery1,gallery2,gallery3 (max 100)
+// Authentication: Required (filters to accessible galleries only)
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const idsParam = searchParams.get("ids");
+
+  if (!idsParam) return Response.json({ error: "Missing ids parameter" }, { status: 400 });
+
+  const galleryIds = idsParam.split(",").slice(0, 100); // Limit to 100
+
+  // Filter to accessible galleries only (no 403 errors)
+  const accessibleGalleries = await filterAccessibleGalleries(galleryIds, session.user.id);
+
+  // Batch query gallery_presence view
+  const results = await Promise.all(
+    accessibleGalleries.map(async (galleryId) => {
+      const result = await db.execute(getGalleryPresenceById(galleryId));
+      const status = result.rows[0] as DBGalleryPresence;
+      return {
+        galleryId,
+        totalMemories: status?.total_memories || 0,
+        icpComplete: status?.icp_complete || false,
+        icpAny: status?.icp_any || false,
+        status: status?.icp_complete ? "stored_forever" : status?.icp_any ? "partially_stored" : "web2_only",
+      };
+    })
+  );
+
+  return Response.json({ success: true, data: results });
+}
+```
+
+**4. GET /api/memories/storage-status (Batch)**
+
+```typescript
+// Purpose: Get storage status for multiple memories
+// Query params: ?ids=memory1,memory2&types=image,video (arrays must match length)
+// Authentication: Required (filters to accessible memories only)
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const idsParam = searchParams.get("ids");
+  const typesParam = searchParams.get("types");
+
+  if (!idsParam || !typesParam) {
+    return Response.json({ error: "Missing ids or types parameter" }, { status: 400 });
+  }
+
+  const memoryIds = idsParam.split(",").slice(0, 100);
+  const memoryTypes = typesParam.split(",").slice(0, 100);
+
+  if (memoryIds.length !== memoryTypes.length) {
+    return Response.json({ error: "ids and types arrays must have same length" }, { status: 400 });
+  }
+
+  // Filter to accessible memories and batch query
+  const results = await Promise.all(
+    memoryIds.map(async (memoryId, index) => {
+      const memoryType = memoryTypes[index];
+      const hasAccess = await checkMemoryAccess(memoryId, memoryType, session.user.id);
+
+      if (!hasAccess) return null; // Filter out inaccessible memories
+
+      const result = await db.execute(getMemoryPresenceById(memoryId, memoryType));
+      const presence = result.rows[0] as DBMemoryPresence;
+
+      return {
+        memoryId,
+        memoryType,
+        overallStatus:
+          presence?.meta_icp && presence?.asset_icp
+            ? "stored_forever"
+            : presence?.meta_icp || presence?.asset_icp
+            ? "partially_stored"
+            : "web2_only",
+      };
+    })
+  );
+
+  return Response.json({
+    success: true,
+    data: results.filter(Boolean), // Remove null entries
+  });
+}
+```
+
+**Error Handling Strategy:**
+
+- 401 Unauthorized: Missing or invalid authentication
+- 404 Not Found: Gallery/memory doesn't exist or user lacks access
+- 400 Bad Request: Invalid parameters (malformed UUIDs, invalid types, etc.)
+- 500 Internal Server Error: Database errors, view query failures
+- Rate Limiting: Implement per-user rate limits for batch endpoints (100 requests/minute)
+
+**Caching Strategy:**
+
+- Cache gallery presence data for 30 seconds (storage status changes infrequently)
+- Use Redis or in-memory cache for frequently accessed galleries
+- Implement cache invalidation on storage_edges updates
+- Consider ETags for conditional requests to reduce bandwidth
 
 **Storage Edges Update Endpoint** (`/api/storage/edges`)
 

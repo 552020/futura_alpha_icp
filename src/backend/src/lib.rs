@@ -170,9 +170,10 @@ pub async fn delete_gallery(gallery_id: String) -> types::DeleteGalleryResponse 
 // Memory management endpoints
 #[ic_cdk::update]
 pub async fn add_memory_to_capsule(
+    memory_id: String,
     memory_data: types::MemoryData,
 ) -> types::MemoryOperationResponse {
-    capsule::add_memory_to_capsule(memory_data)
+    capsule::add_memory_to_capsule(memory_id, memory_data)
 }
 
 #[ic_cdk::query]

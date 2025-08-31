@@ -15,6 +15,103 @@ This implementation plan transforms the existing "Store Forever" UI components a
   - Add memory presence verification endpoints
   - _Requirements: 17.1, 18.1, 22.1, 23.1, 24.3_
 
+- [x] 1.0 Fix UUID Mapping in ICP Backend (CRITICAL)
+
+  **Goal**: Fix the critical issue where ICP backend generates its own IDs instead of accepting canonical UUIDs from Web2, which breaks the core "Store Forever" feature.
+
+  **Current Problem**:
+
+  - ICP backend generates IDs: `format!("gallery_{}", ic_cdk::api::time())`
+  - This breaks UUID mapping between Web2 and ICP systems
+  - Same galleries/memories have different IDs in each system
+
+  **Required Changes**:
+
+  1. **Update Gallery Creation (capsule.rs)**:
+
+     - REMOVE: `let gallery_id = format!("gallery_{}", ic_cdk::api::time());`
+     - CHANGE: `gallery.id = gallery_id.clone();` → Don't overwrite gallery.id
+     - USE: `let gallery_id = gallery_data.gallery.id.clone();` (accept Web2 UUID)
+
+  2. **Update Memory Creation (capsule.rs)**:
+
+     - REMOVE: `memory_id = format!("memory_{}", ic_cdk::api::time());`
+     - ADD: `memory_id: String` parameter to function signature
+     - USE: Accept memory_id from Web2 instead of generating
+
+  3. **Add Idempotent Operations**:
+
+     - Check if gallery/memory already exists with UUID
+     - Return success for existing entities (don't create duplicates)
+     - Example: `if let Some(existing) = get_gallery_by_id(gallery_id) { return success; }`
+
+  4. **Update Function Signatures**:
+     - `store_gallery_forever(gallery_data: GalleryData)` - no change, just don't overwrite gallery.id
+     - `add_memory_to_capsule(memory_id: String, memory_data: MemoryData)` - add memory_id parameter
+
+  **Files to Modify**:
+
+  - `src/backend/src/capsule.rs` - Remove ID generation, accept external UUIDs
+  - `src/backend/src/types.rs` - No changes needed (already uses String)
+  - Update all functions that create galleries/memories
+
+  **Testing**:
+
+  - Verify same UUID works in both Web2 and ICP
+  - Test idempotent operations (same UUID twice should succeed)
+  - Ensure no ID generation occurs in ICP backend
+
+  **UUID Strategy**:
+
+  - PostgreSQL: `uuid` type (16-byte binary)
+  - ICP Canister: `String` type (canonical string form)
+  - Frontend: String throughout
+  - Conversion: Use `uuid::text` for Postgres → ICP
+
+  **Code Examples**:
+
+  ```rust
+  // CURRENT (❌ WRONG):
+  pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
+      let gallery_id = format!("gallery_{}", ic_cdk::api::time());  // ❌ Generates new ID
+      let mut gallery = gallery_data.gallery;
+      gallery.id = gallery_id.clone();  // ❌ Overwrites external UUID
+      // ...
+  }
+
+  // REQUIRED (✅ CORRECT):
+  pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
+      let gallery_id = gallery_data.gallery.id.clone();  // ✅ Use Web2 UUID
+      let mut gallery = gallery_data.gallery;
+      // gallery.id is already set by Web2 - don't overwrite it!
+
+      // Check if gallery already exists with this UUID (idempotency)
+      if let Some(existing_gallery) = get_gallery_by_id(gallery_id.clone()) {
+          return StoreGalleryResponse {
+              success: true,
+              gallery_id: Some(gallery_id),
+              message: "Gallery already exists with this UUID".to_string(),
+              // Return success for idempotent operation
+          };
+      }
+      // Continue with creation...
+  }
+
+  // Memory function signature update:
+  // CURRENT: pub fn add_memory_to_capsule(memory_data: MemoryData) -> MemoryOperationResponse
+  // REQUIRED: pub fn add_memory_to_capsule(memory_id: String, memory_data: MemoryData) -> MemoryOperationResponse
+  ```
+
+  **Why This is Critical**:
+  This UUID mapping issue is **blocking the entire "Store Forever" feature** because:
+
+  - Web2 creates galleries with UUID `550e8400-e29b-41d4-a716-446655440000`
+  - ICP generates its own ID like `gallery_1703123456789`
+  - Systems can't communicate about the same entity
+  - Storage status tracking breaks completely
+
+  _Requirements: 26.1, 26.2, 26.3, 26.4, 26.5_
+
 - [x] 1.1 Create Minimal ICP Error Model for MVP
 
   - Define basic ErrorCode enum with essential variants (Unauthorized, AlreadyExists, NotFound, InvalidHash, Internal)
@@ -155,6 +252,96 @@ This implementation plan transforms the existing "Store Forever" UI components a
   - Skip detailed audit logging and quotas for MVP (can be added post-MVP)
   - _Requirements: 17.1 (partial), 22.3 (basic)_
 
+- [ ] 1.6 Add Progress Tracking API for Large File Uploads
+
+  **Goal**: Create API endpoints to expose upload progress data for frontend progress tracking and user feedback.
+
+  **What to implement**:
+
+  1. **get_upload_progress endpoint** - Query upload session progress
+
+     - Function signature: `pub fn get_upload_progress(session_id: String) -> ICPResult<UploadProgressResponse>`
+     - Return: `{ session_id, memory_id, total_chunks, chunks_received, bytes_received, total_size, progress_percentage, estimated_time_remaining, status: "active"|"completed"|"expired"|"failed" }`
+     - Calculate progress percentage: `(chunks_received / total_chunks) * 100`
+     - Estimate time remaining based on upload rate (bytes_received / elapsed_time)
+     - Handle expired/failed sessions gracefully
+
+  2. **get_user_upload_sessions endpoint** - List user's active upload sessions
+
+     - Function signature: `pub fn get_user_upload_sessions() -> ICPResult<UserUploadSessionsResponse>`
+     - Return: Array of active upload sessions for the caller
+     - Include progress data for each session
+     - Filter out expired/completed sessions
+     - Limit to max 10 sessions per user for performance
+
+  3. **Add these endpoints to lib.rs** as public canister functions with #[ic_cdk::query] attributes
+
+  **Integration Points**:
+
+  - Support Task 4.2 (Detailed Progress Reporting) in frontend modal
+  - Enable real-time progress updates in UI components
+  - Provide data for progress bars and time estimates
+  - Support session monitoring and cleanup
+
+  **Performance Considerations**:
+
+  - Use efficient queries to stable memory
+  - Cache progress calculations for active sessions
+  - Implement rate limiting for progress queries
+  - Clean up expired session data periodically
+
+  _Requirements: 2.2, 10.2, 20.1_
+
+- [ ] 1.7 Implement Backend Retry Logic for Failed ICP Operations
+
+  **Goal**: Add automatic retry mechanisms at the backend level for transient failures and network issues.
+
+  **What to implement**:
+
+  1. **Retry wrapper for ICP operations** - Automatic retry for transient failures
+
+     - Create `retry_icp_operation<T>(operation: Fn, max_retries: u32, backoff_ms: u32) -> ICPResult<T>`
+     - Implement exponential backoff with jitter: `delay = min(base_delay * 2^attempt + random_jitter, max_delay)`
+     - Retry only on specific error types: `ICPErrorCode::Internal` (network issues), timeout errors
+     - Skip retry for permanent errors: `Unauthorized`, `NotFound`, `InvalidHash`, `AlreadyExists`
+
+  2. **Enhanced error categorization** - Distinguish retryable vs non-retryable errors
+
+     - Add `is_retryable_error(error: &ICPErrorCode) -> bool` helper function
+     - Categorize errors: Network (retryable), Validation (not retryable), Auth (not retryable)
+     - Implement circuit breaker pattern for repeated failures
+     - Track failure rates per operation type
+
+  3. **Retry configuration** - Configurable retry parameters
+
+     - Default: 3 retries, 1000ms base delay, 10000ms max delay
+     - Allow per-operation override of retry settings
+     - Implement retry budget per user to prevent abuse
+     - Add retry attempt tracking in session data
+
+  4. **Apply retry logic to critical operations**:
+
+     - `put_chunk` - Retry failed chunk uploads
+     - `commit_asset` - Retry finalization failures
+     - `upsert_metadata` - Retry metadata storage failures
+     - Skip retry for `begin_asset_upload` (session creation)
+
+  **Error Handling**:
+
+  - Preserve original error context in retry attempts
+  - Log retry attempts and success rates for monitoring
+  - Implement graceful degradation when retries exhausted
+  - Provide detailed error messages for debugging
+
+  **Integration Points**:
+
+  - Enhance existing error handling in Tasks 1.3 and 1.4
+  - Support Task 3.3 (Frontend Error Handling) with better error categorization
+  - Enable Task 4.3 (Modal Error Recovery) with retry information
+  - Provide data for Task 7.4 (Production Monitoring)
+
+  _Requirements: 6.1, 6.2, 19.1, 22.1_
+
 - [ ] 2. Enhance Web2 Backend API for Storage Integration
 
   - Create storage status endpoints using existing views
@@ -164,11 +351,57 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
 - [ ] 2.1 Create Storage Status API Endpoints
 
-  - Implement GET /api/galleries/[id]/storage-status using gallery_presence views
-  - Create GET /api/memories/[id]/storage-status using memory_presence views
-  - Add batch storage status endpoint for multiple galleries/memories
-  - Implement proper error handling and response formatting
-  - _Requirements: 5.1, 5.2, 16.1_
+  **Goal**: Create dedicated, optimized endpoints for querying storage status that the frontend can use to display storage indicators, manage "Store Forever" button states, and show progress during storage operations.
+
+  **Current State Analysis**:
+
+  - ✅ Database infrastructure exists: `storageEdges` table, `memory_presence` and `gallery_presence` views
+  - ✅ Existing APIs: `GET /api/memories/presence`, `GET /api/storage/edges`, gallery API with storage status
+  - ❌ Missing: Dedicated storage status endpoints, batch endpoints for multiple items
+
+  **What to implement**:
+
+  1. **GET /api/galleries/[id]/storage-status** - Dedicated gallery storage status endpoint
+
+     - Use `gallery_presence` view for optimized queries
+     - Return: `{ galleryId, totalMemories, icpCompleteMemories, icpComplete, icpAny, icpCompletePercentage, status: "stored_forever"|"partially_stored"|"web2_only" }`
+     - Authentication: Check user owns gallery OR gallery is shared with user
+     - Handle gallery access control (public galleries, shared galleries)
+
+  2. **GET /api/memories/[id]/storage-status** - Dedicated memory storage status endpoint
+
+     - Use `memory_presence` view for optimized queries
+     - Return: `{ memoryId, memoryType, metaNeon, assetBlob, metaIcp, assetIcp, storageStatus: {neon, blob, icp, icpPartial}, overallStatus }`
+     - Authentication: Check user owns memory OR memory is accessible via gallery sharing
+     - Support query param `?type=image|video|note|document|audio`
+
+  3. **GET /api/galleries/storage-status** - Batch gallery storage status (query param: `?ids=gallery1,gallery2,gallery3`)
+
+     - Limit max 100 galleries per request for performance
+     - Return array of gallery storage status objects
+     - Filter results to only galleries user has access to
+
+  4. **GET /api/memories/storage-status** - Batch memory storage status (query params: `?ids=memory1,memory2&types=image,video`)
+     - Limit max 100 memories per request for performance
+     - Return array of memory storage status objects
+     - Validate memory IDs and types match (same array length)
+
+  **Error Handling & Performance**:
+
+  - 401 Unauthorized, 404 Not Found, 403 Forbidden, 400 Bad Request, 500 Internal Server Error
+  - Use existing optimized views for performance
+  - Implement proper pagination for large result sets
+  - Reuse existing utilities: `addStorageStatusToGallery`, `getMemoryPresenceById`, `getGalleryPresenceById`
+  - Follow same response format patterns as existing APIs
+
+  **Integration Points**:
+
+  - Maintain consistency with existing `/api/memories/presence` endpoint
+  - Support frontend storage indicator components
+  - Enable "Store Forever" button state management
+  - Provide data for storage progress tracking
+
+  _Requirements: 5.1, 5.2, 16.1_
 
 - [ ] 2.2 Implement Storage Edges Management API
 

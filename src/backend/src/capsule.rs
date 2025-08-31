@@ -409,6 +409,9 @@ pub fn import_capsules_from_upgrade(capsule_data: Vec<(String, Capsule)>) {
 pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
     let caller = PersonRef::from_caller();
 
+    // Use the gallery ID provided by Web2 (don't generate new ID)
+    let gallery_id = gallery_data.gallery.id.clone();
+
     // Find caller's self-capsule (where caller is both subject and owner)
     let capsule = with_capsules(|capsules| {
         capsules
@@ -419,12 +422,19 @@ pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse 
 
     match capsule {
         Some(mut capsule) => {
-            // Generate unique gallery ID
-            let gallery_id = format!("gallery_{}", ic_cdk::api::time());
+            // Check if gallery already exists with this UUID (idempotency)
+            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
+                return StoreGalleryResponse {
+                    success: true,
+                    gallery_id: Some(gallery_id.clone()),
+                    icp_gallery_id: Some(gallery_id),
+                    message: "Gallery already exists with this UUID".to_string(),
+                    storage_status: GalleryStorageStatus::ICPOnly,
+                };
+            }
 
-            // Create gallery from data
+            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
             let mut gallery = gallery_data.gallery;
-            gallery.id = gallery_id.clone();
             gallery.owner_principal = match caller {
                 PersonRef::Principal(p) => p,
                 PersonRef::Opaque(_) => {
@@ -614,22 +624,32 @@ pub fn delete_gallery(gallery_id: String) -> DeleteGalleryResponse {
 // ============================================================================
 
 /// Add a memory to the caller's capsule
-pub fn add_memory_to_capsule(memory_data: MemoryData) -> MemoryOperationResponse {
+pub fn add_memory_to_capsule(
+    memory_id: String,
+    memory_data: MemoryData,
+) -> MemoryOperationResponse {
     let caller = PersonRef::from_caller();
 
-    // Find caller's self-capsule and add memory
-    let mut capsule_found = false;
-    let mut memory_id = String::new();
-
-    with_capsules_mut(|capsules| {
-        if let Some(capsule) = capsules
-            .values_mut()
+    // Find caller's self-capsule
+    let capsule = with_capsules(|capsules| {
+        capsules
+            .values()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-        {
-            capsule_found = true;
+            .cloned()
+    });
 
-            // Generate unique memory ID
-            memory_id = format!("memory_{}", ic_cdk::api::time());
+    match capsule {
+        Some(mut capsule) => {
+            // Check if memory already exists with this UUID (idempotency)
+            if capsule.memories.contains_key(&memory_id) {
+                return MemoryOperationResponse {
+                    success: true,
+                    memory_id: Some(memory_id),
+                    message: "Memory already exists with this UUID".to_string(),
+                };
+            }
+
+            // Use the memory ID provided by Web2 (don't generate new ID)
 
             // Create memory info
             let now = ic_cdk::api::time();
@@ -676,21 +696,23 @@ pub fn add_memory_to_capsule(memory_data: MemoryData) -> MemoryOperationResponse
             // Store memory in capsule
             capsule.memories.insert(memory_id.clone(), memory);
             capsule.touch(); // Update capsule timestamp
-        }
-    });
 
-    if !capsule_found {
-        return MemoryOperationResponse {
+            // Save updated capsule
+            with_capsules_mut(|capsules| {
+                capsules.insert(capsule.id.clone(), capsule);
+            });
+
+            MemoryOperationResponse {
+                success: true,
+                memory_id: Some(memory_id),
+                message: "Memory added successfully to capsule".to_string(),
+            }
+        }
+        None => MemoryOperationResponse {
             success: false,
             memory_id: None,
             message: "No capsule found for caller".to_string(),
-        };
-    }
-
-    MemoryOperationResponse {
-        success: true,
-        memory_id: Some(memory_id),
-        message: "Memory added successfully to capsule".to_string(),
+        },
     }
 }
 

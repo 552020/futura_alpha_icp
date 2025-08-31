@@ -69,8 +69,12 @@ upload_test_memory() {
     local content="$1"
     local name="$2"
     
+    # Generate a UUID for the memory (using timestamp + random for uniqueness)
+    local timestamp=$(date +%s)
+    local memory_uuid="memory-${timestamp}-${RANDOM}-${name}"
+    
     local memory_data=$(create_test_memory_data "$content" "$name")
-    local result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    local result=$(dfx canister call backend add_memory_to_capsule "(\"$memory_uuid\", $memory_data)" 2>/dev/null)
     
     if is_success "$result"; then
         local memory_id=$(echo "$result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
