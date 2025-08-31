@@ -10,7 +10,6 @@ mod admin;
 #[cfg(feature = "migration")]
 mod canister_factory;
 mod capsule;
-mod gallery;
 mod memory;
 mod types;
 // mod memories; // Disabled for now
@@ -134,24 +133,23 @@ pub fn list_my_capsules() -> Vec<types::CapsuleHeader> {
 pub async fn store_gallery_forever(
     gallery_data: types::GalleryData,
 ) -> types::StoreGalleryResponse {
-    let caller = ic_cdk::api::msg_caller();
-    gallery::store_gallery_forever(caller, gallery_data).await
+    capsule::store_gallery_forever(gallery_data)
 }
 
 #[ic_cdk::query]
 pub fn get_user_galleries(user_principal: Principal) -> Vec<types::Gallery> {
-    gallery::get_user_galleries(user_principal)
+    capsule::get_user_galleries(user_principal)
 }
 
 #[ic_cdk::query]
 pub fn get_my_galleries() -> Vec<types::Gallery> {
     let caller = ic_cdk::api::msg_caller();
-    gallery::get_user_galleries(caller)
+    capsule::get_user_galleries(caller)
 }
 
 #[ic_cdk::query]
 pub fn get_gallery_by_id(gallery_id: String) -> Option<types::Gallery> {
-    gallery::get_gallery_by_id(gallery_id)
+    capsule::get_gallery_by_id(gallery_id)
 }
 
 #[ic_cdk::update]
@@ -159,34 +157,16 @@ pub async fn update_gallery(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
 ) -> types::UpdateGalleryResponse {
-    let caller = ic_cdk::api::msg_caller();
-    gallery::update_gallery(caller, gallery_id, update_data).await
+    capsule::update_gallery(gallery_id, update_data)
 }
 
 #[ic_cdk::update]
 pub async fn delete_gallery(gallery_id: String) -> types::DeleteGalleryResponse {
-    let caller = ic_cdk::api::msg_caller();
-    gallery::delete_gallery(caller, gallery_id).await
+    capsule::delete_gallery(gallery_id)
 }
 
-#[ic_cdk::update]
-pub async fn register_user_with_principal(
-    user_data: types::UserPrincipalData,
-) -> types::RegisterUserResponse {
-    let caller = ic_cdk::api::msg_caller();
-    gallery::register_user_with_principal(caller, user_data).await
-}
-
-#[ic_cdk::update]
-pub async fn link_user_principal(user_data: types::UserPrincipalData) -> types::LinkUserResponse {
-    let caller = ic_cdk::api::msg_caller();
-    gallery::link_user_principal(caller, user_data).await
-}
-
-#[ic_cdk::query]
-pub fn get_user_principal_info(user_principal: Principal) -> Option<types::UserPrincipalData> {
-    gallery::get_user_principal_info(user_principal)
-}
+// Note: User principal management is handled through capsule registration
+// The existing register() and mark_bound() functions handle user principal management
 
 // Migration endpoints (only available with migration feature)
 #[cfg(feature = "migration")]
@@ -305,39 +285,23 @@ fn init() {
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Serialize capsules, admins, and gallery data before upgrade
+    // Serialize capsules and admins before upgrade
     let capsule_data = capsule::export_capsules_for_upgrade();
     let admin_data = admin::export_admins_for_upgrade();
-    let gallery_data = gallery::export_galleries_for_upgrade();
-    let user_galleries_data = gallery::export_user_galleries_for_upgrade();
-    let user_principals_data = gallery::export_user_principals_for_upgrade();
 
-    #[cfg(feature = "migration")]
+        #[cfg(feature = "migration")]
     {
         // Also serialize migration state if migration feature is enabled
         let migration_data = canister_factory::export_migration_state_for_upgrade();
-        ic_cdk::storage::stable_save((
-            capsule_data,
-            admin_data,
-            gallery_data,
-            user_galleries_data,
-            user_principals_data,
-            migration_data,
-        ))
-        .expect("Failed to save data to stable storage");
+        ic_cdk::storage::stable_save((capsule_data, admin_data, migration_data))
+            .expect("Failed to save data to stable storage");
     }
 
     #[cfg(not(feature = "migration"))]
     {
         // Save without migration data if migration feature is disabled
-        ic_cdk::storage::stable_save((
-            capsule_data,
-            admin_data,
-            gallery_data,
-            user_galleries_data,
-            user_principals_data,
-        ))
-        .expect("Failed to save data to stable storage");
+        ic_cdk::storage::stable_save((capsule_data, admin_data))
+            .expect("Failed to save data to stable storage");
     }
 }
 
