@@ -425,7 +425,7 @@
     - _Requirements: 7.2_
     - _Commit: `test: add memory upload functionality tests`_
 
-  - [x] 18.3 Test memory CRUD operations
+  - [ ] 18.3 Test memory CRUD operations
 
     - Create `test_memory_crud.sh` for memory management operations
     - Test `update_memory_in_capsule` endpoint with different update scenarios
@@ -452,7 +452,7 @@
     - _Requirements: 7.2_
     - _Commit: `test: add gallery CRUD operations tests`_
 
-  - [ ] 18.6 Test capsule creation functionality
+  - [x] 18.6 Test capsule creation functionality
 
     - Create `test_capsule_creation.sh` to test `create_capsule` endpoint
     - Test capsule registration with `register_capsule`

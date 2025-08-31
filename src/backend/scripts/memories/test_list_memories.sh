@@ -23,11 +23,11 @@ echo "$RESULT"
 echo ""
 
 # Check if the call was successful
-if echo "$RESULT" | grep -q '"success" : true'; then
+if echo "$RESULT" | grep -q 'success = true'; then
     echo "✅ Test PASSED: Memories listed successfully"
     
     # Count memories
-    MEMORY_COUNT=$(echo "$RESULT" | grep -o '"id" : "[^"]*"' | wc -l)
+    MEMORY_COUNT=$(echo "$RESULT" | grep -o 'id = "[^"]*"' | wc -l)
     echo "📋 Number of memories found: $MEMORY_COUNT"
     
     # Check if we have the test memory
@@ -45,7 +45,7 @@ if echo "$RESULT" | grep -q '"success" : true'; then
     # Show memory IDs if any exist
     if [ "$MEMORY_COUNT" -gt 0 ]; then
         echo "📋 Memory IDs:"
-        echo "$RESULT" | grep -o '"id" : "[^"]*"' | cut -d'"' -f4
+        echo "$RESULT" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/'
     fi
 else
     echo "❌ Test FAILED: Failed to list memories"
