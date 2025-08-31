@@ -200,8 +200,7 @@ type MemoryType = variant { Note; Image; Document; Audio; Video };
 type MemoryUpdateData = record {
   access : opt MemoryAccess;
   metadata : opt MemoryMetadata;
-  data : opt MemoryData;
-  info : opt MemoryInfo;
+  name : opt text;
 };
 type NoteMetadata = record { base : MemoryMetadataBase; tags : opt vec text };
 type OwnerState = record { last_activity_at : nat64; since : nat64 };

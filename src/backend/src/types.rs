@@ -22,29 +22,6 @@ pub struct MemoryResponse {
     pub error: Option<String>,
 }
 
-// Memory management response types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemoryOperationResponse {
-    pub success: bool,
-    pub memory_id: Option<String>,
-    pub message: String,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemoryListResponse {
-    pub success: bool,
-    pub memories: Vec<Memory>,
-    pub message: String,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemoryUpdateData {
-    pub info: Option<MemoryInfo>,
-    pub metadata: Option<MemoryMetadata>,
-    pub access: Option<MemoryAccess>,
-    pub data: Option<MemoryData>,
-}
-
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
 pub struct UserMemoriesResponse {
     pub images: Vec<String>,
@@ -467,6 +444,30 @@ pub struct VerificationResult {
     pub message: String,
 }
 
+// Memory operation response types
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct MemoryOperationResponse {
+    pub success: bool,
+    pub memory_id: Option<String>,
+    pub message: String,
+}
+
+// Memory update data
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct MemoryUpdateData {
+    pub name: Option<String>,
+    pub metadata: Option<MemoryMetadata>,
+    pub access: Option<MemoryAccess>,
+}
+
+// Memory list response
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct MemoryListResponse {
+    pub success: bool,
+    pub memories: Vec<Memory>,
+    pub message: String,
+}
+
 // ============================================================================
 // TYPE MAPPING FUNCTIONS - Web2 ↔ ICP Conversion
 // ============================================================================
@@ -550,7 +551,7 @@ impl GalleryMemoryEntry {
     #[allow(dead_code)]
     pub fn to_web2(&self, gallery_id: &str) -> Web2GalleryItem {
         Web2GalleryItem {
-            id: format!("web2_item_{}", ic_cdk::api::time()), // Generate timestamp-based ID for Web2
+            id: format!("web2_item_{}", ic_cdk::api::time()), // Generate new ID for Web2
             gallery_id: gallery_id.to_string(),
             memory_id: self.memory_id.clone(),
             memory_type: "image".to_string(), // This would need proper mapping

@@ -1,0 +1,1182 @@
+# Design Document
+
+## Overview
+
+The "Store Forever" feature enables users to permanently store their photo galleries on the Internet Computer (ICP) blockchain by replicating gallery data from the existing Web2 system to ICP canisters. The design builds upon the existing storage_edges architecture, ForeverStorageProgressModal UI, and ICP backend canister infrastructure to provide a seamless user experience for permanent gallery storage.
+
+**Key Design Principles:**
+
+- **Replication, not Migration**: Web2 remains the primary system; ICP is a replication target
+- **Storage Edges Architecture**: Use existing storage_edges table and computed views for status tracking
+- **Minimal UI Changes**: Leverage existing "Store Forever" buttons and progress modal
+- **Capsule-Based Storage**: Store galleries within user capsules on ICP for data ownership
+- **Idempotent Operations**: All ICP writes are safe to retry with content hash verification
+
+## Architecture
+
+### High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "Frontend (Next.js)"
+        UI[Gallery Pages]
+        Modal[ForeverStorageProgressModal]
+        Service[Gallery Service]
+    end
+
+    subgraph "Web2 Backend"
+        API[Gallery API]
+        DB[(PostgreSQL)]
+        Views[Storage Views]
+        Edges[storage_edges]
+    end
+
+    subgraph "ICP Backend"
+        Canister[Backend Canister]
+        Capsules[User Capsules]
+        Memories[Memory Storage]
+    end
+
+    UI --> Modal
+    Modal --> Service
+    Service --> API
+    API --> DB
+    API --> Canister
+    DB --> Views
+    Views --> Edges
+    Canister --> Capsules
+    Capsules --> Memories
+```
+
+### Data Flow Architecture
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Modal as ForeverStorageProgressModal
+    participant Service as Gallery Service
+    participant API as Web2 API
+    participant ICP as ICP Canister
+    participant Edges as storage_edges
+    participant Views as Computed Views
+
+    User->>Modal: Click "Store Forever"
+    Modal->>Service: storeGalleryForever()
+    Service->>API: Check II authentication
+    API->>Service: Authentication status
+
+    loop For each memory in gallery
+        Service->>ICP: upsert_metadata(memoryId, metadata, idempotencyKey)
+        ICP->>Service: Result<MetadataResponse>
+        Service->>ICP: begin_asset_upload(memoryId, expectedHash, chunkCount)
+        ICP->>Service: Result<UploadSession>
+
+        loop For each chunk
+            Service->>ICP: put_chunk(sessionId, chunkIndex, chunkData)
+            ICP->>Service: Result<ChunkResponse>
+        end
+
+        Service->>ICP: commit_asset(sessionId, finalHash)
+        ICP->>Service: Result<CommitResponse>
+        Service->>ICP: get_memory_presence_icp(memoryId)
+        ICP->>Service: MemoryPresenceResponse
+        Service->>API: Update storage_edges with present=true
+        API->>Edges: UPSERT edges after verification
+    end
+
+    Edges->>Views: Trigger view refresh
+    Views->>Modal: Updated storage status
+    Modal->>User: Success confirmation
+```
+
+## Components and Interfaces
+
+### 1. Frontend Components
+
+#### 1.1 Existing Components (No Changes Required)
+
+- **Gallery Detail Page** (`src/nextjs/src/app/[lang]/gallery/[id]/page.tsx`)
+
+  - Contains "Store Forever" button
+  - Handles ForeverStorageProgressModal integration
+  - Auto-opens modal on II linking return
+
+- **Gallery Preview Page** (`src/nextjs/src/app/[lang]/gallery/[id]/preview/page.tsx`)
+
+  - Contains "Store Forever" button in sticky header
+  - Same modal integration as detail page
+
+- **ForeverStorageProgressModal** (`src/nextjs/src/components/galleries/ForeverStorageProgressModal.tsx`)
+  - Step-by-step progress UI (auth, prepare, store, verify, success)
+  - II authentication flow integration
+  - Error handling and retry functionality
+
+#### 1.2 Component Enhancements Required
+
+**Gallery Service** (`src/nextjs/src/services/gallery.ts`)
+
+```typescript
+// Artifact-level storage implementation
+async function storeGalleryOnICP(gallery: GalleryWithItems): Promise<StoreGalleryResponse> {
+  const actor = await getAuthenticatedActor();
+  const results: MemoryStorageResult[] = [];
+
+  // Process each memory in the gallery (Web2 provides memory list)
+  for (const item of gallery.items) {
+    const memoryId = item.memory.id;
+    const idempotencyKey = `${memoryId}:${item.memory.type}:${item.memory.contentHash}`;
+
+    try {
+      // 1. Store metadata
+      const metadataResult = await actor.upsert_metadata(
+        memoryId,
+        item.memory.type,
+        item.memory.metadata,
+        `${idempotencyKey}:metadata`
+      );
+
+      if (metadataResult.Err && metadataResult.Err !== "AlreadyExists") {
+        throw new Error(`Metadata storage failed: ${metadataResult.Err}`);
+      }
+
+      // 2. Store asset if not already present
+      await storeMemoryAsset(actor, item.memory, idempotencyKey);
+
+      // 3. Verify presence before updating edges
+      const presenceResult = await actor.get_memory_presence_icp(memoryId);
+      if (presenceResult.Ok?.metadata_present && presenceResult.Ok?.asset_present) {
+        // 4. Update storage_edges only after verification
+        await updateStorageEdges(memoryId, item.memory.type, presenceResult.Ok);
+        results.push({ memoryId, success: true });
+      } else {
+        results.push({ memoryId, success: false, error: "Presence verification failed" });
+      }
+    } catch (error) {
+      results.push({ memoryId, success: false, error: error.message });
+    }
+  }
+
+  const successCount = results.filter((r) => r.success).length;
+  return {
+    success: successCount === gallery.items.length,
+    gallery_id: gallery.id,
+    icp_gallery_id: gallery.id,
+    message: `Stored ${successCount}/${gallery.items.length} memories`,
+    storage_status: successCount === gallery.items.length ? "ICPOnly" : "Partial",
+  };
+}
+
+// Chunked asset upload with operational constraints
+async function storeMemoryAsset(actor: ICPActor, memory: Memory, idempotencyKey: string): Promise<void> {
+  const assetData = await fetchMemoryAssetData(memory.url);
+  const expectedHash = computeContentHash(assetData);
+  const chunkSize = 1024 * 1024; // 1MB chunks (max 2MB)
+  const maxUploadSize = 100 * 1024 * 1024; // 100MB max
+
+  if (assetData.length > maxUploadSize) {
+    throw new Error(`Asset too large: ${assetData.length} bytes (max ${maxUploadSize})`);
+  }
+
+  const chunks = createChunks(assetData, chunkSize);
+
+  // Begin upload session
+  const sessionResult = await actor.begin_asset_upload(memory.id, expectedHash, chunks.length, assetData.length);
+
+  if (sessionResult.Err) {
+    if (sessionResult.Err === "AlreadyExists") {
+      return; // Asset already stored with same hash
+    }
+    throw new Error(`Failed to begin upload: ${sessionResult.Err}`);
+  }
+
+  const sessionId = sessionResult.Ok.session_id;
+
+  try {
+    // Upload chunks with rate limiting
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkResult = await actor.put_chunk(sessionId, i, chunks[i]);
+      if (chunkResult.Err) {
+        throw new Error(`Chunk ${i} failed: ${chunkResult.Err}`);
+      }
+
+      // Rate limiting: max 3 concurrent uploads per user
+      if (i % 3 === 0 && i > 0) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    // Commit upload
+    const commitResult = await actor.commit_asset(sessionId, expectedHash);
+    if (commitResult.Err) {
+      throw new Error(`Commit failed: ${commitResult.Err}`);
+    }
+  } catch (error) {
+    // Cancel session on error
+    await actor.cancel_upload(sessionId);
+    throw error;
+  }
+}
+```
+
+**Storage Status Integration**
+
+```typescript
+// Add storage status queries using existing views
+async function getGalleryStorageStatus(galleryId: string): Promise<GalleryStorageStatus> {
+  const response = await fetch(`/api/galleries/${galleryId}/storage-status`);
+  return response.json();
+}
+
+// Update gallery cards to show storage badges
+function GalleryCard({ gallery }: { gallery: GalleryWithItems }) {
+  const [storageStatus, setStorageStatus] = useState<GalleryStorageStatus>();
+
+  useEffect(() => {
+    getGalleryStorageStatus(gallery.id).then(setStorageStatus);
+  }, [gallery.id]);
+
+  return (
+    <Card>
+      {/* Existing gallery card content */}
+      {storageStatus?.icp_complete && <Badge variant="success">Stored Forever</Badge>}
+      {storageStatus?.partial && <Badge variant="warning">Partially on ICP</Badge>}
+    </Card>
+  );
+}
+```
+
+### 2. Backend API Components
+
+#### 2.1 New API Endpoints
+
+**Storage Status Endpoint** (`/api/galleries/[id]/storage-status`)
+
+```typescript
+// GET /api/galleries/[id]/storage-status
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  const galleryId = params.id;
+
+  // Query gallery_presence view
+  const status = await db.select().from(galleryPresence).where(eq(galleryPresence.galleryId, galleryId)).limit(1);
+
+  return Response.json({
+    icp_complete: status[0]?.icp_complete || false,
+    partial: status[0]?.partial_icp || false,
+    memory_count: status[0]?.memory_count || 0,
+    icp_memory_count: status[0]?.icp_memory_count || 0,
+  });
+}
+```
+
+**Storage Edges Update Endpoint** (`/api/storage/edges`)
+
+```typescript
+// POST /api/storage/edges
+export async function POST(request: Request) {
+  const { galleryId, memoryArtifacts } = await request.json();
+
+  // Batch upsert storage_edges
+  const edges = memoryArtifacts.map((artifact) => ({
+    memoryId: artifact.memoryId,
+    memoryType: artifact.memoryType,
+    artifact: artifact.artifact, // 'metadata' | 'asset'
+    backend: "icp-canister" as const,
+    present: true,
+    syncState: "idle" as const,
+    location: artifact.location,
+    contentHash: artifact.contentHash,
+    lastSyncedAt: new Date(),
+  }));
+
+  await db
+    .insert(storageEdges)
+    .values(edges)
+    .onConflictDoUpdate({
+      target: [storageEdges.memoryId, storageEdges.memoryType, storageEdges.artifact, storageEdges.backend],
+      set: {
+        present: excluded(storageEdges.present),
+        syncState: excluded(storageEdges.syncState),
+        location: excluded(storageEdges.location),
+        contentHash: excluded(storageEdges.contentHash),
+        lastSyncedAt: excluded(storageEdges.lastSyncedAt),
+      },
+    });
+
+  // Refresh materialized view
+  await refreshGalleryPresence();
+
+  return Response.json({ success: true });
+}
+```
+
+#### 2.2 Enhanced Gallery API
+
+**Gallery Service Integration**
+
+```typescript
+// Enhanced gallery service with storage status
+class GalleryService {
+  async getGallery(id: string): Promise<GalleryWithStorageStatus> {
+    // Get gallery from Web2
+    const gallery = await this.getWeb2Gallery(id);
+
+    // Get storage status from views
+    const storageStatus = await this.getStorageStatus(id);
+
+    // If fully on ICP, also fetch from ICP for verification
+    if (storageStatus.icp_complete) {
+      const icpGallery = await this.getICPGallery(id);
+      // Merge or compare data as needed
+    }
+
+    return { ...gallery, storageStatus };
+  }
+
+  async storeGalleryForever(gallery: GalleryWithItems): Promise<StoreGalleryResponse> {
+    // 1. Validate II authentication
+    const session = await getServerSession();
+    if (!session?.user?.icpPrincipal) {
+      throw new Error("Internet Identity authentication required");
+    }
+
+    // 2. Set sync_state to 'migrating' for all memory artifacts
+    await this.updateSyncState(gallery, "migrating");
+
+    try {
+      // 3. Convert and store on ICP
+      const result = await icpGalleryService.storeGalleryForever(gallery);
+
+      // 4. Update storage_edges on success
+      if (result.success) {
+        await this.updateStorageEdges(gallery, result);
+      }
+
+      return result;
+    } catch (error) {
+      // 5. Set sync_state to 'failed' on error
+      await this.updateSyncState(gallery, "failed", error.message);
+      throw error;
+    }
+  }
+}
+```
+
+### 3. ICP Backend Components
+
+#### 3.1 ICP Canister API (Artifact-Level Protocol)
+
+**Memory Metadata Operations**
+
+```rust
+// Upsert memory metadata with idempotency
+pub fn upsert_metadata(
+    memory_id: String,
+    memory_type: MemoryType,
+    metadata: MemoryMetadata,
+    idempotency_key: String
+) -> Result<MetadataResponse, ErrorCode>
+
+// Get memory presence on ICP only
+pub fn get_memory_presence_icp(memory_id: String) -> Result<MemoryPresenceResponse, ErrorCode>
+
+// Get multiple memory presence (paginated)
+pub fn get_memory_list_presence_icp(
+    memory_ids: Vec<String>,
+    cursor: Option<String>,
+    limit: u32
+) -> Result<MemoryListPresenceResponse, ErrorCode>
+```
+
+**Asset Upload Operations**
+
+```rust
+// Begin chunked asset upload
+pub fn begin_asset_upload(
+    memory_id: String,
+    expected_hash: String,
+    chunk_count: u32,
+    total_size: u64
+) -> Result<UploadSession, ErrorCode>
+
+// Upload asset chunk
+pub fn put_chunk(
+    session_id: String,
+    chunk_index: u32,
+    chunk_data: Vec<u8>
+) -> Result<ChunkResponse, ErrorCode>
+
+// Commit asset upload
+pub fn commit_asset(
+    session_id: String,
+    final_hash: String
+) -> Result<CommitResponse, ErrorCode>
+
+// Cancel upload session
+pub fn cancel_upload(session_id: String) -> Result<(), ErrorCode>
+```
+
+**Error Model**
+
+```rust
+#[derive(CandidType, Deserialize, Clone, Debug)]
+pub enum ErrorCode {
+    Unauthorized,
+    AlreadyExists,
+    NotFound,
+    InvalidHash,
+    UploadExpired,
+    InsufficientCycles,
+    QuotaExceeded,
+    InvalidChunkSize,
+    Internal(String),
+}
+```
+
+**Stable Memory and Persistence**
+
+```rust
+use ic_stable_structures::{StableBTreeMap, DefaultMemoryImpl, Memory};
+
+// Stable memory for canister upgrades
+thread_local! {
+    static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
+        RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
+
+    static CAPSULES: RefCell<StableBTreeMap<String, Capsule, Memory>> = RefCell::new(
+        StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(0))))
+    );
+
+    static UPLOAD_SESSIONS: RefCell<StableBTreeMap<String, UploadSession, Memory>> = RefCell::new(
+        StableBTreeMap::init(MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1))))
+    );
+}
+
+// Pre/post upgrade hooks
+#[pre_upgrade]
+fn pre_upgrade() {
+    // Stable structures automatically handle persistence
+    ic_cdk::println!("Pre-upgrade: stable structures will persist");
+}
+
+#[post_upgrade]
+fn post_upgrade() {
+    // Stable structures automatically restore state
+    ic_cdk::println!("Post-upgrade: stable structures restored");
+}
+```
+
+**Operational Constraints**
+
+```rust
+// Upload limits and quotas
+const MAX_CHUNK_SIZE: usize = 2 * 1024 * 1024; // 2MB
+const MAX_UPLOAD_SIZE: u64 = 100 * 1024 * 1024; // 100MB
+const MAX_CONCURRENT_UPLOADS: u32 = 3;
+const UPLOAD_SESSION_TIMEOUT: u64 = 3600 * 1_000_000_000; // 1 hour in nanoseconds
+const MAX_UPLOADS_PER_DAY: u32 = 1000;
+const MAX_TOTAL_BYTES_PER_USER: u64 = 10 * 1024 * 1024 * 1024; // 10GB
+
+// Pagination limits
+const MAX_PRESENCE_QUERY_LIMIT: u32 = 100;
+const DEFAULT_PRESENCE_QUERY_LIMIT: u32 = 20;
+```
+
+#### 3.2 Enhanced Canister Functions
+
+**Authorization Enhancement**
+
+```rust
+// Add authorization check to all gallery functions
+fn check_authorization(caller: Principal, gallery_owner: Principal) -> Result<(), String> {
+    if caller != gallery_owner {
+        return Err("Unauthorized: caller does not own this gallery".to_string());
+    }
+    Ok(())
+}
+
+// Enhanced store_gallery_forever with authorization
+pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
+    let caller = ic_cdk::api::msg_caller();
+
+    // Check authorization
+    if let Err(msg) = check_authorization(caller, gallery_data.owner_principal) {
+        return StoreGalleryResponse {
+            success: false,
+            gallery_id: None,
+            icp_gallery_id: None,
+            message: msg,
+            storage_status: GalleryStorageStatus::Failed,
+        };
+    }
+
+    // Existing implementation continues...
+}
+```
+
+**Memory Validation Enhancement**
+
+```rust
+// Add memory validation to gallery storage
+fn validate_gallery_memories(gallery: &Gallery, capsule: &Capsule) -> Result<(), Vec<String>> {
+    let mut missing_memories = Vec::new();
+
+    for entry in &gallery.memory_entries {
+        if !capsule.memories.contains_key(&entry.memory_id) {
+            missing_memories.push(entry.memory_id.clone());
+        }
+    }
+
+    if missing_memories.is_empty() {
+        Ok(())
+    } else {
+        Err(missing_memories)
+    }
+}
+```
+
+## Data Models
+
+### 1. Storage Edges Schema (Existing)
+
+```sql
+-- storage_edges table (already implemented)
+CREATE TABLE storage_edges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    memory_id UUID NOT NULL,
+    memory_type TEXT NOT NULL,
+    artifact artifact_t NOT NULL, -- 'metadata' | 'asset'
+    backend backend_t NOT NULL,   -- 'neon-db' | 'vercel-blob' | 'icp-canister'
+    present BOOLEAN NOT NULL DEFAULT false,
+    sync_state TEXT NOT NULL DEFAULT 'idle', -- 'idle' | 'migrating' | 'failed'
+    sync_error TEXT,
+    location TEXT,
+    content_hash TEXT,
+    last_synced_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    UNIQUE(memory_id, memory_type, artifact, backend)
+);
+```
+
+### 2. Computed Views (Existing)
+
+```sql
+-- memory_presence view (already implemented)
+CREATE VIEW memory_presence AS
+SELECT
+    e.memory_id,
+    e.memory_type,
+    BOOL_OR(e.backend = 'neon-db' AND e.artifact = 'metadata' AND e.present) AS meta_web2,
+    BOOL_OR(e.backend = 'neon-db' AND e.artifact = 'asset' AND e.present) AS asset_web2,
+    BOOL_OR(e.backend = 'icp-canister' AND e.artifact = 'metadata' AND e.present) AS meta_icp,
+    BOOL_OR(e.backend = 'icp-canister' AND e.artifact = 'asset' AND e.present) AS asset_icp
+FROM storage_edges e
+GROUP BY e.memory_id, e.memory_type;
+
+-- gallery_presence materialized view (already implemented)
+CREATE MATERIALIZED VIEW gallery_presence AS
+SELECT
+    g.id AS gallery_id,
+    g.owner_id,
+    COUNT(gi.memory_id) AS memory_count,
+    COUNT(CASE WHEN mp.meta_icp AND mp.asset_icp THEN 1 END) AS icp_memory_count,
+    BOOL_AND(mp.meta_icp AND mp.asset_icp) AS icp_complete,
+    COUNT(CASE WHEN mp.meta_icp OR mp.asset_icp THEN 1 END) > 0 AS partial_icp
+FROM galleries g
+LEFT JOIN gallery_items gi ON g.id = gi.gallery_id
+LEFT JOIN memory_presence mp ON gi.memory_id = mp.memory_id
+GROUP BY g.id, g.owner_id;
+```
+
+### 3. ICP Data Models (Existing)
+
+```rust
+// Gallery structure in ICP canister (already implemented)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct Gallery {
+    pub id: String,
+    pub owner_principal: Principal,
+    pub title: String,
+    pub description: Option<String>,
+    pub is_public: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub storage_status: GalleryStorageStatus,
+    pub memory_entries: Vec<GalleryMemoryEntry>,
+}
+
+// Gallery memory entry (already implemented)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct GalleryMemoryEntry {
+    pub memory_id: String,
+    pub position: u32,
+    pub gallery_caption: Option<String>,
+    pub is_featured: bool,
+    pub gallery_metadata: String,
+}
+```
+
+## Error Handling
+
+### 1. Frontend Error Handling
+
+**Modal Error States**
+
+```typescript
+// Enhanced error handling in ForeverStorageProgressModal
+const handleStorageError = (error: Error) => {
+  setCurrentStep("error");
+  setProgress(0);
+
+  // Categorize errors for better user experience
+  if (error.message.includes("authentication")) {
+    setMessage("Authentication failed");
+    setDetails("Please sign in with Internet Identity and try again");
+  } else if (error.message.includes("validation")) {
+    setMessage("Gallery validation failed");
+    setDetails("Some memories in this gallery could not be found");
+  } else if (error.message.includes("network")) {
+    setMessage("Network error");
+    setDetails("Please check your connection and try again");
+  } else {
+    setMessage("Storage failed");
+    setDetails(error.message);
+  }
+
+  onError(error);
+};
+```
+
+**Circuit Breaker Pattern**
+
+```typescript
+// Circuit breaker for ICP endpoint failures
+class ICPCircuitBreaker {
+  private failureCount = 0;
+  private lastFailureTime = 0;
+  private readonly threshold = 5;
+  private readonly timeout = 60000; // 1 minute
+
+  async execute<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.isOpen()) {
+      throw new Error("ICP services temporarily unavailable");
+    }
+
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+
+  private isOpen(): boolean {
+    return this.failureCount >= this.threshold && Date.now() - this.lastFailureTime < this.timeout;
+  }
+}
+```
+
+### 2. Backend Error Handling
+
+**Idempotency and Retry Logic**
+
+```typescript
+// Idempotent storage operations
+async function storeMemoryArtifact(
+  memoryId: string,
+  memoryType: string,
+  artifact: "metadata" | "asset",
+  data: Buffer,
+  contentHash: string
+): Promise<void> {
+  // Check if already stored with same content hash
+  const existing = await db
+    .select()
+    .from(storageEdges)
+    .where(
+      and(
+        eq(storageEdges.memoryId, memoryId),
+        eq(storageEdges.memoryType, memoryType),
+        eq(storageEdges.artifact, artifact),
+        eq(storageEdges.backend, "icp-canister"),
+        eq(storageEdges.contentHash, contentHash)
+      )
+    )
+    .limit(1);
+
+  if (existing.length > 0 && existing[0].present) {
+    // Already stored with same content hash - return success
+    return;
+  }
+
+  // Proceed with storage...
+}
+```
+
+**Rollback Mechanisms**
+
+```typescript
+// Transaction-based rollback for failed operations
+async function storeGalleryWithRollback(gallery: GalleryWithItems): Promise<void> {
+  const transaction = await db.transaction();
+
+  try {
+    // 1. Set sync_state to 'migrating'
+    await updateSyncStateInTransaction(transaction, gallery, "migrating");
+
+    // 2. Store on ICP
+    const result = await storeOnICP(gallery);
+
+    // 3. Update storage_edges
+    await updateStorageEdgesInTransaction(transaction, gallery, result);
+
+    // 4. Commit transaction
+    await transaction.commit();
+  } catch (error) {
+    // 5. Rollback and set failed state
+    await transaction.rollback();
+    await updateSyncState(gallery, "failed", error.message);
+    throw error;
+  }
+}
+```
+
+## Testing Strategy
+
+### 1. Unit Tests
+
+**Frontend Component Tests**
+
+```typescript
+// Test ForeverStorageProgressModal state management
+describe("ForeverStorageProgressModal", () => {
+  it("should handle authentication flow correctly", async () => {
+    const mockGallery = createMockGallery();
+    const onSuccess = jest.fn();
+    const onError = jest.fn();
+
+    render(<ForeverStorageProgressModal isOpen={true} gallery={mockGallery} onSuccess={onSuccess} onError={onError} />);
+
+    // Test authentication step
+    expect(screen.getByText("Authenticating")).toBeInTheDocument();
+
+    // Mock II authentication success
+    mockICPAuth.mockResolvedValue({ principal: "test-principal" });
+
+    // Verify progression to next step
+    await waitFor(() => {
+      expect(screen.getByText("Preparing Data")).toBeInTheDocument();
+    });
+  });
+
+  it("should prevent infinite re-renders", () => {
+    // Test for stable callback dependencies
+    const renderCount = jest.fn();
+
+    function TestComponent() {
+      renderCount();
+      const handleStorage = useCallback(() => {
+        // Storage logic
+      }, []); // Stable dependencies
+
+      return <button onClick={handleStorage}>Store</button>;
+    }
+
+    const { rerender } = render(<TestComponent />);
+    rerender(<TestComponent />);
+
+    expect(renderCount).toHaveBeenCalledTimes(2); // Not more
+  });
+});
+```
+
+**Backend API Tests**
+
+```typescript
+// Test storage edges operations
+describe("Storage Edges API", () => {
+  it("should upsert storage edges idempotently", async () => {
+    const edgeData = {
+      memoryId: "test-memory-id",
+      memoryType: "image",
+      artifact: "metadata",
+      backend: "icp-canister",
+      contentHash: "sha256-hash",
+    };
+
+    // First upsert
+    await POST("/api/storage/edges", { body: JSON.stringify([edgeData]) });
+
+    // Second upsert with same data
+    await POST("/api/storage/edges", { body: JSON.stringify([edgeData]) });
+
+    // Should have only one record
+    const edges = await db.select().from(storageEdges).where(eq(storageEdges.memoryId, edgeData.memoryId));
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0].present).toBe(true);
+  });
+});
+```
+
+### 2. Integration Tests
+
+**End-to-End Storage Flow**
+
+```typescript
+// Test complete storage flow
+describe("Gallery Storage Integration", () => {
+  it("should store gallery end-to-end", async () => {
+    // 1. Setup test gallery
+    const gallery = await createTestGallery();
+
+    // 2. Mock II authentication
+    mockSession({ user: { icpPrincipal: "test-principal" } });
+
+    // 3. Trigger storage
+    const result = await galleryService.storeGalleryForever(gallery);
+
+    // 4. Verify ICP storage
+    expect(result.success).toBe(true);
+    expect(result.icp_gallery_id).toBeDefined();
+
+    // 5. Verify storage_edges updated
+    const edges = await db.select().from(storageEdges).where(eq(storageEdges.backend, "icp-canister"));
+
+    expect(edges.length).toBeGreaterThan(0);
+    expect(edges.every((e) => e.present)).toBe(true);
+
+    // 6. Verify gallery_presence view
+    const presence = await db.select().from(galleryPresence).where(eq(galleryPresence.galleryId, gallery.id));
+
+    expect(presence[0].icp_complete).toBe(true);
+  });
+});
+```
+
+### 3. Performance Tests
+
+**Batch Processing Tests**
+
+```typescript
+// Test batch processing performance
+describe("Batch Processing Performance", () => {
+  it("should handle large galleries efficiently", async () => {
+    const largeGallery = createGalleryWithMemories(1000); // 1000 memories
+
+    const startTime = Date.now();
+    const result = await galleryService.storeGalleryForever(largeGallery);
+    const endTime = Date.now();
+
+    expect(result.success).toBe(true);
+    expect(endTime - startTime).toBeLessThan(60000); // Under 1 minute
+  });
+
+  it("should respect rate limits", async () => {
+    const galleries = Array.from({ length: 10 }, () => createTestGallery());
+
+    // Should not overwhelm ICP endpoints
+    const promises = galleries.map((g) => galleryService.storeGalleryForever(g));
+    const results = await Promise.allSettled(promises);
+
+    // Some may be rate limited, but none should crash
+    results.forEach((result) => {
+      if (result.status === "rejected") {
+        expect(result.reason.message).toMatch(/rate limit|throttle/i);
+      }
+    });
+  });
+});
+```
+
+## Security Considerations
+
+### 1. Authentication and Authorization
+
+**II Principal Verification**
+
+```rust
+// Verify caller authorization in ICP canister
+fn verify_caller_authorization(caller: Principal, gallery_owner: Principal) -> Result<(), String> {
+    if caller == Principal::anonymous() {
+        return Err("Anonymous callers not allowed".to_string());
+    }
+
+    if caller != gallery_owner {
+        return Err("Caller does not own this gallery".to_string());
+    }
+
+    Ok(())
+}
+```
+
+**Session Security**
+
+```typescript
+// Secure session handling for II linking
+async function linkInternetIdentity(principal: string): Promise<void> {
+  const session = await getServerSession();
+  if (!session?.user?.id) {
+    throw new Error("No active session");
+  }
+
+  // Verify principal is not already linked to another user
+  const existingLink = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.provider, "internet-identity"), eq(accounts.providerAccountId, principal)));
+
+  if (existingLink.length > 0 && existingLink[0].userId !== session.user.id) {
+    throw new Error("Principal already linked to another account");
+  }
+
+  // Create secure link
+  await db.insert(accounts).values({
+    userId: session.user.id,
+    provider: "internet-identity",
+    providerAccountId: principal,
+    type: "oidc",
+  });
+}
+```
+
+### 2. Data Integrity
+
+**Content Hash Verification**
+
+```typescript
+// Verify content integrity with SHA-256
+import { createHash } from "crypto";
+
+function computeContentHash(data: Buffer): string {
+  return createHash("sha256").update(data).digest("hex");
+}
+
+async function verifyStoredContent(memoryId: string, expectedHash: string): Promise<boolean> {
+  const storedData = await getStoredMemoryData(memoryId);
+  const actualHash = computeContentHash(storedData);
+  return actualHash === expectedHash;
+}
+```
+
+**UUID Validation**
+
+```typescript
+// Validate UUID format consistency
+function validateUUID(uuid: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+}
+
+function normalizeUUID(uuid: string): string {
+  if (!validateUUID(uuid)) {
+    throw new Error(`Invalid UUID format: ${uuid}`);
+  }
+  return uuid.toLowerCase();
+}
+```
+
+### 3. Audit Logging
+
+**Comprehensive Audit Trail**
+
+```typescript
+// Audit log structure
+interface AuditLog {
+  userId: string;
+  principal: string;
+  action: "store_gallery" | "update_gallery" | "delete_gallery";
+  galleryId: string;
+  memoryIds: string[];
+  bytesTransferred: number;
+  outcome: "success" | "failure";
+  errorMessage?: string;
+  duration: number;
+  timestamp: Date;
+  ipAddress: string;
+  userAgent: string;
+}
+
+// Log all ICP operations
+async function logICPOperation(log: AuditLog): Promise<void> {
+  await db.insert(auditLogs).values(log);
+
+  // Also log to external audit service for compliance
+  await externalAuditService.log(log);
+}
+```
+
+## Performance Optimization
+
+### 1. Chunked Upload Strategy
+
+```typescript
+// Chunked upload for large files
+class ChunkedUploader {
+  private readonly chunkSize = 1024 * 1024; // 1MB chunks
+  private readonly maxConcurrent = 3;
+
+  async uploadMemory(memoryData: Buffer, memoryId: string): Promise<void> {
+    const chunks = this.createChunks(memoryData);
+    const semaphore = new Semaphore(this.maxConcurrent);
+
+    const uploadPromises = chunks.map(async (chunk, index) => {
+      await semaphore.acquire();
+      try {
+        await this.uploadChunk(chunk, memoryId, index);
+      } finally {
+        semaphore.release();
+      }
+    });
+
+    await Promise.all(uploadPromises);
+  }
+
+  private createChunks(data: Buffer): Buffer[] {
+    const chunks: Buffer[] = [];
+    for (let i = 0; i < data.length; i += this.chunkSize) {
+      chunks.push(data.slice(i, i + this.chunkSize));
+    }
+    return chunks;
+  }
+}
+```
+
+### 2. Materialized View Refresh Strategy
+
+```sql
+-- Efficient materialized view refresh
+CREATE OR REPLACE FUNCTION refresh_gallery_presence_concurrent()
+RETURNS void AS $$
+BEGIN
+    -- Use CONCURRENTLY to avoid blocking reads
+    REFRESH MATERIALIZED VIEW CONCURRENTLY gallery_presence;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger refresh after batch operations
+CREATE OR REPLACE FUNCTION trigger_gallery_presence_refresh()
+RETURNS trigger AS $$
+BEGIN
+    -- Only refresh if significant changes
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        -- Schedule async refresh (implementation depends on job queue)
+        PERFORM pg_notify('refresh_gallery_presence', '');
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### 3. Caching Strategy
+
+```typescript
+// Cache storage status for performance
+class StorageStatusCache {
+  private cache = new Map<string, { status: GalleryStorageStatus; expires: number }>();
+  private readonly ttl = 5 * 60 * 1000; // 5 minutes
+
+  async getStorageStatus(galleryId: string): Promise<GalleryStorageStatus> {
+    const cached = this.cache.get(galleryId);
+    if (cached && cached.expires > Date.now()) {
+      return cached.status;
+    }
+
+    const status = await this.fetchStorageStatus(galleryId);
+    this.cache.set(galleryId, {
+      status,
+      expires: Date.now() + this.ttl,
+    });
+
+    return status;
+  }
+
+  invalidate(galleryId: string): void {
+    this.cache.delete(galleryId);
+  }
+}
+```
+
+## Deployment Strategy
+
+### 1. Phased Rollout
+
+**Phase 1: Infrastructure Setup**
+
+- Deploy storage_edges table and views (already done)
+- Update ICP canister with enhanced authorization
+- Deploy audit logging infrastructure
+
+**Phase 2: Backend Integration**
+
+- Deploy enhanced gallery API endpoints
+- Deploy storage status endpoints
+- Deploy storage edges update endpoints
+
+**Phase 3: Frontend Integration**
+
+- Update gallery service with real ICP calls
+- Enhance ForeverStorageProgressModal with real progress
+- Deploy storage status UI components
+
+**Phase 4: Monitoring and Optimization**
+
+- Deploy performance monitoring
+- Deploy audit log analysis
+- Optimize based on real usage patterns
+
+### 2. Feature Flags
+
+```typescript
+// Feature flag configuration
+const FEATURE_FLAGS = {
+  STORE_FOREVER_ENABLED: process.env.FEATURE_STORE_FOREVER === "true",
+  ICP_STORAGE_ENABLED: process.env.FEATURE_ICP_STORAGE === "true",
+  BATCH_PROCESSING_ENABLED: process.env.FEATURE_BATCH_PROCESSING === "true",
+  AUDIT_LOGGING_ENABLED: process.env.FEATURE_AUDIT_LOGGING === "true",
+};
+
+// Conditional feature activation
+function StoreForeverButton({ gallery }: { gallery: GalleryWithItems }) {
+  if (!FEATURE_FLAGS.STORE_FOREVER_ENABLED) {
+    return null;
+  }
+
+  return <Button onClick={handleStoreForever}>Store Forever</Button>;
+}
+```
+
+### 3. Monitoring and Alerting
+
+```typescript
+// Performance monitoring
+class PerformanceMonitor {
+  static trackStorageOperation(operation: string, duration: number, success: boolean, bytesTransferred: number): void {
+    // Send metrics to monitoring service
+    metrics.histogram("storage_operation_duration", duration, {
+      operation,
+      success: success.toString(),
+    });
+
+    metrics.counter("storage_bytes_transferred", bytesTransferred, {
+      operation,
+    });
+
+    if (!success) {
+      metrics.counter("storage_operation_failures", 1, { operation });
+    }
+  }
+}
+
+// Alert thresholds
+const ALERT_THRESHOLDS = {
+  ERROR_RATE: 0.05, // 5% error rate
+  RESPONSE_TIME_P95: 30000, // 30 seconds
+  QUEUE_DEPTH: 1000, // Max queued operations
+};
+```
+
+This design provides a comprehensive blueprint for implementing the "Store Forever" feature while leveraging existing infrastructure and maintaining system reliability and performance.

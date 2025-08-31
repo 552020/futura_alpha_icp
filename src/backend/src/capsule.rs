@@ -726,17 +726,14 @@ pub fn update_memory_in_capsule(
 
                 // Update memory fields
                 let mut updated_memory = memory.clone();
-                if let Some(info) = updates.info.clone() {
-                    updated_memory.info = info;
+                if let Some(name) = updates.name.clone() {
+                    updated_memory.info.name = name;
                 }
                 if let Some(metadata) = updates.metadata.clone() {
                     updated_memory.metadata = metadata;
                 }
                 if let Some(access) = updates.access.clone() {
                     updated_memory.access = access;
-                }
-                if let Some(data) = updates.data.clone() {
-                    updated_memory.data = data;
                 }
 
                 updated_memory.info.updated_at = ic_cdk::api::time();
