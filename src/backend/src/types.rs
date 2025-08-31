@@ -1081,6 +1081,8 @@ mod tests {
             chunk_count: 5,
             total_size: 1024,
             created_at: 1234567890,
+            chunks_received: vec![false; 5],
+            bytes_received: 0,
         };
 
         let ok_response = UploadSessionResponse::ok(session.clone(), "Session created".to_string());

@@ -22,6 +22,11 @@ pub fn upsert_metadata(
     metadata: SimpleMemoryMetadata,
     idempotency_key: String,
 ) -> ICPResult<MetadataResponse> {
+    // Check authorization first
+    if let Err(auth_error) = crate::auth::verify_caller_authorized() {
+        return ICPResult::err(auth_error);
+    }
+
     // Validate memory type
     if !is_valid_memory_type(&memory_type) {
         return ICPResult::err(ICPErrorCode::Internal("Invalid memory type".to_string()));

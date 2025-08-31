@@ -270,6 +270,8 @@ mod stable_memory_tests {
             chunk_count: 5,
             total_size: 1024,
             created_at: 1234567890,
+            chunks_received: vec![false; 5],
+            bytes_received: 0,
         };
 
         // Test insert
@@ -405,6 +407,8 @@ mod stable_memory_tests {
             chunk_count: 10,
             total_size: 5120,
             created_at: 1234567890,
+            chunks_received: vec![false; 10],
+            bytes_received: 0,
         };
 
         // Store data in stable memory

@@ -7,6 +7,7 @@ use ic_http_certification::utils::skip_certification_certified_data;
 
 // Import modules
 mod admin;
+mod auth;
 mod canister_factory;
 mod capsule;
 mod memory;

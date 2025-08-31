@@ -147,13 +147,13 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 18.1, 22.2, 22.3_
 
-- [ ] 1.5 Add Authorization and Audit Logging
+- [x] 1.5 Add Basic Authorization (MVP)
 
-  - Implement caller authorization checks for all write operations
-  - Add audit logging for all ICP operations (userId, principal, bytes, outcome)
-  - Create quota enforcement (daily uploads, total bytes per user)
-  - Add rate limiting for concurrent uploads per user
-  - _Requirements: 17.1, 17.2, 22.3_
+  - Implement caller principal verification for write operations only
+  - Add basic concurrent upload limiting (max 3 per user)
+  - Create simple unauthorized error responses
+  - Skip detailed audit logging and quotas for MVP (can be added post-MVP)
+  - _Requirements: 17.1 (partial), 22.3 (basic)_
 
 - [ ] 2. Enhance Web2 Backend API for Storage Integration
 

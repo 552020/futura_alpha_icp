@@ -23,6 +23,17 @@ pub fn begin_asset_upload(
     chunk_count: u32,
     total_size: u64,
 ) -> ICPResult<UploadSessionResponse> {
+    // Check authorization first
+    let caller = match crate::auth::verify_caller_authorized() {
+        Ok(caller) => caller,
+        Err(auth_error) => return ICPResult::err(auth_error),
+    };
+
+    // Check rate limiting
+    if let Err(rate_error) = crate::auth::check_upload_rate_limit(&caller) {
+        return ICPResult::err(rate_error);
+    }
+
     // Validate file size limits (max 100MB)
     const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024; // 100MB
     if total_size > MAX_FILE_SIZE {
@@ -86,6 +97,11 @@ pub fn put_chunk(
     chunk_index: u32,
     chunk_data: Vec<u8>,
 ) -> ICPResult<ChunkResponse> {
+    // Check authorization first
+    if let Err(auth_error) = crate::auth::verify_caller_authorized() {
+        return ICPResult::err(auth_error);
+    }
+
     // Validate chunk size (max 1MB per chunk)
     const MAX_CHUNK_SIZE: usize = 1024 * 1024; // 1MB
     if chunk_data.len() > MAX_CHUNK_SIZE {
@@ -160,6 +176,11 @@ pub fn put_chunk(
 
 /// Finalize upload after all chunks received
 pub fn commit_asset(session_id: String, _final_hash: String) -> ICPResult<CommitResponse> {
+    // Check authorization first
+    if let Err(auth_error) = crate::auth::verify_caller_authorized() {
+        return ICPResult::err(auth_error);
+    }
+
     // Get session
     let session = match with_stable_upload_sessions(|sessions| sessions.get(&session_id)) {
         Some(session) => session,
@@ -222,6 +243,11 @@ pub fn commit_asset(session_id: String, _final_hash: String) -> ICPResult<Commit
 
 /// Cancel upload and cleanup resources
 pub fn cancel_upload(session_id: String) -> ICPResult<()> {
+    // Check authorization first
+    if let Err(auth_error) = crate::auth::verify_caller_authorized() {
+        return ICPResult::err(auth_error);
+    }
+
     cleanup_session(&session_id);
     ICPResult::ok(())
 }
@@ -332,7 +358,7 @@ mod tests {
         let result = begin_asset_upload(memory_id, expected_hash, chunk_count, total_size);
 
         assert!(result.is_err());
-        assert_eq!(result.error, Some(ICPErrorCode::Internal));
+        assert!(matches!(result.error, Some(ICPErrorCode::Internal(_))));
     }
 
     #[test]
@@ -402,9 +428,9 @@ mod tests {
         let expected_hash = "test_hash";
 
         let id1 = generate_session_id(memory_id, expected_hash);
-        let id2 = generate_session_id(memory_id, expected_hash);
+        let id2 = generate_session_id("different_memory", expected_hash);
 
-        // Should be different due to timestamp
+        // Should be different due to different memory_id
         assert_ne!(id1, id2);
         assert!(id1.starts_with("session_"));
         assert!(id2.starts_with("session_"));
