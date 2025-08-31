@@ -60,6 +60,7 @@ dependencies = [
  "ic-cdk",
  "ic-cdk-timers",
  "ic-http-certification",
+ "ic-stable-structures",
  "mockall",
  "proptest",
  "regex",
@@ -609,6 +610,15 @@ checksum = "c2800ba4910f21d9e1cb7b6ecbbbb0f76074bd2e127b4688c57d0936206caa6e"
 dependencies = [
  "leb128",
  "sha2",
+]
+
+[[package]]
+name = "ic-stable-structures"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d30d4cf17aff1024e13133897048bcba580e063c9000571ab766ca37e2996f4"
+dependencies = [
+ "ic_principal",
 ]
 
 [[package]]

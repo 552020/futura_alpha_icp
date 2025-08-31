@@ -15,15 +15,16 @@ This implementation plan transforms the existing "Store Forever" UI components a
   - Add memory presence verification endpoints
   - _Requirements: 17.1, 18.1, 22.1, 23.1, 24.3_
 
-- [ ] 1.1 Create ICP Error Model and Response Types
+- [x] 1.1 Create Minimal ICP Error Model for MVP
 
-  - Define ErrorCode enum with all error variants (Unauthorized, AlreadyExists, etc.)
-  - Create Result<T, ErrorCode> wrapper types for all canister responses
-  - Implement structured response types for metadata, upload sessions, and presence
-  - Add comprehensive error message formatting
-  - _Requirements: 22.1, 22.2_
+  - Define basic ErrorCode enum with essential variants (Unauthorized, AlreadyExists, NotFound, InvalidHash, Internal)
+  - Extend existing response types (MemoryResponse, etc.) to include ErrorCode where needed
+  - Create minimal Result<T, ErrorCode> wrapper for new ICP endpoints only
+  - Add basic error message formatting compatible with existing patterns
+  - Preserve existing error handling patterns where they work
+  - _Requirements: 22.1, MVP principles_
 
-- [ ] 1.2 Implement Stable Memory Infrastructure
+- [x] 1.2 Implement Stable Memory Infrastructure
 
   - Replace thread_local storage with ic-stable-structures
   - Create StableBTreeMap for capsules, upload sessions, and memory artifacts

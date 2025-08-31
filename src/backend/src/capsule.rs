@@ -607,6 +607,11 @@ pub fn delete_gallery(gallery_id: String) -> DeleteGalleryResponse {
 // ============================================================================
 // MEMORY MANAGEMENT FUNCTIONS
 // ============================================================================
+// NOTE: Memory functions are kept in capsule.rs because memories are always
+// stored within capsules. This could be refactored into a separate memories.rs
+// module in the future if the capsule.rs file becomes too large or if we need
+// more complex memory-specific logic.
+// ============================================================================
 
 /// Add a memory to the caller's capsule
 pub fn add_memory_to_capsule(memory_data: MemoryData) -> MemoryOperationResponse {

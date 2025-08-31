@@ -4,6 +4,13 @@
 
 The "Store Forever" feature enables users to permanently store their photo galleries on the Internet Computer (ICP) blockchain, providing immutable, decentralized storage that ensures their memories are preserved forever. This feature builds upon the existing Web2 gallery system and storage_edges architecture to replicate gallery data to ICP's blockchain infrastructure.
 
+**MVP Development Principles:**
+
+- **MVP over Clean Code**: Since the existing code is working with tests in place, we will change only what is necessary to implement the feature
+- **Minimal Changes**: Preserve existing patterns and structures where possible
+- **Incremental Enhancement**: Build upon current error handling rather than replacing it entirely
+- **Working Software First**: Prioritize functional implementation over architectural perfection
+
 **Current Implementation Status:**
 
 - ✅ "Store Forever" buttons are implemented in gallery detail and preview pages

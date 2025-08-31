@@ -6,11 +6,13 @@ The "Store Forever" feature enables users to permanently store their photo galle
 
 **Key Design Principles:**
 
+- **MVP over Clean Code**: Preserve existing working patterns and make minimal necessary changes
 - **Replication, not Migration**: Web2 remains the primary system; ICP is a replication target
 - **Storage Edges Architecture**: Use existing storage_edges table and computed views for status tracking
 - **Minimal UI Changes**: Leverage existing "Store Forever" buttons and progress modal
 - **Capsule-Based Storage**: Store galleries within user capsules on ICP for data ownership
 - **Idempotent Operations**: All ICP writes are safe to retry with content hash verification
+- **Incremental Enhancement**: Build upon existing error handling rather than replacing it
 
 ## Architecture
 
@@ -90,6 +92,52 @@ sequenceDiagram
 ```
 
 ## Components and Interfaces
+
+### 0. MVP Error Handling Strategy
+
+**Existing Patterns to Preserve:**
+
+- `MemoryResponse { success: bool, data: Option<String>, error: Option<String> }`
+- `CapsuleCreationResult { success: bool, capsule_id: Option<String>, message: String }`
+- Boolean return types for simple operations
+
+**Minimal New Error Model:**
+
+```rust
+// Essential error codes for ICP operations only
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub enum ICPErrorCode {
+    Unauthorized,
+    AlreadyExists,
+    NotFound,
+    InvalidHash,
+    Internal(String),
+}
+
+// Lightweight result wrapper for new ICP endpoints
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct ICPResult<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub error: Option<ICPErrorCode>,
+}
+
+// Extend existing types where needed
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct MemoryPresenceResponse {
+    pub success: bool,
+    pub metadata_present: bool,
+    pub asset_present: bool,
+    pub error: Option<ICPErrorCode>, // Add to existing structure
+}
+```
+
+**Implementation Strategy:**
+
+- Keep existing error handling for all current functionality
+- Add ICPErrorCode only to new ICP-specific endpoints
+- Convert between patterns at API boundaries
+- Maintain backward compatibility with existing tests
 
 ### 1. Frontend Components
 

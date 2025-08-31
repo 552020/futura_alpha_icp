@@ -11,7 +11,7 @@ mod canister_factory;
 mod capsule;
 mod memory;
 mod types;
-// mod memories; // Disabled for now
+// memories.rs removed - functionality moved to capsule-based architecture
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
@@ -375,7 +375,10 @@ fn init() {
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Serialize capsules and admins before upgrade
+    // Stable memory structures (StableBTreeMap) automatically persist their data
+    // No explicit action needed for stable memory - ic-stable-structures handles this
+
+    // For backward compatibility, also serialize thread_local data using the old approach
     let capsule_data = capsule::export_capsules_for_upgrade();
     let admin_data = admin::export_admins_for_upgrade();
 
@@ -393,10 +396,16 @@ fn pre_upgrade() {
         ic_cdk::storage::stable_save((capsule_data, admin_data))
             .expect("Failed to save data to stable storage");
     }
+
+    ic_cdk::println!("Pre-upgrade: stable memory structures will persist automatically");
 }
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
+    // Stable memory structures (StableBTreeMap) automatically restore their data
+    // No explicit action needed for stable memory - ic-stable-structures handles this
+
+    // For backward compatibility, restore thread_local data using the old approach
     #[cfg(feature = "migration")]
     {
         // Restore capsules, admins, and migration state after upgrade
@@ -422,6 +431,8 @@ fn post_upgrade() {
         }
     }
     // If restore fails, start with empty state (no panic)
+
+    ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
 }
 
 // Export the interface for the smart contract.

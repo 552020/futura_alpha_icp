@@ -1,6 +1,193 @@
 use candid::{CandidType, Deserialize, Principal};
+use ic_stable_structures::Storable;
 use serde::Serialize;
+use std::borrow::Cow;
 use std::collections::HashMap;
+
+// ============================================================================
+// MVP ICP ERROR MODEL - Essential error types for ICP operations
+// ============================================================================
+
+// Essential error codes for ICP operations only
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum ICPErrorCode {
+    Unauthorized,
+    AlreadyExists,
+    NotFound,
+    InvalidHash,
+    Internal(String),
+}
+
+// Lightweight result wrapper for new ICP endpoints
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct ICPResult<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub error: Option<ICPErrorCode>,
+}
+
+impl<T> ICPResult<T> {
+    pub fn ok(data: T) -> Self {
+        Self {
+            success: true,
+            data: Some(data),
+            error: None,
+        }
+    }
+
+    pub fn err(error: ICPErrorCode) -> Self {
+        Self {
+            success: false,
+            data: None,
+            error: Some(error),
+        }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        self.success && self.error.is_none()
+    }
+
+    pub fn is_err(&self) -> bool {
+        !self.success || self.error.is_some()
+    }
+}
+
+impl ICPErrorCode {
+    pub fn to_string(&self) -> String {
+        match self {
+            ICPErrorCode::Unauthorized => "Unauthorized access".to_string(),
+            ICPErrorCode::AlreadyExists => "Resource already exists".to_string(),
+            ICPErrorCode::NotFound => "Resource not found".to_string(),
+            ICPErrorCode::InvalidHash => "Invalid content hash".to_string(),
+            ICPErrorCode::Internal(msg) => format!("Internal error: {}", msg),
+        }
+    }
+}
+
+// Helper functions to convert between error patterns
+impl MemoryResponse {
+    pub fn from_icp_result<T>(result: ICPResult<T>) -> Self {
+        Self {
+            success: result.success,
+            data: None, // MemoryResponse doesn't carry typed data
+            error: result.error.map(|e| e.to_string()),
+        }
+    }
+
+    pub fn from_icp_error(error: ICPErrorCode) -> Self {
+        Self {
+            success: false,
+            data: None,
+            error: Some(error.to_string()),
+        }
+    }
+}
+
+impl MemoryPresenceResponse {
+    pub fn ok(metadata_present: bool, asset_present: bool) -> Self {
+        Self {
+            success: true,
+            metadata_present,
+            asset_present,
+            error: None,
+        }
+    }
+
+    pub fn err(error: ICPErrorCode) -> Self {
+        Self {
+            success: false,
+            metadata_present: false,
+            asset_present: false,
+            error: Some(error),
+        }
+    }
+}
+
+impl MetadataResponse {
+    pub fn ok(memory_id: String, message: String) -> Self {
+        Self {
+            success: true,
+            memory_id: Some(memory_id),
+            message,
+            error: None,
+        }
+    }
+
+    pub fn err(error: ICPErrorCode, message: String) -> Self {
+        Self {
+            success: false,
+            memory_id: None,
+            message,
+            error: Some(error),
+        }
+    }
+}
+
+impl UploadSessionResponse {
+    pub fn ok(session: UploadSession, message: String) -> Self {
+        Self {
+            success: true,
+            session: Some(session),
+            message,
+            error: None,
+        }
+    }
+
+    pub fn err(error: ICPErrorCode, message: String) -> Self {
+        Self {
+            success: false,
+            session: None,
+            message,
+            error: Some(error),
+        }
+    }
+}
+
+impl ChunkResponse {
+    pub fn ok(chunk_index: u32, bytes_received: u32, message: String) -> Self {
+        Self {
+            success: true,
+            chunk_index,
+            bytes_received,
+            message,
+            error: None,
+        }
+    }
+
+    pub fn err(error: ICPErrorCode, chunk_index: u32, message: String) -> Self {
+        Self {
+            success: false,
+            chunk_index,
+            bytes_received: 0,
+            message,
+            error: Some(error),
+        }
+    }
+}
+
+impl CommitResponse {
+    pub fn ok(memory_id: String, final_hash: String, total_bytes: u64, message: String) -> Self {
+        Self {
+            success: true,
+            memory_id,
+            final_hash,
+            total_bytes,
+            message,
+            error: None,
+        }
+    }
+
+    pub fn err(error: ICPErrorCode, memory_id: String, message: String) -> Self {
+        Self {
+            success: false,
+            memory_id,
+            final_hash: String::new(),
+            total_bytes: 0,
+            message,
+            error: Some(error),
+        }
+    }
+}
 
 // HTTP types for serving content
 #[derive(Clone, Debug, CandidType, Deserialize)]
@@ -20,6 +207,78 @@ pub struct MemoryResponse {
     pub success: bool,
     pub data: Option<String>,
     pub error: Option<String>,
+}
+
+// Memory artifact for stable storage
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryArtifact {
+    pub memory_id: String,
+    pub memory_type: MemoryType,
+    pub artifact_type: ArtifactType,
+    pub content_hash: String,
+    pub size: u64,
+    pub stored_at: u64,
+    pub metadata: Option<String>, // JSON metadata
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub enum ArtifactType {
+    Metadata,
+    Asset,
+}
+
+// Enhanced response types for ICP operations
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryPresenceResponse {
+    pub success: bool,
+    pub metadata_present: bool,
+    pub asset_present: bool,
+    pub error: Option<ICPErrorCode>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MetadataResponse {
+    pub success: bool,
+    pub memory_id: Option<String>,
+    pub message: String,
+    pub error: Option<ICPErrorCode>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct UploadSession {
+    pub session_id: String,
+    pub memory_id: String,
+    pub expected_hash: String,
+    pub chunk_count: u32,
+    pub total_size: u64,
+    pub created_at: u64,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct UploadSessionResponse {
+    pub success: bool,
+    pub session: Option<UploadSession>,
+    pub message: String,
+    pub error: Option<ICPErrorCode>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct ChunkResponse {
+    pub success: bool,
+    pub chunk_index: u32,
+    pub bytes_received: u32,
+    pub message: String,
+    pub error: Option<ICPErrorCode>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct CommitResponse {
+    pub success: bool,
+    pub memory_id: String,
+    pub final_hash: String,
+    pub total_bytes: u64,
+    pub message: String,
+    pub error: Option<ICPErrorCode>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -59,7 +318,7 @@ pub enum PersonRef {
 }
 
 // Connection status for peer relationships
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum ConnectionStatus {
     Pending,
     Accepted,
@@ -68,7 +327,7 @@ pub enum ConnectionStatus {
 }
 
 // Connection between persons
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Connection {
     pub peer: PersonRef,
     pub status: ConnectionStatus,
@@ -77,7 +336,7 @@ pub struct Connection {
 }
 
 // Connection groups for organizing relationships
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct ConnectionGroup {
     pub id: String,
     pub name: String, // "Family", "Close Friends", etc.
@@ -88,14 +347,14 @@ pub struct ConnectionGroup {
 }
 
 // Controller state tracking (simplified - full control except ownership transfer)
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct ControllerState {
     pub granted_at: u64,
     pub granted_by: PersonRef,
 }
 
 // Owner state tracking
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct OwnerState {
     pub since: u64,
     pub last_activity_at: u64, // Track owner activity
@@ -161,7 +420,7 @@ pub struct CapsuleHeader {
 
 // New unified memory system
 // Base metadata that all memory types share
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryMetadataBase {
     pub size: u64,
     pub mime_type: String,
@@ -173,13 +432,13 @@ pub struct MemoryMetadataBase {
 }
 
 // Extended metadata for specific memory types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct ImageMetadata {
     pub base: MemoryMetadataBase,
     pub dimensions: Option<(u32, u32)>,
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct VideoMetadata {
     pub base: MemoryMetadataBase,
     pub duration: Option<u32>, // Duration in seconds
@@ -188,7 +447,7 @@ pub struct VideoMetadata {
     pub thumbnail: Option<String>,
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct AudioMetadata {
     pub base: MemoryMetadataBase,
     pub duration: Option<u32>, // Duration in seconds
@@ -198,19 +457,19 @@ pub struct AudioMetadata {
     pub channels: Option<u8>,
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct DocumentMetadata {
     pub base: MemoryMetadataBase,
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct NoteMetadata {
     pub base: MemoryMetadataBase,
     pub tags: Option<Vec<String>>,
 }
 
 // Enum for different metadata types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum MemoryMetadata {
     Image(ImageMetadata),
     Video(VideoMetadata),
@@ -219,7 +478,7 @@ pub enum MemoryMetadata {
     Note(NoteMetadata),
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum MemoryType {
     Image,
     Video,
@@ -228,7 +487,7 @@ pub enum MemoryType {
     Note,
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum MemoryAccess {
     Public,
     Private,
@@ -251,7 +510,7 @@ pub enum MemoryAccess {
 }
 
 // Events that can trigger access changes
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum AccessEvent {
     // Memorial events
     AfterDeath,       // revealed after subject's death is recorded
@@ -271,7 +530,7 @@ pub enum AccessEvent {
 }
 
 // New memory structures
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryInfo {
     pub memory_type: MemoryType,
     pub name: String,
@@ -283,7 +542,7 @@ pub struct MemoryInfo {
 }
 
 // External blob storage types
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum MemoryBlobKindExternal {
     Http,    // HTTP URL
     Ipfs,    // IPFS CID
@@ -292,26 +551,26 @@ pub enum MemoryBlobKindExternal {
 }
 
 // Blob storage reference
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum MemoryBlobKind {
     ICPCapsule,             // stored in IC canister
     MemoryBlobKindExternal, // external reference
 }
 
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct BlobRef {
     pub kind: MemoryBlobKind,
     pub locator: String,        // canister+key, URL, CID, etc.
     pub hash: Option<[u8; 32]>, // optional integrity hash
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryData {
     pub blob_ref: BlobRef,     // where the data is stored
     pub data: Option<Vec<u8>>, // inline data (for IcCanister storage)
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct Memory {
     pub id: String,               // unique identifier
     pub info: MemoryInfo,         // basic info (name, type, timestamps)
@@ -325,7 +584,7 @@ pub struct Memory {
 // ============================================================================
 
 // Gallery storage status for tracking where gallery data is stored
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum GalleryStorageStatus {
     Web2Only,  // Stored only in Web2 database
     ICPOnly,   // Stored only in ICP canister
@@ -336,7 +595,7 @@ pub enum GalleryStorageStatus {
 
 // Minimal extra data for gallery memory entries
 // Only stores what memories don't already have
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct GalleryMemoryEntry {
     pub memory_id: String,               // Reference to existing memory
     pub position: u32,                   // Gallery-specific ordering
@@ -346,7 +605,7 @@ pub struct GalleryMemoryEntry {
 }
 
 // Main gallery structure with embedded memory entries
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Gallery {
     pub id: String,                              // unique gallery identifier
     pub owner_principal: Principal,              // who owns this gallery
@@ -594,4 +853,217 @@ pub struct Web2GalleryItem {
     pub metadata: serde_json::Value,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+// ============================================================================
+// STORABLE TRAIT IMPLEMENTATIONS FOR STABLE MEMORY
+// ============================================================================
+
+impl Storable for Capsule {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        let bytes = candid::encode_one(self).expect("Failed to encode Capsule");
+        Cow::Owned(bytes)
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        candid::decode_one(&bytes).expect("Failed to decode Capsule")
+    }
+
+    const BOUND: ic_stable_structures::storable::Bound =
+        ic_stable_structures::storable::Bound::Unbounded;
+}
+
+impl Storable for UploadSession {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        let bytes = candid::encode_one(self).expect("Failed to encode UploadSession");
+        Cow::Owned(bytes)
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        candid::decode_one(&bytes).expect("Failed to decode UploadSession")
+    }
+
+    const BOUND: ic_stable_structures::storable::Bound =
+        ic_stable_structures::storable::Bound::Bounded {
+            max_size: 1024, // 1KB should be enough for upload session metadata
+            is_fixed_size: false,
+        };
+}
+
+impl Storable for MemoryArtifact {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        let bytes = candid::encode_one(self).expect("Failed to encode MemoryArtifact");
+        Cow::Owned(bytes)
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        candid::decode_one(&bytes).expect("Failed to decode MemoryArtifact")
+    }
+
+    const BOUND: ic_stable_structures::storable::Bound =
+        ic_stable_structures::storable::Bound::Bounded {
+            max_size: 2048, // 2KB should be enough for memory artifact metadata
+            is_fixed_size: false,
+        };
+}
+// ============================================================================
+// TESTS FOR ICP ERROR MODEL
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_icp_error_code_to_string() {
+        assert_eq!(
+            ICPErrorCode::Unauthorized.to_string(),
+            "Unauthorized access"
+        );
+        assert_eq!(
+            ICPErrorCode::AlreadyExists.to_string(),
+            "Resource already exists"
+        );
+        assert_eq!(ICPErrorCode::NotFound.to_string(), "Resource not found");
+        assert_eq!(
+            ICPErrorCode::InvalidHash.to_string(),
+            "Invalid content hash"
+        );
+        assert_eq!(
+            ICPErrorCode::Internal("test error".to_string()).to_string(),
+            "Internal error: test error"
+        );
+    }
+
+    #[test]
+    fn test_icp_result_ok() {
+        let result = ICPResult::ok("test data".to_string());
+        assert!(result.is_ok());
+        assert!(!result.is_err());
+        assert_eq!(result.data, Some("test data".to_string()));
+        assert_eq!(result.error, None);
+    }
+
+    #[test]
+    fn test_icp_result_err() {
+        let result: ICPResult<String> = ICPResult::err(ICPErrorCode::NotFound);
+        assert!(!result.is_ok());
+        assert!(result.is_err());
+        assert_eq!(result.data, None);
+        assert_eq!(result.error, Some(ICPErrorCode::NotFound));
+    }
+
+    #[test]
+    fn test_memory_response_from_icp_error() {
+        let response = MemoryResponse::from_icp_error(ICPErrorCode::Unauthorized);
+        assert!(!response.success);
+        assert_eq!(response.error, Some("Unauthorized access".to_string()));
+    }
+
+    #[test]
+    fn test_memory_presence_response() {
+        let ok_response = MemoryPresenceResponse::ok(true, false);
+        assert!(ok_response.success);
+        assert!(ok_response.metadata_present);
+        assert!(!ok_response.asset_present);
+        assert_eq!(ok_response.error, None);
+
+        let err_response = MemoryPresenceResponse::err(ICPErrorCode::NotFound);
+        assert!(!err_response.success);
+        assert!(!err_response.metadata_present);
+        assert!(!err_response.asset_present);
+        assert_eq!(err_response.error, Some(ICPErrorCode::NotFound));
+    }
+
+    #[test]
+    fn test_metadata_response() {
+        let ok_response = MetadataResponse::ok("memory_123".to_string(), "Success".to_string());
+        assert!(ok_response.success);
+        assert_eq!(ok_response.memory_id, Some("memory_123".to_string()));
+        assert_eq!(ok_response.message, "Success");
+        assert_eq!(ok_response.error, None);
+
+        let err_response = MetadataResponse::err(
+            ICPErrorCode::InvalidHash,
+            "Hash validation failed".to_string(),
+        );
+        assert!(!err_response.success);
+        assert_eq!(err_response.memory_id, None);
+        assert_eq!(err_response.message, "Hash validation failed");
+        assert_eq!(err_response.error, Some(ICPErrorCode::InvalidHash));
+    }
+
+    #[test]
+    fn test_upload_session_response() {
+        let session = UploadSession {
+            session_id: "session_123".to_string(),
+            memory_id: "memory_456".to_string(),
+            expected_hash: "abc123".to_string(),
+            chunk_count: 5,
+            total_size: 1024,
+            created_at: 1234567890,
+        };
+
+        let ok_response = UploadSessionResponse::ok(session.clone(), "Session created".to_string());
+        assert!(ok_response.success);
+        assert_eq!(ok_response.session, Some(session));
+        assert_eq!(ok_response.message, "Session created");
+        assert_eq!(ok_response.error, None);
+
+        let err_response =
+            UploadSessionResponse::err(ICPErrorCode::Unauthorized, "Access denied".to_string());
+        assert!(!err_response.success);
+        assert_eq!(err_response.session, None);
+        assert_eq!(err_response.message, "Access denied");
+        assert_eq!(err_response.error, Some(ICPErrorCode::Unauthorized));
+    }
+
+    #[test]
+    fn test_chunk_response() {
+        let ok_response = ChunkResponse::ok(2, 1024, "Chunk received".to_string());
+        assert!(ok_response.success);
+        assert_eq!(ok_response.chunk_index, 2);
+        assert_eq!(ok_response.bytes_received, 1024);
+        assert_eq!(ok_response.message, "Chunk received");
+        assert_eq!(ok_response.error, None);
+
+        let err_response = ChunkResponse::err(
+            ICPErrorCode::InvalidHash,
+            1,
+            "Invalid chunk hash".to_string(),
+        );
+        assert!(!err_response.success);
+        assert_eq!(err_response.chunk_index, 1);
+        assert_eq!(err_response.bytes_received, 0);
+        assert_eq!(err_response.message, "Invalid chunk hash");
+        assert_eq!(err_response.error, Some(ICPErrorCode::InvalidHash));
+    }
+
+    #[test]
+    fn test_commit_response() {
+        let ok_response = CommitResponse::ok(
+            "memory_789".to_string(),
+            "final_hash_xyz".to_string(),
+            2048,
+            "Upload completed".to_string(),
+        );
+        assert!(ok_response.success);
+        assert_eq!(ok_response.memory_id, "memory_789");
+        assert_eq!(ok_response.final_hash, "final_hash_xyz");
+        assert_eq!(ok_response.total_bytes, 2048);
+        assert_eq!(ok_response.message, "Upload completed");
+        assert_eq!(ok_response.error, None);
+
+        let err_response = CommitResponse::err(
+            ICPErrorCode::InvalidHash,
+            "memory_789".to_string(),
+            "Hash mismatch".to_string(),
+        );
+        assert!(!err_response.success);
+        assert_eq!(err_response.memory_id, "memory_789");
+        assert_eq!(err_response.final_hash, "");
+        assert_eq!(err_response.total_bytes, 0);
+        assert_eq!(err_response.message, "Hash mismatch");
+        assert_eq!(err_response.error, Some(ICPErrorCode::InvalidHash));
+    }
 }
