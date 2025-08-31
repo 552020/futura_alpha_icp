@@ -449,6 +449,7 @@ pub struct VerificationResult {
 
 impl Gallery {
     /// Convert Web2 gallery data to ICP gallery format
+    #[allow(dead_code)]
     pub fn from_web2(
         web2_gallery: &Web2Gallery,
         web2_items: &[Web2GalleryItem],
@@ -473,6 +474,7 @@ impl Gallery {
     }
 
     /// Convert ICP gallery to Web2 format
+    #[allow(dead_code)]
     pub fn to_web2(&self) -> (Web2Gallery, Vec<Web2GalleryItem>) {
         let web2_gallery = Web2Gallery {
             id: self.id.clone(),
@@ -494,11 +496,13 @@ impl Gallery {
     }
 
     /// Helper: Convert timestamp to nanoseconds
+    #[allow(dead_code)]
     fn timestamp_to_nanoseconds(timestamp: u64) -> u64 {
         timestamp * 1_000_000_000 // Convert seconds to nanoseconds
     }
 
     /// Helper: Convert nanoseconds to timestamp
+    #[allow(dead_code)]
     fn nanoseconds_to_timestamp(nanoseconds: u64) -> u64 {
         nanoseconds / 1_000_000_000 // Convert nanoseconds to seconds
     }
@@ -506,6 +510,7 @@ impl Gallery {
 
 impl GalleryMemoryEntry {
     /// Convert Web2 gallery item to ICP gallery memory entry
+    #[allow(dead_code)]
     pub fn from_web2(web2_item: &Web2GalleryItem) -> Self {
         Self {
             memory_id: web2_item.memory_id.clone(),
@@ -518,6 +523,7 @@ impl GalleryMemoryEntry {
     }
 
     /// Convert ICP gallery memory entry to Web2 format
+    #[allow(dead_code)]
     pub fn to_web2(&self, gallery_id: &str) -> Web2GalleryItem {
         Web2GalleryItem {
             id: uuid::Uuid::new_v4().to_string(), // Generate new ID for Web2
@@ -539,6 +545,7 @@ impl GalleryMemoryEntry {
 // These are placeholder structures that match the Web2 database schema
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct Web2Gallery {
     pub id: String,
     pub owner_id: String,
@@ -550,6 +557,7 @@ pub struct Web2Gallery {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct Web2GalleryItem {
     pub id: String,
     pub gallery_id: String,
