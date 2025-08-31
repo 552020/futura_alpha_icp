@@ -461,7 +461,7 @@
     - _Requirements: 7.2_
     - _Commit: `test: add capsule creation functionality tests`_
 
-  - [ ] 18.7 Test personal canister creation
+  - [x] 18.7 Test personal canister creation
 
     - Create `test_personal_canister.sh` to test `create_personal_canister` endpoint
     - Test creation status queries: `get_creation_status`, `get_detailed_creation_status`
