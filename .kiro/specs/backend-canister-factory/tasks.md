@@ -267,16 +267,16 @@
     - Test comprehensive verification flow
     - _Requirements: 6.1, 6.3_
 
-- [ ] 15. Write integration tests for complete migration flow
+- [x] 15. Write integration tests for complete migration flow
 
-  - [ ] 15.1 Test end-to-end migration scenarios
+  - [x] 15.1 Test end-to-end migration scenarios
 
     - Test complete successful migration flow
     - Test idempotent `migrate_capsule` behavior
     - Test migration status tracking and updates
     - _Requirements: 2.1, 2.2, 5.6, 6.1, 6.3_
 
-  - [ ] 15.2 Test failure scenarios and recovery
+  - [x] 15.2 Test failure scenarios and recovery
 
     - Test failure at each migration stage
     - Test cleanup and rollback procedures
@@ -284,23 +284,23 @@
     - Test retry mechanisms and recovery strategies
     - _Requirements: 6.1, 6.3_
 
-  - [ ] 15.3 Test upgrade resilience
+  - [x] 15.3 Test upgrade resilience
     - Test restart-resume functionality (simulate mid-state)
     - Test pre/post-upgrade state persistence
     - Test idempotency across canister upgrades
     - Test migration state recovery after restart
     - _Requirements: 6.2, 6.3_
 
-- [ ] 16. Update dependencies and build configuration
+- [x] 16. Update dependencies and build configuration
 
-  - [ ] 16.1 Add required dependencies to Cargo.toml
+  - [x] 16.1 Add required dependencies to Cargo.toml
 
     - Add `sha2` for hash generation
     - Add `hex` for hash encoding
     - Update existing dependencies if needed
     - _Requirements: 4.2, 4.7_
 
-  - [ ] 16.2 Update build and deployment scripts
+  - [x] 16.2 Update build and deployment scripts
     - Ensure migration module compiles correctly
     - Add feature flag support for migration functionality
     - Test deployment with migration features
