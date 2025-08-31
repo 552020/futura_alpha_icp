@@ -34,20 +34,118 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
 - [ ] 1.3 Implement Memory Metadata Operations
 
-  - Create upsert_metadata endpoint with idempotency key support
-  - Add memory type validation and metadata structure verification
-  - Implement get_memory_presence_icp for individual memory queries
-  - Add get_memory_list_presence_icp with pagination support
-  - _Requirements: 22.5, 24.3, 25.3_
+  **Goal**: Create ICP canister endpoints to store and query memory metadata (not the actual files yet, just the metadata about memories like titles, descriptions, etc.)
+
+  **What to implement**:
+
+  1. **upsert_metadata endpoint** - Store memory metadata on ICP
+
+     - Function signature: `pub fn upsert_metadata(memory_id: String, memory_type: MemoryType, metadata: MemoryMetadata, idempotency_key: String) -> ICPResult<MetadataResponse>`
+     - Store metadata in stable memory using `with_stable_memory_artifacts_mut`
+     - Use idempotency_key to prevent duplicate writes (same key = return success without re-writing)
+     - Validate memory_type is one of: Image, Video, Audio, Document, Note
+     - Return MetadataResponse with success/error status
+
+  2. **get_memory_presence_icp endpoint** - Check if a single memory's metadata exists on ICP
+
+     - Function signature: `pub fn get_memory_presence_icp(memory_id: String) -> ICPResult<MemoryPresenceResponse>`
+     - Query stable memory to check if metadata exists for this memory_id
+     - Return MemoryPresenceResponse with metadata_present: bool, asset_present: bool (asset will be false for now)
+
+  3. **get_memory_list_presence_icp endpoint** - Check presence for multiple memories (with pagination)
+
+     - Function signature: `pub fn get_memory_list_presence_icp(memory_ids: Vec<String>, cursor: Option<String>, limit: u32) -> ICPResult<MemoryListPresenceResponse>`
+     - Limit max 100 items per request, default 20
+     - Return which memories have metadata stored on ICP
+     - Support pagination with cursor for large lists
+
+  4. **Add these endpoints to lib.rs** as public canister functions with #[ic_cdk::update] and #[ic_cdk::query] attributes
+
+  **Key concepts**:
+
+  - This is about METADATA only (titles, descriptions, etc.) - not the actual image/video files
+  - Use the stable memory infrastructure from task 1.2
+  - Idempotency means calling the same operation twice should be safe
+  - Web2 will call these endpoints to store memory metadata on ICP before storing the actual files
+
+  _Requirements: 22.5, 24.3, 25.3_
 
 - [ ] 1.4 Implement Chunked Asset Upload Protocol
 
-  - Create begin_asset_upload endpoint with upload session management
-  - Implement put_chunk endpoint with chunk validation and ordering
-  - Add commit_asset endpoint with hash verification
-  - Create cancel_upload endpoint for cleanup
-  - Add upload session timeout and cleanup mechanisms
-  - _Requirements: 18.1, 22.2, 22.3_
+  **Goal**: Create a robust chunked upload system for large files (images, videos) with progress tracking, error recovery, and operational constraints.
+
+  **What to implement**:
+
+  1. **begin_asset_upload endpoint** - Start chunked upload session
+
+     - Function signature: `pub fn begin_asset_upload(memory_id: String, expected_hash: String, chunk_count: u32, total_size: u64) -> ICPResult<UploadSessionResponse>`
+     - Create UploadSession in stable memory with session_id, expected_hash, chunk tracking
+     - Validate file size limits (max 100MB), chunk count reasonable
+     - Check if asset with same hash already exists (return AlreadyExists for idempotency)
+     - Return session_id for subsequent chunk uploads
+
+  2. **put_chunk endpoint** - Upload individual file chunks
+
+     - Function signature: `pub fn put_chunk(session_id: String, chunk_index: u32, chunk_data: Vec<u8>) -> ICPResult<ChunkResponse>`
+     - Validate session exists and not expired (30-minute timeout)
+     - Validate chunk_index is within expected range and not already received
+     - Validate chunk size (max 1MB per chunk)
+     - Store chunk data in stable memory linked to session
+     - Update session progress tracking (chunks_received, bytes_received)
+     - Return chunk confirmation with progress info
+
+  3. **commit_asset endpoint** - Finalize upload after all chunks received
+
+     - Function signature: `pub fn commit_asset(session_id: String, final_hash: String) -> ICPResult<CommitResponse>`
+     - Validate all chunks received and session complete
+     - Reconstruct file from chunks and verify SHA-256 hash matches expected_hash
+     - Create MemoryArtifact with ArtifactType::Asset in stable memory
+     - Clean up upload session and temporary chunk data
+     - Return success with final_hash and total_bytes
+
+  4. **cancel_upload endpoint** - Cancel upload and cleanup resources
+
+     - Function signature: `pub fn cancel_upload(session_id: String) -> ICPResult<()>`
+     - Remove upload session and all associated chunk data
+     - Safe to call multiple times (idempotent)
+     - Return success even if session doesn't exist
+
+  5. **Add session timeout and cleanup**
+
+     - Implement session expiration (30 minutes from creation)
+     - Add periodic cleanup of expired sessions
+     - Handle timeout gracefully in all endpoints
+
+  6. **Add these endpoints to lib.rs** as public canister functions with proper attributes
+
+  **Key Features**:
+
+  - **File Size Limits**: Max 100MB per file, max 1MB per chunk
+  - **Hash Verification**: SHA-256 validation at begin and commit
+  - **Session Management**: 30-minute timeout, automatic cleanup
+  - **Progress Tracking**: Track chunks received, bytes uploaded
+  - **Rate Limiting**: Max 3 concurrent uploads per user
+  - **Idempotency**: Safe to retry operations, duplicate hash detection
+  - **Error Recovery**: Graceful handling of network failures, timeouts
+
+  **Operational Constraints**:
+
+  - Use stable memory for persistence across canister upgrades
+  - Implement proper error handling with ICPErrorCode enum
+  - Add comprehensive logging for debugging and monitoring
+  - Ensure memory efficiency (cleanup temporary data promptly)
+
+  **Testing Requirements**:
+
+  - Create bash scripts in `scripts/tests/backend/icp-upload/` for E2E testing
+  - Test basic single-chunk upload flow
+  - Test multi-chunk upload (3MB file = 3 chunks)
+  - Test error scenarios (invalid hash, timeout, oversized files)
+  - Test idempotency (duplicate uploads with same hash)
+  - Test concurrent upload limits and rate limiting
+  - Test session cleanup and timeout handling
+
+  _Requirements: 18.1, 22.2, 22.3_
 
 - [ ] 1.5 Add Authorization and Audit Logging
 

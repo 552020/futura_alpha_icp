@@ -1,6 +1,6 @@
 #[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
-use crate::types::{ArtifactType, Capsule, MemoryArtifact, MemoryType, PersonRef, UploadSession};
+use crate::types::{Capsule, MemoryArtifact, UploadSession};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{DefaultMemoryImpl, StableBTreeMap};
@@ -226,8 +226,9 @@ pub fn get_stable_memory_stats() -> (u64, u64, u64) {
 #[cfg(test)]
 mod stable_memory_tests {
     use super::*;
-    use crate::types::*;
+    use crate::types::{ArtifactType, MemoryArtifact, MemoryType, PersonRef, UploadSession};
     use candid::Principal;
+    use std::collections::HashMap;
 
     #[test]
     fn test_stable_memory_stats() {
@@ -333,8 +334,6 @@ mod stable_memory_tests {
 
     #[test]
     fn test_stable_capsule_basic_operations() {
-        use std::collections::HashMap;
-
         // Create a test capsule manually to avoid ic_cdk::api::time() call
         let test_capsule = Capsule {
             id: "test_capsule_123".to_string(),

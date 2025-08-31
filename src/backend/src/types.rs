@@ -189,6 +189,28 @@ impl CommitResponse {
     }
 }
 
+impl MemoryListPresenceResponse {
+    pub fn ok(results: Vec<MemoryPresenceResult>, cursor: Option<String>, has_more: bool) -> Self {
+        Self {
+            success: true,
+            results,
+            cursor,
+            has_more,
+            error: None,
+        }
+    }
+
+    pub fn err(error: ICPErrorCode) -> Self {
+        Self {
+            success: false,
+            results: vec![],
+            cursor: None,
+            has_more: false,
+            error: Some(error),
+        }
+    }
+}
+
 // HTTP types for serving content
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct HttpHeader(pub String, pub String);
@@ -269,6 +291,35 @@ pub struct ChunkResponse {
     pub bytes_received: u32,
     pub message: String,
     pub error: Option<ICPErrorCode>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryListPresenceResponse {
+    pub success: bool,
+    pub results: Vec<MemoryPresenceResult>,
+    pub cursor: Option<String>,
+    pub has_more: bool,
+    pub error: Option<ICPErrorCode>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryPresenceResult {
+    pub memory_id: String,
+    pub metadata_present: bool,
+    pub asset_present: bool,
+}
+
+// Simple memory metadata structure for ICP storage (task 1.3)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct SimpleMemoryMetadata {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub size: Option<u64>,
+    pub content_type: Option<String>,
+    pub custom_fields: std::collections::HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]

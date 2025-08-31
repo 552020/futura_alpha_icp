@@ -435,33 +435,85 @@ pub fn get_memory_list_presence_icp(
 ) -> Result<MemoryListPresenceResponse, ErrorCode>
 ```
 
-**Asset Upload Operations**
+**Asset Upload Operations (Task 1.4 - Chunked Asset Upload Protocol)**
+
+The chunked upload protocol enables large file uploads to ICP with reliability, progress tracking, and error recovery. This builds on the stable memory infrastructure from task 1.2 and metadata operations from task 1.3.
+
+**Core Upload Flow:**
+
+1. **Begin Upload Session**: Create upload session with expected hash and chunk count
+2. **Upload Chunks**: Send file data in chunks (max 1MB each) with validation
+3. **Commit Upload**: Verify final hash and mark upload complete
+4. **Cleanup**: Handle timeouts, cancellations, and error recovery
+
+**Implementation Details:**
 
 ```rust
-// Begin chunked asset upload
+// Begin chunked asset upload - creates upload session
 pub fn begin_asset_upload(
     memory_id: String,
     expected_hash: String,
     chunk_count: u32,
     total_size: u64
-) -> Result<UploadSession, ErrorCode>
+) -> ICPResult<UploadSessionResponse>
 
-// Upload asset chunk
+// Upload individual chunk with validation
 pub fn put_chunk(
     session_id: String,
     chunk_index: u32,
     chunk_data: Vec<u8>
-) -> Result<ChunkResponse, ErrorCode>
+) -> ICPResult<ChunkResponse>
 
-// Commit asset upload
+// Commit upload after all chunks received
 pub fn commit_asset(
     session_id: String,
     final_hash: String
-) -> Result<CommitResponse, ErrorCode>
+) -> ICPResult<CommitResponse>
 
-// Cancel upload session
-pub fn cancel_upload(session_id: String) -> Result<(), ErrorCode>
+// Cancel upload session and cleanup
+pub fn cancel_upload(session_id: String) -> ICPResult<()>
 ```
+
+**Key Features:**
+
+- **Chunk Size Limits**: Max 1MB per chunk, max 100MB total file size
+- **Hash Verification**: SHA-256 hash validation at begin and commit
+- **Session Management**: Upload sessions with timeout (30 minutes)
+- **Idempotency**: Safe to retry any operation with same parameters
+- **Rate Limiting**: Max 3 concurrent uploads per user
+- **Error Recovery**: Automatic cleanup on failures
+- **Progress Tracking**: Chunk-level progress reporting
+
+**Upload Session Structure:**
+
+```rust
+pub struct UploadSession {
+    pub session_id: String,        // Unique session identifier
+    pub memory_id: String,         // Target memory ID
+    pub expected_hash: String,     // Expected final SHA-256 hash
+    pub chunk_count: u32,          // Total number of chunks
+    pub total_size: u64,           // Total file size in bytes
+    pub created_at: u64,           // Session creation timestamp
+    pub chunks_received: Vec<bool>, // Track which chunks received
+    pub bytes_received: u64,       // Total bytes received so far
+}
+```
+
+**Operational Constraints:**
+
+- **File Size**: Max 100MB per file (ICP message size limits)
+- **Chunk Size**: 1MB chunks (balance between efficiency and reliability)
+- **Concurrency**: Max 3 concurrent uploads per user (prevent resource exhaustion)
+- **Timeout**: 30-minute session timeout (prevent stale sessions)
+- **Storage**: Use stable memory for persistence across canister upgrades
+
+**Error Handling:**
+
+- **InvalidHash**: Hash mismatch during begin or commit
+- **UploadExpired**: Session timeout exceeded
+- **InvalidChunkSize**: Chunk too large or invalid index
+- **QuotaExceeded**: User storage quota exceeded
+- **AlreadyExists**: Asset with same hash already stored (idempotent success)
 
 **Error Model**
 
@@ -794,7 +846,310 @@ async function storeGalleryWithRollback(gallery: GalleryWithItems): Promise<void
 
 ## Testing Strategy
 
-### 1. Unit Tests
+### 1. End-to-End Bash Testing Scripts
+
+**Task 1.4 Chunked Upload Protocol Testing**
+
+Create comprehensive bash scripts to test the chunked upload protocol from outside the canister:
+
+**Location**: `scripts/tests/backend/icp-upload/`
+
+**Test Script Structure:**
+
+```bash
+# scripts/tests/backend/icp-upload/test_chunked_upload.sh
+#!/bin/bash
+
+# Test chunked upload protocol end-to-end
+source ../test_config.sh
+source ../test_utils.sh
+
+# Test 1: Basic chunked upload flow
+test_basic_chunked_upload() {
+    echo "Testing basic chunked upload flow..."
+
+    # Create test file (1MB)
+    dd if=/dev/zero of=test_file.bin bs=1024 count=1024
+    EXPECTED_HASH=$(sha256sum test_file.bin | cut -d' ' -f1)
+
+    # Begin upload session
+    SESSION_RESULT=$(dfx canister call backend begin_asset_upload \
+        '("test_memory_123", "'$EXPECTED_HASH'", 1, 1048576)')
+
+    if [[ $SESSION_RESULT == *"Ok"* ]]; then
+        echo "✓ Upload session created successfully"
+        SESSION_ID=$(echo $SESSION_RESULT | extract_session_id)
+    else
+        echo "✗ Failed to create upload session: $SESSION_RESULT"
+        return 1
+    fi
+
+    # Upload chunk
+    CHUNK_DATA=$(base64 -i test_file.bin)
+    CHUNK_RESULT=$(dfx canister call backend put_chunk \
+        '("'$SESSION_ID'", 0, blob "'$CHUNK_DATA'")')
+
+    if [[ $CHUNK_RESULT == *"Ok"* ]]; then
+        echo "✓ Chunk uploaded successfully"
+    else
+        echo "✗ Failed to upload chunk: $CHUNK_RESULT"
+        return 1
+    fi
+
+    # Commit upload
+    COMMIT_RESULT=$(dfx canister call backend commit_asset \
+        '("'$SESSION_ID'", "'$EXPECTED_HASH'")')
+
+    if [[ $COMMIT_RESULT == *"Ok"* ]]; then
+        echo "✓ Upload committed successfully"
+    else
+        echo "✗ Failed to commit upload: $COMMIT_RESULT"
+        return 1
+    fi
+
+    # Cleanup
+    rm test_file.bin
+    echo "✓ Basic chunked upload test passed"
+}
+
+# Test 2: Multi-chunk upload
+test_multi_chunk_upload() {
+    echo "Testing multi-chunk upload..."
+
+    # Create 3MB test file (3 chunks)
+    dd if=/dev/zero of=large_test_file.bin bs=1024 count=3072
+    EXPECTED_HASH=$(sha256sum large_test_file.bin | cut -d' ' -f1)
+
+    # Begin upload session
+    SESSION_RESULT=$(dfx canister call backend begin_asset_upload \
+        '("test_memory_456", "'$EXPECTED_HASH'", 3, 3145728)')
+
+    SESSION_ID=$(echo $SESSION_RESULT | extract_session_id)
+
+    # Upload chunks in sequence
+    for i in {0..2}; do
+        CHUNK_START=$((i * 1048576))
+        CHUNK_DATA=$(dd if=large_test_file.bin bs=1048576 skip=$i count=1 2>/dev/null | base64)
+
+        CHUNK_RESULT=$(dfx canister call backend put_chunk \
+            '("'$SESSION_ID'", '$i', blob "'$CHUNK_DATA'")')
+
+        if [[ $CHUNK_RESULT == *"Ok"* ]]; then
+            echo "✓ Chunk $i uploaded successfully"
+        else
+            echo "✗ Failed to upload chunk $i: $CHUNK_RESULT"
+            return 1
+        fi
+    done
+
+    # Commit upload
+    COMMIT_RESULT=$(dfx canister call backend commit_asset \
+        '("'$SESSION_ID'", "'$EXPECTED_HASH'")')
+
+    if [[ $COMMIT_RESULT == *"Ok"* ]]; then
+        echo "✓ Multi-chunk upload committed successfully"
+    else
+        echo "✗ Failed to commit multi-chunk upload: $COMMIT_RESULT"
+        return 1
+    fi
+
+    rm large_test_file.bin
+    echo "✓ Multi-chunk upload test passed"
+}
+
+# Test 3: Error handling - invalid hash
+test_invalid_hash_error() {
+    echo "Testing invalid hash error handling..."
+
+    # Create test file
+    dd if=/dev/zero of=test_file.bin bs=1024 count=512
+    WRONG_HASH="0000000000000000000000000000000000000000000000000000000000000000"
+
+    # Begin upload with wrong hash
+    SESSION_RESULT=$(dfx canister call backend begin_asset_upload \
+        '("test_memory_789", "'$WRONG_HASH'", 1, 524288)')
+
+    SESSION_ID=$(echo $SESSION_RESULT | extract_session_id)
+
+    # Upload chunk
+    CHUNK_DATA=$(base64 -i test_file.bin)
+    dfx canister call backend put_chunk '("'$SESSION_ID'", 0, blob "'$CHUNK_DATA'")'
+
+    # Try to commit with correct hash (should fail)
+    CORRECT_HASH=$(sha256sum test_file.bin | cut -d' ' -f1)
+    COMMIT_RESULT=$(dfx canister call backend commit_asset \
+        '("'$SESSION_ID'", "'$CORRECT_HASH'")')
+
+    if [[ $COMMIT_RESULT == *"InvalidHash"* ]]; then
+        echo "✓ Invalid hash error handled correctly"
+    else
+        echo "✗ Expected InvalidHash error, got: $COMMIT_RESULT"
+        return 1
+    fi
+
+    rm test_file.bin
+    echo "✓ Invalid hash error test passed"
+}
+
+# Test 4: Session timeout and cleanup
+test_session_timeout() {
+    echo "Testing session timeout..."
+
+    # Begin upload session
+    SESSION_RESULT=$(dfx canister call backend begin_asset_upload \
+        '("test_memory_timeout", "hash123", 1, 1024)')
+
+    SESSION_ID=$(echo $SESSION_RESULT | extract_session_id)
+
+    # Wait for timeout (simulate by calling after delay)
+    echo "Waiting for session timeout simulation..."
+    sleep 2
+
+    # Try to upload to expired session
+    CHUNK_RESULT=$(dfx canister call backend put_chunk \
+        '("'$SESSION_ID'", 0, blob "dGVzdA==")')
+
+    # Should handle expired session gracefully
+    if [[ $CHUNK_RESULT == *"UploadExpired"* ]] || [[ $CHUNK_RESULT == *"NotFound"* ]]; then
+        echo "✓ Session timeout handled correctly"
+    else
+        echo "? Session timeout test inconclusive: $CHUNK_RESULT"
+    fi
+
+    echo "✓ Session timeout test completed"
+}
+
+# Test 5: Idempotency
+test_upload_idempotency() {
+    echo "Testing upload idempotency..."
+
+    # Create test file
+    dd if=/dev/zero of=test_file.bin bs=1024 count=512
+    EXPECTED_HASH=$(sha256sum test_file.bin | cut -d' ' -f1)
+
+    # First upload
+    SESSION_RESULT1=$(dfx canister call backend begin_asset_upload \
+        '("test_memory_idem", "'$EXPECTED_HASH'", 1, 524288)')
+
+    SESSION_ID1=$(echo $SESSION_RESULT1 | extract_session_id)
+    CHUNK_DATA=$(base64 -i test_file.bin)
+
+    dfx canister call backend put_chunk '("'$SESSION_ID1'", 0, blob "'$CHUNK_DATA'")'
+    dfx canister call backend commit_asset '("'$SESSION_ID1'", "'$EXPECTED_HASH'")'
+
+    # Second upload with same hash (should be idempotent)
+    SESSION_RESULT2=$(dfx canister call backend begin_asset_upload \
+        '("test_memory_idem", "'$EXPECTED_HASH'", 1, 524288)')
+
+    if [[ $SESSION_RESULT2 == *"AlreadyExists"* ]]; then
+        echo "✓ Idempotency working - asset already exists"
+    else
+        echo "? Idempotency test inconclusive: $SESSION_RESULT2"
+    fi
+
+    rm test_file.bin
+    echo "✓ Idempotency test completed"
+}
+
+# Utility functions
+extract_session_id() {
+    # Extract session ID from canister response
+    grep -o '"session_id"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4
+}
+
+# Run all tests
+main() {
+    echo "Starting chunked upload protocol tests..."
+
+    # Ensure canister is deployed
+    dfx canister status backend || {
+        echo "Backend canister not deployed. Run: dfx deploy backend"
+        exit 1
+    }
+
+    test_basic_chunked_upload
+    test_multi_chunk_upload
+    test_invalid_hash_error
+    test_session_timeout
+    test_upload_idempotency
+
+    echo "All chunked upload tests completed!"
+}
+
+# Run tests if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
+```
+
+**Additional Test Scripts:**
+
+```bash
+# scripts/tests/backend/icp-upload/test_upload_limits.sh
+#!/bin/bash
+
+# Test upload size and rate limits
+test_file_size_limits() {
+    echo "Testing file size limits..."
+
+    # Test max file size (100MB + 1 byte should fail)
+    dd if=/dev/zero of=oversized_file.bin bs=1024 count=102401
+    HASH=$(sha256sum oversized_file.bin | cut -d' ' -f1)
+
+    RESULT=$(dfx canister call backend begin_asset_upload \
+        '("test_oversized", "'$HASH'", 100, 104858624)')
+
+    if [[ $RESULT == *"QuotaExceeded"* ]] || [[ $RESULT == *"Err"* ]]; then
+        echo "✓ File size limit enforced correctly"
+    else
+        echo "✗ File size limit not enforced: $RESULT"
+    fi
+
+    rm oversized_file.bin
+}
+
+# Test concurrent upload limits
+test_concurrent_limits() {
+    echo "Testing concurrent upload limits..."
+
+    # Start multiple uploads simultaneously
+    for i in {1..5}; do
+        (
+            dd if=/dev/zero of=test_$i.bin bs=1024 count=512
+            HASH=$(sha256sum test_$i.bin | cut -d' ' -f1)
+            dfx canister call backend begin_asset_upload \
+                '("test_concurrent_'$i'", "'$HASH'", 1, 524288)' &
+        )
+    done
+
+    wait
+    echo "✓ Concurrent upload limit test completed"
+    rm test_*.bin
+}
+```
+
+**Test Runner Script:**
+
+```bash
+# scripts/tests/backend/icp-upload/run_all_upload_tests.sh
+#!/bin/bash
+
+set -e
+
+echo "Running all ICP upload protocol tests..."
+
+# Source test configuration
+source ../test_config.sh
+
+# Run individual test suites
+./test_chunked_upload.sh
+./test_upload_limits.sh
+./test_metadata_integration.sh
+
+echo "All ICP upload tests completed successfully!"
+```
+
+### 2. Unit Tests
 
 **Frontend Component Tests**
 

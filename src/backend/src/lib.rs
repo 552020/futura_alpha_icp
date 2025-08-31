@@ -10,6 +10,7 @@ mod admin;
 mod canister_factory;
 mod capsule;
 mod memory;
+mod metadata;
 mod types;
 // memories.rs removed - functionality moved to capsule-based architecture
 
@@ -433,6 +434,39 @@ fn post_upgrade() {
     // If restore fails, start with empty state (no panic)
 
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
+}
+
+// ============================================================================
+// MEMORY METADATA OPERATIONS - ICP Canister Endpoints
+// ============================================================================
+
+/// Store memory metadata on ICP with idempotency support
+#[ic_cdk::update]
+pub fn upsert_metadata(
+    memory_id: String,
+    memory_type: types::MemoryType,
+    metadata: types::SimpleMemoryMetadata,
+    idempotency_key: String,
+) -> types::ICPResult<types::MetadataResponse> {
+    metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
+}
+
+/// Check if a single memory's metadata exists on ICP
+#[ic_cdk::query]
+pub fn get_memory_presence_icp(
+    memory_id: String,
+) -> types::ICPResult<types::MemoryPresenceResponse> {
+    metadata::get_memory_presence_icp(memory_id)
+}
+
+/// Check presence for multiple memories with pagination
+#[ic_cdk::query]
+pub fn get_memory_list_presence_icp(
+    memory_ids: Vec<String>,
+    cursor: Option<String>,
+    limit: u32,
+) -> types::ICPResult<types::MemoryListPresenceResponse> {
+    metadata::get_memory_list_presence_icp(memory_ids, cursor, limit)
 }
 
 // Export the interface for the smart contract.

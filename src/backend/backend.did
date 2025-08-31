@@ -138,6 +138,28 @@ type GalleryUpdateData = record {
   memory_entries : opt vec GalleryMemoryEntry;
   description : opt text;
 };
+type ICPErrorCode = variant {
+  Internal : text;
+  NotFound;
+  InvalidHash;
+  Unauthorized;
+  AlreadyExists;
+};
+type ICPResult = record {
+  data : opt MemoryListPresenceResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_1 = record {
+  data : opt MemoryPresenceResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_2 = record {
+  data : opt MetadataResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
 type ImageMetadata = record {
   base : MemoryMetadataBase;
   dimensions : opt record { nat32; nat32 };
@@ -170,6 +192,13 @@ type MemoryInfo = record {
   created_at : nat64;
   uploaded_at : nat64;
 };
+type MemoryListPresenceResponse = record {
+  cursor : opt text;
+  results : vec MemoryPresenceResult;
+  error : opt ICPErrorCode;
+  success : bool;
+  has_more : bool;
+};
 type MemoryListResponse = record {
   memories : vec Memory;
   message : text;
@@ -196,11 +225,28 @@ type MemoryOperationResponse = record {
   message : text;
   success : bool;
 };
+type MemoryPresenceResponse = record {
+  metadata_present : bool;
+  error : opt ICPErrorCode;
+  success : bool;
+  asset_present : bool;
+};
+type MemoryPresenceResult = record {
+  metadata_present : bool;
+  memory_id : text;
+  asset_present : bool;
+};
 type MemoryType = variant { Note; Image; Document; Audio; Video };
 type MemoryUpdateData = record {
   access : opt MemoryAccess;
   metadata : opt MemoryMetadata;
   name : opt text;
+};
+type MetadataResponse = record {
+  memory_id : opt text;
+  error : opt ICPErrorCode;
+  message : text;
+  success : bool;
 };
 type NoteMetadata = record { base : MemoryMetadataBase; tags : opt vec text };
 type OwnerState = record { last_activity_at : nat64; since : nat64 };
@@ -224,6 +270,16 @@ type Result_1 = variant {
 type Result_2 = variant { Ok : PersonalCanisterCreationStats; Err : text };
 type Result_3 = variant { Ok : opt DetailedCreationStatus; Err : text };
 type Result_4 = variant { Ok; Err : text };
+type SimpleMemoryMetadata = record {
+  title : opt text;
+  updated_at : nat64;
+  size : opt nat64;
+  tags : vec text;
+  content_type : opt text;
+  description : opt text;
+  created_at : nat64;
+  custom_fields : vec record { text; text };
+};
 type StoreGalleryResponse = record {
   gallery_id : opt text;
   message : text;
@@ -260,6 +316,12 @@ service : () -> {
   get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
   get_gallery_by_id : (text) -> (opt Gallery) query;
   get_memory_from_capsule : (text) -> (opt Memory) query;
+  // Check presence for multiple memories with pagination
+  get_memory_list_presence_icp : (vec text, opt text, nat32) -> (
+      ICPResult,
+    ) query;
+  // Check if a single memory's metadata exists on ICP
+  get_memory_presence_icp : (text) -> (ICPResult_1) query;
   get_migration_states_by_status : (CreationStatus) -> (Result_1) query;
   get_migration_stats : () -> (Result_2) query;
   get_migration_status : () -> (opt CreationStatusResponse) query;
@@ -295,6 +357,10 @@ service : () -> {
   update_gallery : (text, GalleryUpdateData) -> (UpdateGalleryResponse);
   update_memory_in_capsule : (text, MemoryUpdateData) -> (
       MemoryOperationResponse,
+    );
+  // Store memory metadata on ICP with idempotency support
+  upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
+      ICPResult_2,
     );
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;
