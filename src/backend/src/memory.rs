@@ -1,3 +1,4 @@
+#[cfg(feature = "migration")]
 use crate::canister_factory::MigrationStateData;
 use crate::types::*;
 use candid::Principal;
@@ -14,7 +15,8 @@ thread_local! {
     // Nonce proof storage for II authentication
     static NONCE_PROOFS: std::cell::RefCell<HashMap<String, (Principal, u64)>> = std::cell::RefCell::new(HashMap::new());
 
-    // Migration state storage
+    // Migration state storage (only available with migration feature)
+    #[cfg(feature = "migration")]
     static MIGRATION_STATE: std::cell::RefCell<MigrationStateData> = std::cell::RefCell::new(MigrationStateData::default());
 }
 
@@ -59,7 +61,8 @@ pub fn get_nonce_proof(nonce: String) -> Option<Principal> {
     NONCE_PROOFS.with(|proofs| proofs.borrow().get(&nonce).map(|(principal, _)| *principal))
 }
 
-// Migration state access functions
+// Migration state access functions (only available with migration feature)
+#[cfg(feature = "migration")]
 pub fn with_migration_state_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut MigrationStateData) -> R,
@@ -67,6 +70,7 @@ where
     MIGRATION_STATE.with(|state| f(&mut state.borrow_mut()))
 }
 
+#[cfg(feature = "migration")]
 pub fn with_migration_state<F, R>(f: F) -> R
 where
     F: FnOnce(&MigrationStateData) -> R,

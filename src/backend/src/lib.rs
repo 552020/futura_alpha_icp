@@ -7,8 +7,10 @@ use ic_http_certification::utils::skip_certification_certified_data;
 
 // Import modules
 mod admin;
+#[cfg(feature = "migration")]
 mod canister_factory;
 mod capsule;
+mod gallery;
 mod memory;
 mod types;
 // mod memories; // Disabled for now
@@ -127,7 +129,67 @@ pub fn list_my_capsules() -> Vec<types::CapsuleHeader> {
     capsule::list_my_capsules()
 }
 
-// Migration endpoints
+// Gallery storage endpoints
+#[ic_cdk::update]
+pub async fn store_gallery_forever(
+    gallery_data: types::GalleryData,
+) -> types::StoreGalleryResponse {
+    let caller = ic_cdk::api::msg_caller();
+    gallery::store_gallery_forever(caller, gallery_data).await
+}
+
+#[ic_cdk::query]
+pub fn get_user_galleries(user_principal: Principal) -> Vec<types::Gallery> {
+    gallery::get_user_galleries(user_principal)
+}
+
+#[ic_cdk::query]
+pub fn get_my_galleries() -> Vec<types::Gallery> {
+    let caller = ic_cdk::api::msg_caller();
+    gallery::get_user_galleries(caller)
+}
+
+#[ic_cdk::query]
+pub fn get_gallery_by_id(gallery_id: String) -> Option<types::Gallery> {
+    gallery::get_gallery_by_id(gallery_id)
+}
+
+#[ic_cdk::update]
+pub async fn update_gallery(
+    gallery_id: String,
+    update_data: types::GalleryUpdateData,
+) -> types::UpdateGalleryResponse {
+    let caller = ic_cdk::api::msg_caller();
+    gallery::update_gallery(caller, gallery_id, update_data).await
+}
+
+#[ic_cdk::update]
+pub async fn delete_gallery(gallery_id: String) -> types::DeleteGalleryResponse {
+    let caller = ic_cdk::api::msg_caller();
+    gallery::delete_gallery(caller, gallery_id).await
+}
+
+#[ic_cdk::update]
+pub async fn register_user_with_principal(
+    user_data: types::UserPrincipalData,
+) -> types::RegisterUserResponse {
+    let caller = ic_cdk::api::msg_caller();
+    gallery::register_user_with_principal(caller, user_data).await
+}
+
+#[ic_cdk::update]
+pub async fn link_user_principal(user_data: types::UserPrincipalData) -> types::LinkUserResponse {
+    let caller = ic_cdk::api::msg_caller();
+    gallery::link_user_principal(caller, user_data).await
+}
+
+#[ic_cdk::query]
+pub fn get_user_principal_info(user_principal: Principal) -> Option<types::UserPrincipalData> {
+    gallery::get_user_principal_info(user_principal)
+}
+
+// Migration endpoints (only available with migration feature)
+#[cfg(feature = "migration")]
 #[ic_cdk::update]
 pub async fn migrate_capsule() -> canister_factory::MigrationResponse {
     match canister_factory::migrate_capsule().await {
@@ -140,32 +202,38 @@ pub async fn migrate_capsule() -> canister_factory::MigrationResponse {
     }
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_api_version() -> String {
     canister_factory::get_api_version()
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_migration_status() -> Option<canister_factory::MigrationStatusResponse> {
     canister_factory::get_migration_status()
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_personal_canister_id(user: Principal) -> Option<Principal> {
     canister_factory::get_personal_canister_id(user)
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_my_personal_canister_id() -> Option<Principal> {
     canister_factory::get_my_personal_canister_id()
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_detailed_migration_status() -> Option<canister_factory::DetailedMigrationStatus> {
     canister_factory::get_detailed_migration_status()
 }
 
-// Admin migration functions
+// Admin migration functions (only available with migration feature)
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_user_migration_status(
     user: Principal,
@@ -173,12 +241,14 @@ pub fn get_user_migration_status(
     canister_factory::get_user_migration_status(user)
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn list_all_migration_states(
 ) -> Result<Vec<(Principal, canister_factory::DetailedMigrationStatus)>, String> {
     canister_factory::list_all_migration_states()
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_migration_states_by_status(
     status: canister_factory::MigrationStatus,
@@ -186,22 +256,26 @@ pub fn get_migration_states_by_status(
     canister_factory::get_migration_states_by_status(status)
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::update]
 pub fn clear_migration_state(user: Principal) -> Result<bool, String> {
     canister_factory::clear_migration_state(user)
 }
 
-// Admin controls for migration
+// Admin controls for migration (only available with migration feature)
+#[cfg(feature = "migration")]
 #[ic_cdk::update]
 pub fn set_migration_enabled(enabled: bool) -> Result<(), String> {
     canister_factory::set_migration_enabled(enabled)
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn get_migration_stats() -> Result<canister_factory::MigrationStats, String> {
     canister_factory::get_migration_stats()
 }
 
+#[cfg(feature = "migration")]
 #[ic_cdk::query]
 pub fn is_migration_enabled() -> bool {
     canister_factory::is_migration_enabled()
@@ -231,25 +305,93 @@ fn init() {
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Serialize capsules, admins, and migration state before upgrade
+    // Serialize capsules, admins, and gallery data before upgrade
     let capsule_data = capsule::export_capsules_for_upgrade();
     let admin_data = admin::export_admins_for_upgrade();
-    let migration_data = canister_factory::export_migration_state_for_upgrade();
-    ic_cdk::storage::stable_save((capsule_data, admin_data, migration_data))
+    let gallery_data = gallery::export_galleries_for_upgrade();
+    let user_galleries_data = gallery::export_user_galleries_for_upgrade();
+    let user_principals_data = gallery::export_user_principals_for_upgrade();
+
+    #[cfg(feature = "migration")]
+    {
+        // Also serialize migration state if migration feature is enabled
+        let migration_data = canister_factory::export_migration_state_for_upgrade();
+        ic_cdk::storage::stable_save((
+            capsule_data,
+            admin_data,
+            gallery_data,
+            user_galleries_data,
+            user_principals_data,
+            migration_data,
+        ))
         .expect("Failed to save data to stable storage");
+    }
+
+    #[cfg(not(feature = "migration"))]
+    {
+        // Save without migration data if migration feature is disabled
+        ic_cdk::storage::stable_save((
+            capsule_data,
+            admin_data,
+            gallery_data,
+            user_galleries_data,
+            user_principals_data,
+        ))
+        .expect("Failed to save data to stable storage");
+    }
 }
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
-    // Restore capsules, admins, and migration state after upgrade
-    if let Ok((capsule_data, admin_data, migration_data)) = ic_cdk::storage::stable_restore::<(
-        Vec<(String, types::Capsule)>,
-        Vec<Principal>,
-        canister_factory::MigrationStateData,
-    )>() {
-        capsule::import_capsules_from_upgrade(capsule_data);
-        admin::import_admins_from_upgrade(admin_data);
-        canister_factory::import_migration_state_from_upgrade(migration_data);
+    #[cfg(feature = "migration")]
+    {
+        // Restore capsules, admins, gallery data, and migration state after upgrade
+        if let Ok((
+            capsule_data,
+            admin_data,
+            gallery_data,
+            user_galleries_data,
+            user_principals_data,
+            migration_data,
+        )) = ic_cdk::storage::stable_restore::<(
+            Vec<(String, types::Capsule)>,
+            Vec<Principal>,
+            Vec<(String, types::Gallery)>,
+            Vec<(Principal, Vec<String>)>,
+            Vec<(Principal, types::UserPrincipalData)>,
+            canister_factory::MigrationStateData,
+        )>() {
+            capsule::import_capsules_from_upgrade(capsule_data);
+            admin::import_admins_from_upgrade(admin_data);
+            gallery::import_galleries_from_upgrade(gallery_data);
+            gallery::import_user_galleries_from_upgrade(user_galleries_data);
+            gallery::import_user_principals_from_upgrade(user_principals_data);
+            canister_factory::import_migration_state_from_upgrade(migration_data);
+        }
+    }
+
+    #[cfg(not(feature = "migration"))]
+    {
+        // Restore capsules, admins, and gallery data only if migration feature is disabled
+        if let Ok((
+            capsule_data,
+            admin_data,
+            gallery_data,
+            user_galleries_data,
+            user_principals_data,
+        )) = ic_cdk::storage::stable_restore::<(
+            Vec<(String, types::Capsule)>,
+            Vec<Principal>,
+            Vec<(String, types::Gallery)>,
+            Vec<(Principal, Vec<String>)>,
+            Vec<(Principal, types::UserPrincipalData)>,
+        )>() {
+            capsule::import_capsules_from_upgrade(capsule_data);
+            admin::import_admins_from_upgrade(admin_data);
+            gallery::import_galleries_from_upgrade(gallery_data);
+            gallery::import_user_galleries_from_upgrade(user_galleries_data);
+            gallery::import_user_principals_from_upgrade(user_principals_data);
+        }
     }
     // If restore fails, start with empty state (no panic)
 }
