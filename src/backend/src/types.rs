@@ -22,6 +22,29 @@ pub struct MemoryResponse {
     pub error: Option<String>,
 }
 
+// Memory management response types
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryOperationResponse {
+    pub success: bool,
+    pub memory_id: Option<String>,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryListResponse {
+    pub success: bool,
+    pub memories: Vec<Memory>,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryUpdateData {
+    pub info: Option<MemoryInfo>,
+    pub metadata: Option<MemoryMetadata>,
+    pub access: Option<MemoryAccess>,
+    pub data: Option<MemoryData>,
+}
+
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
 pub struct UserMemoriesResponse {
     pub images: Vec<String>,
@@ -111,6 +134,7 @@ pub struct Capsule {
     pub connections: HashMap<PersonRef, Connection>,         // social graph
     pub connection_groups: HashMap<String, ConnectionGroup>, // organized connection groups
     pub memories: HashMap<String, Memory>,                   // content
+    pub galleries: HashMap<String, Gallery>,                 // galleries (collections of memories)
     pub created_at: u64,
     pub updated_at: u64,
     pub bound_to_web2: bool, // Web2 (NextAuth) binding status

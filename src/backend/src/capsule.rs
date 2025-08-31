@@ -1,5 +1,6 @@
 use crate::memory::{with_capsules, with_capsules_mut};
 use crate::types::*;
+use candid::Principal;
 use ic_cdk::api::{msg_caller, time};
 use std::collections::HashMap;
 
@@ -46,6 +47,7 @@ impl Capsule {
             connections: HashMap::new(),
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
+            galleries: HashMap::new(),
             created_at: now,
             updated_at: now,
             bound_to_web2: false, // Initially not bound to Web2
@@ -397,6 +399,443 @@ pub fn import_capsules_from_upgrade(capsule_data: Vec<(String, Capsule)>) {
     with_capsules_mut(|capsules| {
         *capsules = capsule_data.into_iter().collect();
     })
+}
+
+// ============================================================================
+// GALLERY MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Store a gallery in the caller's capsule
+pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
+    let caller = PersonRef::from_caller();
+
+    // Find caller's self-capsule (where caller is both subject and owner)
+    let capsule = with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+            .cloned()
+    });
+
+    match capsule {
+        Some(mut capsule) => {
+            // Generate unique gallery ID
+            let gallery_id = format!("gallery_{}", ic_cdk::api::time());
+
+            // Create gallery from data
+            let mut gallery = gallery_data.gallery;
+            gallery.id = gallery_id.clone();
+            gallery.owner_principal = match caller {
+                PersonRef::Principal(p) => p,
+                PersonRef::Opaque(_) => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: "Only principals can store galleries".to_string(),
+                        storage_status: GalleryStorageStatus::Failed,
+                    }
+                }
+            };
+            gallery.created_at = ic_cdk::api::time();
+            gallery.updated_at = ic_cdk::api::time();
+            gallery.storage_status = GalleryStorageStatus::ICPOnly;
+
+            // Store gallery in capsule
+            capsule.galleries.insert(gallery_id.clone(), gallery);
+            capsule.touch(); // Update capsule timestamp
+
+            // Save updated capsule
+            with_capsules_mut(|capsules| {
+                capsules.insert(capsule.id.clone(), capsule);
+            });
+
+            StoreGalleryResponse {
+                success: true,
+                gallery_id: Some(gallery_id.clone()),
+                icp_gallery_id: Some(gallery_id),
+                message: "Gallery stored successfully in capsule".to_string(),
+                storage_status: GalleryStorageStatus::ICPOnly,
+            }
+        }
+        None => StoreGalleryResponse {
+            success: false,
+            gallery_id: None,
+            icp_gallery_id: None,
+            message: "No capsule found for caller".to_string(),
+            storage_status: GalleryStorageStatus::Failed,
+        },
+    }
+}
+
+/// Get all galleries for a user principal
+pub fn get_user_galleries(user_principal: Principal) -> Vec<Gallery> {
+    let person_ref = PersonRef::Principal(user_principal);
+
+    with_capsules(|capsules| {
+        capsules
+            .values()
+            .filter(|capsule| {
+                capsule.subject == person_ref && capsule.owners.contains_key(&person_ref)
+            })
+            .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
+            .collect()
+    })
+}
+
+/// Get gallery by ID from caller's capsule
+pub fn get_gallery_by_id(gallery_id: String) -> Option<Gallery> {
+    let caller = PersonRef::from_caller();
+
+    with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+            .and_then(|capsule| capsule.galleries.get(&gallery_id).cloned())
+    })
+}
+
+/// Update a gallery in caller's capsule
+pub fn update_gallery(gallery_id: String, update_data: GalleryUpdateData) -> UpdateGalleryResponse {
+    let caller = PersonRef::from_caller();
+
+    // Find caller's self-capsule and get a mutable reference
+    let mut capsule_found = false;
+    let mut updated_gallery: Option<Gallery> = None;
+
+    with_capsules_mut(|capsules| {
+        if let Some(capsule) = capsules
+            .values_mut()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+        {
+            capsule_found = true;
+
+            // Check if gallery exists
+            if let Some(gallery) = capsule.galleries.get(&gallery_id) {
+                // Update gallery fields
+                let mut gallery_clone = gallery.clone();
+                if let Some(title) = update_data.title.clone() {
+                    gallery_clone.title = title;
+                }
+                if let Some(description) = update_data.description.clone() {
+                    gallery_clone.description = Some(description);
+                }
+                if let Some(is_public) = update_data.is_public {
+                    gallery_clone.is_public = is_public;
+                }
+                if let Some(memory_entries) = update_data.memory_entries.clone() {
+                    gallery_clone.memory_entries = memory_entries;
+                }
+
+                gallery_clone.updated_at = ic_cdk::api::time();
+
+                // Store updated gallery
+                capsule.galleries.insert(gallery_id, gallery_clone.clone());
+                capsule.touch(); // Update capsule timestamp
+
+                updated_gallery = Some(gallery_clone);
+            }
+        }
+    });
+
+    if !capsule_found {
+        return UpdateGalleryResponse {
+            success: false,
+            gallery: None,
+            message: "No capsule found for caller".to_string(),
+        };
+    }
+
+    match updated_gallery {
+        Some(gallery) => UpdateGalleryResponse {
+            success: true,
+            gallery: Some(gallery),
+            message: "Gallery updated successfully".to_string(),
+        },
+        None => UpdateGalleryResponse {
+            success: false,
+            gallery: None,
+            message: "Gallery not found".to_string(),
+        },
+    }
+}
+
+/// Delete a gallery from caller's capsule
+pub fn delete_gallery(gallery_id: String) -> DeleteGalleryResponse {
+    let caller = PersonRef::from_caller();
+
+    // Find caller's self-capsule and perform deletion
+    let mut capsule_found = false;
+    let mut gallery_found = false;
+
+    with_capsules_mut(|capsules| {
+        if let Some(capsule) = capsules
+            .values_mut()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+        {
+            capsule_found = true;
+
+            // Check if gallery exists and remove it
+            if capsule.galleries.contains_key(&gallery_id) {
+                capsule.galleries.remove(&gallery_id);
+                capsule.touch(); // Update capsule timestamp
+                gallery_found = true;
+            }
+        }
+    });
+
+    if !capsule_found {
+        return DeleteGalleryResponse {
+            success: false,
+            message: "No capsule found for caller".to_string(),
+        };
+    }
+
+    if !gallery_found {
+        return DeleteGalleryResponse {
+            success: false,
+            message: "Gallery not found".to_string(),
+        };
+    }
+
+    DeleteGalleryResponse {
+        success: true,
+        message: "Gallery deleted successfully".to_string(),
+    }
+}
+
+// ============================================================================
+// MEMORY MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Add a memory to the caller's capsule
+pub fn add_memory_to_capsule(memory_data: MemoryData) -> MemoryOperationResponse {
+    let caller = PersonRef::from_caller();
+
+    // Find caller's self-capsule and add memory
+    let mut capsule_found = false;
+    let mut memory_id = String::new();
+
+    with_capsules_mut(|capsules| {
+        if let Some(capsule) = capsules
+            .values_mut()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+        {
+            capsule_found = true;
+
+            // Generate unique memory ID
+            memory_id = format!("memory_{}", ic_cdk::api::time());
+
+            // Create memory info
+            let now = ic_cdk::api::time();
+            let memory_info = MemoryInfo {
+                memory_type: MemoryType::Image, // Default type, can be updated later
+                name: format!("Memory {}", memory_id),
+                content_type: "application/octet-stream".to_string(),
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: None,
+            };
+
+            // Create memory metadata (default to Image type)
+            let memory_metadata = MemoryMetadata::Image(ImageMetadata {
+                base: MemoryMetadataBase {
+                    size: memory_data
+                        .data
+                        .as_ref()
+                        .map(|d| d.len() as u64)
+                        .unwrap_or(0),
+                    mime_type: "application/octet-stream".to_string(),
+                    original_name: format!("Memory {}", memory_id),
+                    uploaded_at: now.to_string(),
+                    date_of_memory: None,
+                    people_in_memory: None,
+                    format: None,
+                },
+                dimensions: None,
+            });
+
+            // Create memory access (default to private)
+            let memory_access = MemoryAccess::Private;
+
+            // Create the memory
+            let memory = Memory {
+                id: memory_id.clone(),
+                info: memory_info,
+                metadata: memory_metadata,
+                access: memory_access,
+                data: memory_data,
+            };
+
+            // Store memory in capsule
+            capsule.memories.insert(memory_id.clone(), memory);
+            capsule.touch(); // Update capsule timestamp
+        }
+    });
+
+    if !capsule_found {
+        return MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "No capsule found for caller".to_string(),
+        };
+    }
+
+    MemoryOperationResponse {
+        success: true,
+        memory_id: Some(memory_id),
+        message: "Memory added successfully to capsule".to_string(),
+    }
+}
+
+/// Get a memory from the caller's capsule
+pub fn get_memory_from_capsule(memory_id: String) -> Option<Memory> {
+    let caller = PersonRef::from_caller();
+
+    with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+            .and_then(|capsule| capsule.memories.get(&memory_id).cloned())
+    })
+}
+
+/// Update a memory in the caller's capsule
+pub fn update_memory_in_capsule(
+    memory_id: String,
+    updates: MemoryUpdateData,
+) -> MemoryOperationResponse {
+    let caller = PersonRef::from_caller();
+
+    // Find caller's self-capsule and perform update
+    let mut capsule_found = false;
+    let mut memory_found = false;
+    let memory_id_clone = memory_id.clone();
+
+    with_capsules_mut(|capsules| {
+        if let Some(capsule) = capsules
+            .values_mut()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+        {
+            capsule_found = true;
+
+            // Check if memory exists
+            if let Some(memory) = capsule.memories.get(&memory_id) {
+                memory_found = true;
+
+                // Update memory fields
+                let mut updated_memory = memory.clone();
+                if let Some(info) = updates.info.clone() {
+                    updated_memory.info = info;
+                }
+                if let Some(metadata) = updates.metadata.clone() {
+                    updated_memory.metadata = metadata;
+                }
+                if let Some(access) = updates.access.clone() {
+                    updated_memory.access = access;
+                }
+                if let Some(data) = updates.data.clone() {
+                    updated_memory.data = data;
+                }
+
+                updated_memory.info.updated_at = ic_cdk::api::time();
+
+                // Store updated memory
+                capsule.memories.insert(memory_id, updated_memory);
+                capsule.touch(); // Update capsule timestamp
+            }
+        }
+    });
+
+    if !capsule_found {
+        return MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "No capsule found for caller".to_string(),
+        };
+    }
+
+    if !memory_found {
+        return MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "Memory not found".to_string(),
+        };
+    }
+
+    MemoryOperationResponse {
+        success: true,
+        memory_id: Some(memory_id_clone),
+        message: "Memory updated successfully".to_string(),
+    }
+}
+
+/// Delete a memory from the caller's capsule
+pub fn delete_memory_from_capsule(memory_id: String) -> MemoryOperationResponse {
+    let caller = PersonRef::from_caller();
+
+    // Find caller's self-capsule and perform deletion
+    let mut capsule_found = false;
+    let mut memory_found = false;
+    let memory_id_clone = memory_id.clone();
+
+    with_capsules_mut(|capsules| {
+        if let Some(capsule) = capsules
+            .values_mut()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+        {
+            capsule_found = true;
+
+            // Check if memory exists and remove it
+            if capsule.memories.contains_key(&memory_id) {
+                capsule.memories.remove(&memory_id);
+                capsule.touch(); // Update capsule timestamp
+                memory_found = true;
+            }
+        }
+    });
+
+    if !capsule_found {
+        return MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "No capsule found for caller".to_string(),
+        };
+    }
+
+    if !memory_found {
+        return MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "Memory not found".to_string(),
+        };
+    }
+
+    MemoryOperationResponse {
+        success: true,
+        memory_id: Some(memory_id_clone),
+        message: "Memory deleted successfully".to_string(),
+    }
+}
+
+/// List all memories in the caller's capsule
+pub fn list_capsule_memories() -> MemoryListResponse {
+    let caller = PersonRef::from_caller();
+
+    let memories = with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+            .map(|capsule| capsule.memories.values().cloned().collect::<Vec<_>>())
+            .unwrap_or_default()
+    });
+
+    MemoryListResponse {
+        success: true,
+        memories,
+        message: "Memories retrieved successfully".to_string(),
+    }
 }
 
 /// Get capsule information for the caller

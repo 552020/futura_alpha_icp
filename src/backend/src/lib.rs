@@ -165,6 +165,37 @@ pub async fn delete_gallery(gallery_id: String) -> types::DeleteGalleryResponse 
     capsule::delete_gallery(gallery_id)
 }
 
+// Memory management endpoints
+#[ic_cdk::update]
+pub async fn add_memory_to_capsule(
+    memory_data: types::MemoryData,
+) -> types::MemoryOperationResponse {
+    capsule::add_memory_to_capsule(memory_data)
+}
+
+#[ic_cdk::query]
+pub fn get_memory_from_capsule(memory_id: String) -> Option<types::Memory> {
+    capsule::get_memory_from_capsule(memory_id)
+}
+
+#[ic_cdk::update]
+pub async fn update_memory_in_capsule(
+    memory_id: String,
+    updates: types::MemoryUpdateData,
+) -> types::MemoryOperationResponse {
+    capsule::update_memory_in_capsule(memory_id, updates)
+}
+
+#[ic_cdk::update]
+pub async fn delete_memory_from_capsule(memory_id: String) -> types::MemoryOperationResponse {
+    capsule::delete_memory_from_capsule(memory_id)
+}
+
+#[ic_cdk::query]
+pub fn list_capsule_memories() -> types::MemoryListResponse {
+    capsule::list_capsule_memories()
+}
+
 // Note: User principal management is handled through capsule registration
 // The existing register() and mark_bound() functions handle user principal management
 
@@ -289,7 +320,7 @@ fn pre_upgrade() {
     let capsule_data = capsule::export_capsules_for_upgrade();
     let admin_data = admin::export_admins_for_upgrade();
 
-        #[cfg(feature = "migration")]
+    #[cfg(feature = "migration")]
     {
         // Also serialize migration state if migration feature is enabled
         let migration_data = canister_factory::export_migration_state_for_upgrade();
@@ -309,52 +340,26 @@ fn pre_upgrade() {
 fn post_upgrade() {
     #[cfg(feature = "migration")]
     {
-        // Restore capsules, admins, gallery data, and migration state after upgrade
-        if let Ok((
-            capsule_data,
-            admin_data,
-            gallery_data,
-            user_galleries_data,
-            user_principals_data,
-            migration_data,
-        )) = ic_cdk::storage::stable_restore::<(
+        // Restore capsules, admins, and migration state after upgrade
+        if let Ok((capsule_data, admin_data, migration_data)) = ic_cdk::storage::stable_restore::<(
             Vec<(String, types::Capsule)>,
             Vec<Principal>,
-            Vec<(String, types::Gallery)>,
-            Vec<(Principal, Vec<String>)>,
-            Vec<(Principal, types::UserPrincipalData)>,
             canister_factory::MigrationStateData,
         )>() {
             capsule::import_capsules_from_upgrade(capsule_data);
             admin::import_admins_from_upgrade(admin_data);
-            gallery::import_galleries_from_upgrade(gallery_data);
-            gallery::import_user_galleries_from_upgrade(user_galleries_data);
-            gallery::import_user_principals_from_upgrade(user_principals_data);
             canister_factory::import_migration_state_from_upgrade(migration_data);
         }
     }
 
     #[cfg(not(feature = "migration"))]
     {
-        // Restore capsules, admins, and gallery data only if migration feature is disabled
-        if let Ok((
-            capsule_data,
-            admin_data,
-            gallery_data,
-            user_galleries_data,
-            user_principals_data,
-        )) = ic_cdk::storage::stable_restore::<(
-            Vec<(String, types::Capsule)>,
-            Vec<Principal>,
-            Vec<(String, types::Gallery)>,
-            Vec<(Principal, Vec<String>)>,
-            Vec<(Principal, types::UserPrincipalData)>,
-        )>() {
+        // Restore capsules and admins only if migration feature is disabled
+        if let Ok((capsule_data, admin_data)) =
+            ic_cdk::storage::stable_restore::<(Vec<(String, types::Capsule)>, Vec<Principal>)>()
+        {
             capsule::import_capsules_from_upgrade(capsule_data);
             admin::import_admins_from_upgrade(admin_data);
-            gallery::import_galleries_from_upgrade(gallery_data);
-            gallery::import_user_galleries_from_upgrade(user_galleries_data);
-            gallery::import_user_principals_from_upgrade(user_principals_data);
         }
     }
     // If restore fails, start with empty state (no panic)
