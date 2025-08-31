@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "user_id": "rdmx6-jaaaa-aaaah-qcaiq-cai",
+  "created_at": 1234567890000,
+  "updated_at": 1234567891000,
+  "memories": [
+    {
+      "id": "memory_001",
+      "content": "This is a test memory about learning to code",
+      "timestamp": 1234567890000,
+      "tags": ["coding", "learning", "test"],
+      "metadata": {
+        "source": "test",
+        "confidence": 0.95
+      }
+    },
+    {
+      "id": "memory_002",
+      "content": "Another test memory about personal canister creation",
+      "timestamp": 1234567890500,
+      "tags": ["canister", "creation", "test"],
+      "metadata": {
+        "source": "test",
+        "confidence": 0.87
+      }
+    },
+    {
+      "id": "memory_003",
+      "content": "A third memory for testing data integrity",
+      "timestamp": 1234567891000,
+      "tags": ["integrity", "data", "test"],
+      "metadata": {
+        "source": "test",
+        "confidence": 0.92
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": "memory_001",
+      "to": "memory_002",
+      "strength": 0.75,
+      "type": "semantic",
+      "created_at": 1234567890600
+    },
+    {
+      "from": "memory_002",
+      "to": "memory_003",
+      "strength": 0.68,
+      "type": "temporal",
+      "created_at": 1234567891100
+    },
+    {
+      "from": "memory_001",
+      "to": "memory_003",
+      "strength": 0.45,
+      "type": "contextual",
+      "created_at": 1234567891200
+    }
+  ],
+  "settings": {
+    "privacy_level": "private",
+    "sharing_enabled": false,
+    "backup_enabled": true,
+    "encryption_enabled": true
+  },
+  "statistics": {
+    "total_memories": 3,
+    "total_connections": 3,
+    "average_connection_strength": 0.63,
+    "last_activity": 1234567891200
+  }
+}
