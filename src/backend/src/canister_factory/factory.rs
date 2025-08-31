@@ -462,7 +462,7 @@ mod tests {
         let result = create_registry_entry(
             expected_canister_id,
             user,
-            MigrationStatus::Creating,
+            CreationStatus::Creating,
             cycles_to_fund,
         );
         assert!(result.is_ok(), "Registry entry creation should succeed");
@@ -473,7 +473,7 @@ mod tests {
 
         let entry = registry_entry.unwrap();
         assert_eq!(entry.created_by, user);
-        assert_eq!(entry.status, MigrationStatus::Creating);
+        assert_eq!(entry.status, CreationStatus::Creating);
         assert_eq!(entry.cycles_consumed, cycles_to_fund);
 
         // Test cycles consumption
@@ -548,7 +548,7 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Creating,
+            CreationStatus::Creating,
             100_000_000_000,
         );
 
@@ -556,13 +556,13 @@ mod tests {
         mock_management::set_install_code_failure(false);
 
         // Test successful installation by updating registry status
-        let result = update_registry_status(canister_id, MigrationStatus::Installing);
+        let result = update_registry_status(canister_id, CreationStatus::Installing);
         assert!(result.is_ok(), "Registry status update should succeed");
 
         // Verify registry was updated
         let registry_entry = get_registry_entry(canister_id);
         assert!(registry_entry.is_some(), "Registry entry should exist");
-        assert_eq!(registry_entry.unwrap().status, MigrationStatus::Installing);
+        assert_eq!(registry_entry.unwrap().status, CreationStatus::Installing);
     }
 
     #[tokio::test]
@@ -576,7 +576,7 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Creating,
+            CreationStatus::Creating,
             100_000_000_000,
         );
 
@@ -584,13 +584,13 @@ mod tests {
         mock_management::set_install_code_failure(true);
 
         // Test failure handling by updating registry to Failed status
-        let result = update_registry_status(canister_id, MigrationStatus::Failed);
+        let result = update_registry_status(canister_id, CreationStatus::Failed);
         assert!(result.is_ok(), "Registry status update should succeed");
 
         // Verify registry was updated to Failed
         let registry_entry = get_registry_entry(canister_id);
         assert!(registry_entry.is_some(), "Registry entry should exist");
-        assert_eq!(registry_entry.unwrap().status, MigrationStatus::Failed);
+        assert_eq!(registry_entry.unwrap().status, CreationStatus::Failed);
     }
 
     #[tokio::test]
@@ -604,7 +604,7 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Verifying,
+            CreationStatus::Verifying,
             100_000_000_000,
         );
 
@@ -619,13 +619,13 @@ mod tests {
         mock_management::set_update_settings_failure(false);
 
         // Test successful handoff by updating registry to Completed
-        let result = update_registry_status(canister_id, MigrationStatus::Completed);
+        let result = update_registry_status(canister_id, CreationStatus::Completed);
         assert!(result.is_ok(), "Registry status update should succeed");
 
         // Verify registry was updated to Completed
         let registry_entry = get_registry_entry(canister_id);
         assert!(registry_entry.is_some(), "Registry entry should exist");
-        assert_eq!(registry_entry.unwrap().status, MigrationStatus::Completed);
+        assert_eq!(registry_entry.unwrap().status, CreationStatus::Completed);
     }
 
     #[tokio::test]
@@ -640,7 +640,7 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Verifying,
+            CreationStatus::Verifying,
             100_000_000_000,
         );
 
@@ -669,7 +669,7 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Creating,
+            CreationStatus::Creating,
             100_000_000_000,
         );
 
@@ -698,7 +698,7 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Completed,
+            CreationStatus::Completed,
             100_000_000_000,
         );
 
@@ -744,7 +744,7 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Verifying,
+            CreationStatus::Verifying,
             100_000_000_000,
         );
 
@@ -752,13 +752,13 @@ mod tests {
         mock_management::set_update_settings_failure(true);
 
         // Test failure handling by updating registry to Failed status
-        let result = update_registry_status(canister_id, MigrationStatus::Failed);
+        let result = update_registry_status(canister_id, CreationStatus::Failed);
         assert!(result.is_ok(), "Registry status update should succeed");
 
         // Verify registry was updated to Failed
         let registry_entry = get_registry_entry(canister_id);
         assert!(registry_entry.is_some(), "Registry entry should exist");
-        assert_eq!(registry_entry.unwrap().status, MigrationStatus::Failed);
+        assert_eq!(registry_entry.unwrap().status, CreationStatus::Failed);
     }
 
     #[test]
@@ -887,21 +887,21 @@ mod tests {
         assert!(preflight_result.is_ok(), "Preflight should pass");
 
         let registry_result =
-            create_registry_entry(canister_id, user, MigrationStatus::Creating, cycles_to_fund);
+            create_registry_entry(canister_id, user, CreationStatus::Creating, cycles_to_fund);
         assert!(registry_result.is_ok(), "Registry creation should succeed");
 
         let consume_result = consume_cycles_from_reserve(cycles_to_fund);
         assert!(consume_result.is_ok(), "Cycles consumption should succeed");
 
         // Step 2: Test WASM installation flow
-        let install_result = update_registry_status(canister_id, MigrationStatus::Installing);
+        let install_result = update_registry_status(canister_id, CreationStatus::Installing);
         assert!(
             install_result.is_ok(),
             "Installation status update should succeed"
         );
 
         // Step 3: Test verification and handoff flow
-        let verify_result = update_registry_status(canister_id, MigrationStatus::Verifying);
+        let verify_result = update_registry_status(canister_id, CreationStatus::Verifying);
         assert!(
             verify_result.is_ok(),
             "Verification status update should succeed"
@@ -913,13 +913,13 @@ mod tests {
             "Handoff preconditions should pass"
         );
 
-        let handoff_result = update_registry_status(canister_id, MigrationStatus::Completed);
+        let handoff_result = update_registry_status(canister_id, CreationStatus::Completed);
         assert!(handoff_result.is_ok(), "Handoff completion should succeed");
 
         // Verify final state
         let final_entry = get_registry_entry(canister_id);
         assert!(final_entry.is_some(), "Final registry entry should exist");
-        assert_eq!(final_entry.unwrap().status, MigrationStatus::Completed);
+        assert_eq!(final_entry.unwrap().status, CreationStatus::Completed);
     }
 
     // Test cleanup on failure scenarios
@@ -956,18 +956,18 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Creating,
+            CreationStatus::Creating,
             100_000_000_000,
         );
 
         // Simulate installation failure
-        let result = update_registry_status(canister_id, MigrationStatus::Failed);
+        let result = update_registry_status(canister_id, CreationStatus::Failed);
         assert!(result.is_ok(), "Status update should succeed");
 
         // Verify registry shows failed status
         let registry_entry = get_registry_entry(canister_id);
         assert!(registry_entry.is_some(), "Registry entry should exist");
-        assert_eq!(registry_entry.unwrap().status, MigrationStatus::Failed);
+        assert_eq!(registry_entry.unwrap().status, CreationStatus::Failed);
     }
 
     #[tokio::test]
@@ -981,17 +981,17 @@ mod tests {
         let _ = create_registry_entry(
             canister_id,
             user,
-            MigrationStatus::Verifying,
+            CreationStatus::Verifying,
             100_000_000_000,
         );
 
         // Simulate handoff failure
-        let result = update_registry_status(canister_id, MigrationStatus::Failed);
+        let result = update_registry_status(canister_id, CreationStatus::Failed);
         assert!(result.is_ok(), "Status update should succeed");
 
         // Verify registry shows failed status
         let registry_entry = get_registry_entry(canister_id);
         assert!(registry_entry.is_some(), "Registry entry should exist");
-        assert_eq!(registry_entry.unwrap().status, MigrationStatus::Failed);
+        assert_eq!(registry_entry.unwrap().status, CreationStatus::Failed);
     }
 }

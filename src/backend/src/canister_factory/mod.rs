@@ -41,11 +41,11 @@ pub fn import_creation_state_from_upgrade(creation_data: PersonalCanisterCreatio
 }
 
 // Legacy functions for backward compatibility
-pub fn export_migration_state_for_upgrade() -> MigrationStateData {
+pub fn export_migration_state_for_upgrade() -> PersonalCanisterCreationStateData {
     export_creation_state_for_upgrade()
 }
 
-pub fn import_migration_state_from_upgrade(migration_data: MigrationStateData) {
+pub fn import_migration_state_from_upgrade(migration_data: PersonalCanisterCreationStateData) {
     import_creation_state_from_upgrade(migration_data)
 }
 

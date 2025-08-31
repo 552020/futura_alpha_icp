@@ -340,7 +340,7 @@ mod tests {
         // Query by Completed status (should have 2 entries)
         let completed_entries: Vec<PersonalCanisterRecord> = registry
             .values()
-            .filter(|record| record.status == MigrationStatus::Completed)
+            .filter(|record| record.status == CreationStatus::Completed)
             .cloned()
             .collect();
         assert_eq!(completed_entries.len(), 2);
@@ -348,7 +348,7 @@ mod tests {
         // Query by Failed status (should have 1 entry)
         let failed_entries: Vec<PersonalCanisterRecord> = registry
             .values()
-            .filter(|record| record.status == MigrationStatus::Failed)
+            .filter(|record| record.status == CreationStatus::Failed)
             .cloned()
             .collect();
         assert_eq!(failed_entries.len(), 1);
@@ -356,7 +356,7 @@ mod tests {
         // Query by Creating status (should have 1 entry)
         let creating_entries: Vec<PersonalCanisterRecord> = registry
             .values()
-            .filter(|record| record.status == MigrationStatus::Creating)
+            .filter(|record| record.status == CreationStatus::Creating)
             .cloned()
             .collect();
         assert_eq!(creating_entries.len(), 1);
@@ -364,7 +364,7 @@ mod tests {
         // Query by Installing status (should have 1 entry)
         let installing_entries: Vec<PersonalCanisterRecord> = registry
             .values()
-            .filter(|record| record.status == MigrationStatus::Installing)
+            .filter(|record| record.status == CreationStatus::Installing)
             .cloned()
             .collect();
         assert_eq!(installing_entries.len(), 1);
@@ -372,7 +372,7 @@ mod tests {
         // Query by NotStarted status (should have 0 entries)
         let not_started_entries: Vec<PersonalCanisterRecord> = registry
             .values()
-            .filter(|record| record.status == MigrationStatus::NotStarted)
+            .filter(|record| record.status == CreationStatus::NotStarted)
             .cloned()
             .collect();
         assert_eq!(not_started_entries.len(), 0);
@@ -419,13 +419,13 @@ mod tests {
 
         // Finalize the registry entry
         if let Some(record) = registry.get_mut(&canister_id) {
-            record.status = MigrationStatus::Completed;
+            record.status = CreationStatus::Completed;
             record.cycles_consumed = final_cycles_consumed;
         }
 
         // Verify finalization
         let finalized_record = registry.get(&canister_id).unwrap();
-        assert_eq!(finalized_record.status, MigrationStatus::Completed);
+        assert_eq!(finalized_record.status, CreationStatus::Completed);
         assert_eq!(finalized_record.cycles_consumed, final_cycles_consumed);
     }
 
@@ -452,15 +452,15 @@ mod tests {
         let created_by = create_test_principal(1);
 
         // Start with Creating status
-        let record = create_test_record(canister_id, created_by, MigrationStatus::Creating, 0);
+        let record = create_test_record(canister_id, created_by, CreationStatus::Creating, 0);
         registry.insert(canister_id, record);
 
         // Transition through states
         let status_transitions = vec![
-            MigrationStatus::Installing,
-            MigrationStatus::Importing,
-            MigrationStatus::Verifying,
-            MigrationStatus::Completed,
+            CreationStatus::Installing,
+            CreationStatus::Importing,
+            CreationStatus::Verifying,
+            CreationStatus::Completed,
         ];
 
         for status in status_transitions {
@@ -487,7 +487,7 @@ mod tests {
         // Test cycles consumed by status
         let completed_cycles: u128 = registry
             .values()
-            .filter(|record| record.status == MigrationStatus::Completed)
+            .filter(|record| record.status == CreationStatus::Completed)
             .map(|record| record.cycles_consumed)
             .sum();
 
@@ -511,11 +511,11 @@ mod tests {
         let total_canisters = user1_entries.len();
         let completed_canisters = user1_entries
             .iter()
-            .filter(|record| record.status == MigrationStatus::Completed)
+            .filter(|record| record.status == CreationStatus::Completed)
             .count();
         let failed_canisters = user1_entries
             .iter()
-            .filter(|record| record.status == MigrationStatus::Failed)
+            .filter(|record| record.status == CreationStatus::Failed)
             .count();
         let total_cycles_consumed: u128 = user1_entries
             .iter()
@@ -539,27 +539,20 @@ mod tests {
 
         // Based on setup_test_registry
         assert_eq!(
-            status_counts.get(&MigrationStatus::Completed).unwrap_or(&0),
+            status_counts.get(&CreationStatus::Completed).unwrap_or(&0),
             &2
         );
+        assert_eq!(status_counts.get(&CreationStatus::Failed).unwrap_or(&0), &1);
         assert_eq!(
-            status_counts.get(&MigrationStatus::Failed).unwrap_or(&0),
+            status_counts.get(&CreationStatus::Creating).unwrap_or(&0),
             &1
         );
         assert_eq!(
-            status_counts.get(&MigrationStatus::Creating).unwrap_or(&0),
+            status_counts.get(&CreationStatus::Installing).unwrap_or(&0),
             &1
         );
         assert_eq!(
-            status_counts
-                .get(&MigrationStatus::Installing)
-                .unwrap_or(&0),
-            &1
-        );
-        assert_eq!(
-            status_counts
-                .get(&MigrationStatus::NotStarted)
-                .unwrap_or(&0),
+            status_counts.get(&CreationStatus::NotStarted).unwrap_or(&0),
             &0
         );
     }
@@ -601,7 +594,7 @@ mod tests {
             let old_cycles = record.cycles_consumed;
 
             // Update both fields
-            record.status = MigrationStatus::Completed;
+            record.status = CreationStatus::Completed;
             record.cycles_consumed = 10_000_000_000_000;
 
             // Verify both updates took effect
@@ -619,7 +612,7 @@ mod tests {
         let max_cycles_record = create_test_record(
             max_cycles_canister,
             create_test_principal(1),
-            MigrationStatus::Completed,
+            CreationStatus::Completed,
             u128::MAX,
         );
         registry.insert(max_cycles_canister, max_cycles_record);
@@ -629,7 +622,7 @@ mod tests {
         let zero_cycles_record = create_test_record(
             zero_cycles_canister,
             create_test_principal(2),
-            MigrationStatus::Creating,
+            CreationStatus::Creating,
             0,
         );
         registry.insert(zero_cycles_canister, zero_cycles_record);

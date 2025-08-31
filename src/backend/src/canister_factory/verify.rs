@@ -198,14 +198,14 @@ pub async fn verify_handoff_readiness(
 
     // Verify the canister is in a state ready for handoff
     match registry_entry.status {
-        MigrationStatus::Verifying => {
+        CreationStatus::Verifying => {
             // This is the expected state for handoff
             ic_cdk::println!(
                 "Canister {} is in Verifying state, ready for handoff",
                 canister_id
             );
         }
-        MigrationStatus::Completed => {
+        CreationStatus::Completed => {
             // Already completed, this might be a retry
             ic_cdk::println!("Canister {} is already in Completed state", canister_id);
             return Ok(()); // Allow retry of completed handoff

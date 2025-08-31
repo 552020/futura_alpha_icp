@@ -1,5 +1,5 @@
 #[cfg(feature = "migration")]
-use crate::canister_factory::MigrationStateData;
+use crate::canister_factory::PersonalCanisterCreationStateData;
 use crate::types::*;
 use candid::Principal;
 use std::collections::{HashMap, HashSet};
@@ -17,7 +17,7 @@ thread_local! {
 
     // Migration state storage (only available with migration feature)
     #[cfg(feature = "migration")]
-    static MIGRATION_STATE: std::cell::RefCell<MigrationStateData> = std::cell::RefCell::new(MigrationStateData::default());
+    static MIGRATION_STATE: std::cell::RefCell<PersonalCanisterCreationStateData> = std::cell::RefCell::new(PersonalCanisterCreationStateData::default());
 }
 
 // Access functions for centralized storage
@@ -65,7 +65,7 @@ pub fn get_nonce_proof(nonce: String) -> Option<Principal> {
 #[cfg(feature = "migration")]
 pub fn with_migration_state_mut<F, R>(f: F) -> R
 where
-    F: FnOnce(&mut MigrationStateData) -> R,
+    F: FnOnce(&mut PersonalCanisterCreationStateData) -> R,
 {
     MIGRATION_STATE.with(|state| f(&mut state.borrow_mut()))
 }
@@ -73,7 +73,7 @@ where
 #[cfg(feature = "migration")]
 pub fn with_migration_state<F, R>(f: F) -> R
 where
-    F: FnOnce(&MigrationStateData) -> R,
+    F: FnOnce(&PersonalCanisterCreationStateData) -> R,
 {
     MIGRATION_STATE.with(|state| f(&state.borrow()))
 }

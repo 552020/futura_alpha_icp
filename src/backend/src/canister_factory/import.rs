@@ -597,7 +597,7 @@ fn create_memory_from_assembled_data(
 }
 
 /// Internal function to clean up expired sessions
-fn cleanup_expired_sessions_internal(state: &mut MigrationStateData) -> u32 {
+fn cleanup_expired_sessions_internal(state: &mut PersonalCanisterCreationStateData) -> u32 {
     let now = ic_cdk::api::time();
     let timeout_nanos = state.import_config.session_timeout_seconds * 1_000_000_000;
 

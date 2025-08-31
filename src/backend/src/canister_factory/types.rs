@@ -14,9 +14,6 @@ pub struct PersonalCanisterCreationResponse {
     pub message: String,
 }
 
-/// Legacy type alias for backward compatibility
-pub type MigrationResponse = PersonalCanisterCreationResponse;
-
 /// Personal canister creation status enum tracking the progression through creation states
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CreationStatus {
@@ -30,9 +27,6 @@ pub enum CreationStatus {
     Failed,
 }
 
-/// Legacy type alias for backward compatibility
-pub type MigrationStatus = CreationStatus;
-
 /// Response for personal canister creation status queries
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
 pub struct CreationStatusResponse {
@@ -40,9 +34,6 @@ pub struct CreationStatusResponse {
     pub canister_id: Option<Principal>,
     pub message: Option<String>,
 }
-
-/// Legacy type alias for backward compatibility
-pub type MigrationStatusResponse = CreationStatusResponse;
 
 /// Detailed personal canister creation status with progress information
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
@@ -55,9 +46,6 @@ pub struct DetailedCreationStatus {
     pub error_message: Option<String>,
     pub progress_message: String,
 }
-
-/// Legacy type alias for backward compatibility
-pub type DetailedMigrationStatus = DetailedCreationStatus;
 
 /// Exported capsule data for migration
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
@@ -101,9 +89,6 @@ pub struct PersonalCanisterCreationState {
     pub error_message: Option<String>,
 }
 
-/// Legacy type alias for backward compatibility
-pub type MigrationState = PersonalCanisterCreationState;
-
 /// Configuration for personal canister creation system
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
 pub struct PersonalCanisterCreationConfig {
@@ -124,9 +109,6 @@ impl Default for PersonalCanisterCreationConfig {
     }
 }
 
-/// Legacy type alias for backward compatibility
-pub type MigrationConfig = PersonalCanisterCreationConfig;
-
 /// Registry record for personal canisters
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
 pub struct PersonalCanisterRecord {
@@ -145,9 +127,6 @@ pub struct PersonalCanisterCreationStats {
     pub total_failures: u64,
     pub total_cycles_consumed: u128,
 }
-
-/// Legacy type alias for backward compatibility
-pub type MigrationStats = PersonalCanisterCreationStats;
 
 /// Minimal configuration for creating personal canisters
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug, Default)]
@@ -301,9 +280,6 @@ pub struct PersonalCanisterCreationStateData {
     pub import_config: ImportConfig,
     pub import_sessions: HashMap<String, ImportSession>,
 }
-
-/// Legacy type alias for backward compatibility
-pub type MigrationStateData = PersonalCanisterCreationStateData;
 
 #[cfg(test)]
 mod tests {

@@ -201,10 +201,10 @@ pub fn list_capsule_memories() -> types::MemoryListResponse {
 // Migration endpoints (only available with migration feature)
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-pub async fn create_personal_canister() -> canister_factory::MigrationResponse {
+pub async fn create_personal_canister() -> canister_factory::PersonalCanisterCreationResponse {
     match canister_factory::create_personal_canister().await {
         Ok(response) => response,
-        Err(error) => canister_factory::MigrationResponse {
+        Err(error) => canister_factory::PersonalCanisterCreationResponse {
             success: false,
             canister_id: None,
             message: format!("Personal canister creation failed: {}", error),
@@ -218,7 +218,7 @@ pub fn get_api_version() -> String {
 }
 
 #[ic_cdk::query]
-pub fn get_creation_status() -> Option<canister_factory::MigrationStatusResponse> {
+pub fn get_creation_status() -> Option<canister_factory::CreationStatusResponse> {
     canister_factory::get_creation_status()
 }
 
@@ -233,7 +233,7 @@ pub fn get_my_personal_canister_id() -> Option<Principal> {
 }
 
 #[ic_cdk::query]
-pub fn get_detailed_creation_status() -> Option<canister_factory::DetailedMigrationStatus> {
+pub fn get_detailed_creation_status() -> Option<canister_factory::DetailedCreationStatus> {
     canister_factory::get_detailed_creation_status()
 }
 
@@ -241,44 +241,44 @@ pub fn get_detailed_creation_status() -> Option<canister_factory::DetailedMigrat
 #[ic_cdk::query]
 pub fn get_user_creation_status(
     user: Principal,
-) -> Result<Option<canister_factory::DetailedMigrationStatus>, String> {
+) -> Result<Option<canister_factory::DetailedCreationStatus>, String> {
     canister_factory::get_user_creation_status(user)
 }
 
 #[ic_cdk::query]
 pub fn get_user_migration_status(
     user: Principal,
-) -> Result<Option<canister_factory::DetailedMigrationStatus>, String> {
+) -> Result<Option<canister_factory::DetailedCreationStatus>, String> {
     get_user_creation_status(user)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 pub fn list_all_creation_states(
-) -> Result<Vec<(Principal, canister_factory::DetailedMigrationStatus)>, String> {
+) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     canister_factory::list_all_creation_states()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 pub fn list_all_migration_states(
-) -> Result<Vec<(Principal, canister_factory::DetailedMigrationStatus)>, String> {
+) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     list_all_creation_states()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 pub fn get_creation_states_by_status(
-    status: canister_factory::MigrationStatus,
-) -> Result<Vec<(Principal, canister_factory::DetailedMigrationStatus)>, String> {
+    status: canister_factory::CreationStatus,
+) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     canister_factory::get_creation_states_by_status(status)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 pub fn get_migration_states_by_status(
-    status: canister_factory::MigrationStatus,
-) -> Result<Vec<(Principal, canister_factory::DetailedMigrationStatus)>, String> {
+    status: canister_factory::CreationStatus,
+) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     get_creation_states_by_status(status)
 }
 
@@ -303,7 +303,8 @@ pub fn set_personal_canister_creation_enabled(enabled: bool) -> Result<(), Strin
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn get_personal_canister_creation_stats() -> Result<canister_factory::MigrationStats, String> {
+pub fn get_personal_canister_creation_stats(
+) -> Result<canister_factory::PersonalCanisterCreationStats, String> {
     canister_factory::get_personal_canister_creation_stats()
 }
 
@@ -322,19 +323,19 @@ pub fn is_migration_enabled() -> bool {
 // Legacy function names for backward compatibility
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-pub async fn migrate_capsule() -> canister_factory::MigrationResponse {
+pub async fn migrate_capsule() -> canister_factory::PersonalCanisterCreationResponse {
     create_personal_canister().await
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn get_migration_status() -> Option<canister_factory::MigrationStatusResponse> {
+pub fn get_migration_status() -> Option<canister_factory::CreationStatusResponse> {
     get_creation_status()
 }
 
 #[cfg(feature = "migration")]
 #[ic_cdk::query]
-pub fn get_detailed_migration_status() -> Option<canister_factory::DetailedMigrationStatus> {
+pub fn get_detailed_migration_status() -> Option<canister_factory::DetailedCreationStatus> {
     get_detailed_creation_status()
 }
 
@@ -346,7 +347,7 @@ pub fn set_migration_enabled(enabled: bool) -> Result<(), String> {
 
 #[cfg(feature = "migration")]
 #[ic_cdk::query]
-pub fn get_migration_stats() -> Result<canister_factory::MigrationStats, String> {
+pub fn get_migration_stats() -> Result<canister_factory::PersonalCanisterCreationStats, String> {
     get_personal_canister_creation_stats()
 }
 
@@ -402,7 +403,7 @@ fn post_upgrade() {
         if let Ok((capsule_data, admin_data, migration_data)) = ic_cdk::storage::stable_restore::<(
             Vec<(String, types::Capsule)>,
             Vec<Principal>,
-            canister_factory::MigrationStateData,
+            canister_factory::PersonalCanisterCreationStateData,
         )>() {
             capsule::import_capsules_from_upgrade(capsule_data);
             admin::import_admins_from_upgrade(admin_data);
