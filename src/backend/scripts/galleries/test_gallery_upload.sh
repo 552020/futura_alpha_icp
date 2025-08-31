@@ -218,7 +218,7 @@ test_store_basic_gallery() {
     local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/')
+        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
         echo_info "Basic gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -242,7 +242,7 @@ test_store_gallery_with_multiple_memories() {
     local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/')
+        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
         echo_info "Multi-memory gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -257,7 +257,7 @@ test_store_empty_gallery() {
     local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/')
+        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
         echo_info "Empty gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -280,7 +280,7 @@ test_store_private_gallery() {
     local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/')
+        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
         echo_info "Private gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -359,8 +359,8 @@ test_retrieve_gallery_by_id() {
         return 1
     fi
     
-    # Extract gallery ID from store result
-    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | tr -d '\n\r ')
+    # Extract gallery ID from store result (take first match to avoid duplicates)
+    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
     
     if [ -z "$gallery_id" ]; then
         echo_info "Failed to extract gallery ID from store result: $store_result"
@@ -369,10 +369,8 @@ test_retrieve_gallery_by_id() {
     
     # Retrieve the gallery (add small delay for persistence)
     echo_info "Attempting to retrieve gallery with ID: $gallery_id"
-    echo_info "Full command: dfx canister call backend get_gallery_by_id \"(\\\"$gallery_id\\\")\""
     sleep 1
-    local retrieve_result=$(dfx canister call backend get_gallery_by_id "(\"$gallery_id\")" 2>&1)
-    echo_info "Raw retrieve result: $retrieve_result"
+    local retrieve_result=$(dfx canister call backend get_gallery_by_id "(\"$gallery_id\")" 2>/dev/null)
     
     # Check if gallery was retrieved successfully
     if echo "$retrieve_result" | grep -q "opt record" && echo "$retrieve_result" | grep -q "title = \"Basic Test Gallery\""; then
@@ -418,8 +416,8 @@ test_gallery_memory_associations() {
         return 1
     fi
     
-    # Extract gallery ID
-    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | tr -d '\n\r ')
+    # Extract gallery ID (take first match to avoid duplicates)
+    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
     
     # Retrieve and verify memory associations
     echo_info "Retrieving gallery for association test with ID: $gallery_id"
@@ -432,6 +430,7 @@ test_gallery_memory_associations() {
         return 0
     else
         echo_info "Gallery memory associations verification failed. Expected: $memory_id1, $memory_id2"
+        echo_info "Actual result: $retrieve_result"
         return 1
     fi
 }
@@ -454,8 +453,8 @@ test_gallery_metadata_preservation() {
         return 1
     fi
     
-    # Extract gallery ID
-    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | tr -d '\n\r ')
+    # Extract gallery ID (take first match to avoid duplicates)
+    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
     
     # Retrieve and verify metadata preservation
     echo_info "Retrieving gallery for metadata test with ID: $gallery_id"
