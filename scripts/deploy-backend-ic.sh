@@ -51,7 +51,14 @@ if ! dfx canister id backend --network ic 2>/dev/null; then
 fi
 
 echo "Building backend canister..."
-dfx build backend
+# Check if MIGRATION_ENABLED environment variable is set to false
+if [ "${MIGRATION_ENABLED:-true}" = "false" ]; then
+    echo "Building backend without migration features..."
+    dfx build backend --features=""
+else
+    echo "Building backend with migration features (default)..."
+    dfx build backend
+fi
 
 # Generate .did file
 echo "Generating .did file..."
@@ -69,7 +76,14 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo "Deploying backend canister to ICP mainnet..."
-dfx deploy backend --network ic
+# Use the same feature flag logic for deployment
+if [ "${MIGRATION_ENABLED:-true}" = "false" ]; then
+    echo "Deploying backend without migration features..."
+    dfx deploy backend --network ic --argument '()' --mode=reinstall
+else
+    echo "Deploying backend with migration features (default)..."
+    dfx deploy backend --network ic
+fi
 
 echo "Backend canister deployed successfully to ICP mainnet!"
 echo "Canister ID: $(dfx canister id backend --network ic)"

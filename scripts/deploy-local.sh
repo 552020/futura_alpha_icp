@@ -18,7 +18,16 @@ if ! dfx ping >/dev/null 2>&1; then
     sleep 3
 fi
 
-if dfx deploy backend && dfx deploy internet_identity; then
+# Check if MIGRATION_ENABLED environment variable is set to false
+if [ "${MIGRATION_ENABLED:-true}" = "false" ]; then
+    echo -e "${YELLOW}Deploying backend without migration features...${NC}"
+    DEPLOY_CMD="dfx deploy backend --argument '()' --mode=reinstall"
+else
+    echo -e "${YELLOW}Deploying backend with migration features (default)...${NC}"
+    DEPLOY_CMD="dfx deploy backend"
+fi
+
+if eval "$DEPLOY_CMD" && dfx deploy internet_identity; then
     echo -e "${GREEN}✅ Deployed${NC}"
     
     echo -e "${YELLOW}📝 Generating .did file...${NC}"
