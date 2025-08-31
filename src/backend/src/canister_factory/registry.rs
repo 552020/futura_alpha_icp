@@ -16,7 +16,7 @@ fn get_current_time() -> u64 {
 pub fn create_registry_entry(
     canister_id: Principal,
     created_by: Principal,
-    status: MigrationStatus,
+    status: CreationStatus,
     cycles_consumed: u128,
 ) -> Result<(), String> {
     let now = get_current_time();
@@ -39,7 +39,7 @@ pub fn create_registry_entry(
 /// Update the status of a personal canister in the registry
 pub fn update_registry_status(
     canister_id: Principal,
-    new_status: MigrationStatus,
+    new_status: CreationStatus,
 ) -> Result<(), String> {
     crate::memory::with_migration_state_mut(|state| {
         if let Some(record) = state.personal_canisters.get_mut(&canister_id) {
@@ -85,7 +85,7 @@ pub fn get_registry_entries_by_user(user: Principal) -> Vec<PersonalCanisterReco
 }
 
 /// Get registry entries by status (admin function)
-pub fn get_registry_entries_by_status(status: MigrationStatus) -> Vec<PersonalCanisterRecord> {
+pub fn get_registry_entries_by_status(status: CreationStatus) -> Vec<PersonalCanisterRecord> {
     crate::memory::with_migration_state(|state| {
         state
             .personal_canisters
@@ -122,15 +122,15 @@ pub fn remove_registry_entry(canister_id: Principal) -> Result<(), String> {
     })
 }
 
-/// Finalize registry after successful migration
+/// Finalize registry after successful personal canister creation
 /// This function updates the registry with final status and cycles consumed
-pub fn finalize_registry_after_migration(
+pub fn finalize_registry_after_creation(
     canister_id: Principal,
     cycles_consumed: u128,
 ) -> Result<(), String> {
     crate::memory::with_migration_state_mut(|state| {
         if let Some(record) = state.personal_canisters.get_mut(&canister_id) {
-            record.status = MigrationStatus::Completed;
+            record.status = CreationStatus::Completed;
             record.cycles_consumed = cycles_consumed;
 
             ic_cdk::println!(
@@ -149,10 +149,18 @@ pub fn finalize_registry_after_migration(
     })
 }
 
+/// Legacy function for backward compatibility
+pub fn finalize_registry_after_migration(
+    canister_id: Principal,
+    cycles_consumed: u128,
+) -> Result<(), String> {
+    finalize_registry_after_creation(canister_id, cycles_consumed)
+}
+
 #[cfg(test)]
 mod tests {
 
-    use crate::canister_factory::types::{MigrationStatus, PersonalCanisterRecord};
+    use crate::canister_factory::types::{CreationStatus, PersonalCanisterRecord};
     use candid::Principal;
     use std::collections::BTreeMap;
 
@@ -166,7 +174,7 @@ mod tests {
     fn create_test_record(
         canister_id: Principal,
         created_by: Principal,
-        status: MigrationStatus,
+        status: CreationStatus,
         cycles_consumed: u128,
     ) -> PersonalCanisterRecord {
         PersonalCanisterRecord {
@@ -197,26 +205,26 @@ mod tests {
             create_test_record(
                 canister1,
                 user1,
-                MigrationStatus::Completed,
+                CreationStatus::Completed,
                 2_000_000_000_000,
             ),
         );
         registry.insert(
             canister2,
-            create_test_record(canister2, user1, MigrationStatus::Failed, 500_000_000_000),
+            create_test_record(canister2, user1, CreationStatus::Failed, 500_000_000_000),
         );
 
         // User2 has 2 canisters - one creating, one installing
         registry.insert(
             canister3,
-            create_test_record(canister3, user2, MigrationStatus::Creating, 0),
+            create_test_record(canister3, user2, CreationStatus::Creating, 0),
         );
         registry.insert(
             canister4,
             create_test_record(
                 canister4,
                 user2,
-                MigrationStatus::Installing,
+                CreationStatus::Installing,
                 1_000_000_000_000,
             ),
         );
@@ -227,7 +235,7 @@ mod tests {
             create_test_record(
                 canister5,
                 user3,
-                MigrationStatus::Completed,
+                CreationStatus::Completed,
                 3_000_000_000_000,
             ),
         );
@@ -239,7 +247,7 @@ mod tests {
     fn test_registry_entry_creation() {
         let canister_id = create_test_principal(10);
         let created_by = create_test_principal(1);
-        let status = MigrationStatus::Creating;
+        let status = CreationStatus::Creating;
         let cycles_consumed = 0;
 
         let record = create_test_record(canister_id, created_by, status.clone(), cycles_consumed);
@@ -256,7 +264,7 @@ mod tests {
     fn test_registry_entry_status_update() {
         let mut registry = setup_test_registry();
         let canister_id = create_test_principal(10);
-        let new_status = MigrationStatus::Installing;
+        let new_status = CreationStatus::Installing;
 
         // Update status
         if let Some(record) = registry.get_mut(&canister_id) {

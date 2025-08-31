@@ -545,6 +545,7 @@ mod tests {
             connections: connection_map,
             connection_groups: HashMap::new(),
             memories: memory_map,
+            galleries: HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_web2: false,

@@ -23,7 +23,7 @@ fn get_current_time() -> u64 {
 /// - Canister creation with dual controllers
 /// - Registry entry creation
 /// - Cycles consumption tracking
-pub async fn create_personal_canister(
+pub async fn create_personal_canister_impl(
     user: Principal,
     _config: CreatePersonalCanisterConfig,
     cycles_to_fund: u128,
@@ -70,7 +70,7 @@ pub async fn create_personal_canister(
             );
 
             // Create registry entry with Creating status
-            create_registry_entry(canister_id, user, MigrationStatus::Creating, cycles_to_fund)?;
+            create_registry_entry(canister_id, user, CreationStatus::Creating, cycles_to_fund)?;
 
             // Consume cycles from reserve
             consume_cycles_from_reserve(cycles_to_fund)?;
@@ -131,7 +131,7 @@ pub async fn install_personal_canister_wasm(
             );
 
             // Update registry status to Installing -> Installed (will be updated to Importing later)
-            update_registry_status(canister_id, MigrationStatus::Installing)?;
+            update_registry_status(canister_id, CreationStatus::Installing)?;
 
             Ok(())
         }
@@ -144,7 +144,7 @@ pub async fn install_personal_canister_wasm(
             ic_cdk::println!("{}", error_msg);
 
             // Update registry status to Failed
-            update_registry_status(canister_id, MigrationStatus::Failed)?;
+            update_registry_status(canister_id, CreationStatus::Failed)?;
 
             Err(error_msg)
         }
@@ -189,7 +189,7 @@ pub async fn handoff_controllers(canister_id: Principal, user: Principal) -> Res
             );
 
             // Update registry status to reflect successful handoff
-            update_registry_status(canister_id, MigrationStatus::Completed)?;
+            update_registry_status(canister_id, CreationStatus::Completed)?;
 
             // Log the successful handoff
             log_controller_handoff_success(canister_id, user);
@@ -205,7 +205,7 @@ pub async fn handoff_controllers(canister_id: Principal, user: Principal) -> Res
             ic_cdk::println!("Controller handoff failed: {}", error_msg);
 
             // Update registry to reflect handoff failure
-            update_registry_status(canister_id, MigrationStatus::Failed)?;
+            update_registry_status(canister_id, CreationStatus::Failed)?;
 
             Err(error_msg)
         }
@@ -237,14 +237,14 @@ async fn verify_handoff_preconditions(
 
     // Verify the canister is in a state ready for handoff
     match registry_entry.status {
-        MigrationStatus::Verifying => {
+        CreationStatus::Verifying => {
             // This is the expected state for handoff
             ic_cdk::println!(
                 "Canister {} is in Verifying state, ready for handoff",
                 canister_id
             );
         }
-        MigrationStatus::Completed => {
+        CreationStatus::Completed => {
             // Already completed, this might be a retry
             ic_cdk::println!("Canister {} is already in Completed state", canister_id);
             return Ok(()); // Allow retry of completed handoff
@@ -330,7 +330,7 @@ pub fn check_unsupported_config_options(_config: &CreatePersonalCanisterConfig) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canister_factory::types::*;
+
     use candid::Principal;
 
     // Mock management canister functions for testing
@@ -426,9 +426,9 @@ mod tests {
         mock_management::reset_mock_state();
         // Initialize migration state if needed
         crate::memory::with_migration_state_mut(|state| {
-            state.migration_config.cycles_reserve = 1_000_000_000_000; // 1T cycles
-            state.migration_config.min_cycles_threshold = 100_000_000_000; // 100B cycles
-            state.migration_config.enabled = true;
+            state.creation_config.cycles_reserve = 1_000_000_000_000; // 1T cycles
+            state.creation_config.min_cycles_threshold = 100_000_000_000; // 100B cycles
+            state.creation_config.enabled = true;
         });
     }
 
@@ -437,7 +437,7 @@ mod tests {
         setup_test_environment();
 
         let user = create_test_user();
-        let config = CreatePersonalCanisterConfig {
+        let _config = CreatePersonalCanisterConfig {
             name: Some("Test Canister".to_string()),
             subnet_id: None,
         };
@@ -456,7 +456,7 @@ mod tests {
 
         // Verify cycles consumption logic
         let initial_reserve =
-            crate::memory::with_migration_state(|state| state.migration_config.cycles_reserve);
+            crate::memory::with_migration_state(|state| state.creation_config.cycles_reserve);
 
         // Simulate successful creation by manually creating registry entry
         let result = create_registry_entry(
@@ -481,7 +481,7 @@ mod tests {
         assert!(consume_result.is_ok(), "Cycles consumption should succeed");
 
         let final_reserve =
-            crate::memory::with_migration_state(|state| state.migration_config.cycles_reserve);
+            crate::memory::with_migration_state(|state| state.creation_config.cycles_reserve);
         assert_eq!(
             final_reserve,
             initial_reserve - cycles_to_fund,
@@ -493,7 +493,7 @@ mod tests {
     fn test_create_personal_canister_insufficient_cycles() {
         setup_test_environment();
 
-        let user = create_test_user();
+        let _user = create_test_user();
         let cycles_to_fund = 2_000_000_000_000u128; // 2T cycles (more than reserve)
 
         // Test preflight check with insufficient cycles
@@ -516,7 +516,7 @@ mod tests {
 
         // Set reserve below threshold
         crate::memory::with_migration_state_mut(|state| {
-            state.migration_config.cycles_reserve = 50_000_000_000; // 50B cycles (below threshold)
+            state.creation_config.cycles_reserve = 50_000_000_000; // 50B cycles (below threshold)
         });
 
         let cycles_to_fund = 10_000_000_000u128; // 10B cycles
@@ -541,8 +541,8 @@ mod tests {
 
         let canister_id = create_test_canister_id();
         let user = create_test_user();
-        let wasm_module = create_test_wasm();
-        let init_arg = vec![1, 2, 3, 4]; // Test init args
+        let _wasm_module = create_test_wasm();
+        let _init_arg = vec![1, 2, 3, 4]; // Test init args
 
         // Create registry entry first
         let _ = create_registry_entry(
@@ -927,18 +927,18 @@ mod tests {
     async fn test_cleanup_on_creation_failure() {
         setup_test_environment();
 
-        let user = create_test_user();
-        let cycles_to_fund = 500_000_000_000u128;
+        let _user = create_test_user();
+        let _cycles_to_fund = 500_000_000_000u128;
 
         // Test that cycles are not consumed on creation failure
         let initial_reserve =
-            crate::memory::with_migration_state(|state| state.migration_config.cycles_reserve);
+            crate::memory::with_migration_state(|state| state.creation_config.cycles_reserve);
 
         // Simulate creation failure - cycles should not be consumed
         // (In real implementation, this would be handled in the create_personal_canister function)
 
         let final_reserve =
-            crate::memory::with_migration_state(|state| state.migration_config.cycles_reserve);
+            crate::memory::with_migration_state(|state| state.creation_config.cycles_reserve);
         assert_eq!(
             initial_reserve, final_reserve,
             "Cycles should not be consumed on creation failure"

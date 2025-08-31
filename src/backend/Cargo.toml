@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 [features]
 default = ["migration"]
 migration = []
+personal_canister_creation = []
 
 [dependencies]
 candid = "0.10"
@@ -18,7 +19,7 @@ ic-cdk = "0.18"
 ic-cdk-timers = "0.12" # Feel free to remove this dependency if you don't need timers
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.0", features = ["v4", "js"] }
+
 ic-http-certification = "3.0.3"
 regex = "1.10"
 sha2 = "0.10"

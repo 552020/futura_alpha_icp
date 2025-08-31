@@ -305,3 +305,126 @@
     - Add feature flag support for migration functionality
     - Test deployment with migration features
     - _Requirements: 5.1, 5.7_
+
+- [-] 17. Refactor terminology from "migration" to "personal canister creation"
+
+  - [x] 17.1 Update API endpoint names and function signatures
+
+    - Rename `migrate_capsule()` to `create_personal_canister()`
+    - Rename `get_migration_status()` to `get_creation_status()`
+    - Rename `get_detailed_migration_status()` to `get_detailed_creation_status()`
+    - Rename `set_migration_enabled()` to `set_personal_canister_creation_enabled()`
+    - Rename `get_migration_stats()` to `get_personal_canister_creation_stats()`
+    - _Requirements: 3.1, 3.2, 5.1, 5.4_
+
+  - [-] 17.2 Update type names and data structures
+
+    - Rename `MigrationResponse` to `PersonalCanisterCreationResponse`
+    - Rename `MigrationStatus` to `CreationStatus`
+    - Rename `MigrationStatusResponse` to `CreationStatusResponse`
+    - Rename `MigrationState` to `PersonalCanisterCreationState`
+    - Rename `MigrationConfig` to `PersonalCanisterCreationConfig`
+    - Rename `MigrationStats` to `PersonalCanisterCreationStats`
+    - _Requirements: 1.5, 5.2_
+
+  - [x] 17.3 Update internal function and variable names
+
+    - Update all internal function names to use "creation" terminology
+    - Update variable names and comments throughout codebase
+    - Update error messages and user-facing strings
+    - Update logging and debugging messages
+    - _Requirements: 1.6, 5.3_
+
+  - [x] 17.4 Update Candid interface and documentation
+
+    - Update `backend.did` file with new endpoint names and types
+    - Update function documentation and comments
+    - Update API documentation and examples
+    - Ensure backward compatibility during transition
+    - _Requirements: 3.1, 4.7_
+
+  - [x] 17.5 Update test names and descriptions
+
+    - Rename all test functions to use "creation" terminology
+    - Update test descriptions and comments
+    - Update mock function names and test data
+    - Ensure all tests pass after renaming
+    - _Requirements: 7.1, 7.2_
+
+  - [x] 17.6 Update configuration and feature flags
+
+    - Update feature flag names from "migration" to "personal_canister_creation"
+    - Update configuration variable names
+    - Update deployment script terminology
+    - Update environment variable names
+    - _Requirements: 5.1, 7.10_
+
+- [ ] 18. Create comprehensive bash integration test suite
+
+  - [ ] 17.1 Set up test infrastructure and utilities
+
+    - Create `scripts/test-migration/` directory structure
+    - Implement test utilities for dfx calls, JSON parsing, and assertions
+    - Create test data setup and cleanup functions
+    - Add test configuration and environment management
+    - _Requirements: 7.8, 7.9_
+
+  - [ ] 18.2 Test personal canister creation API endpoints individually
+
+    - Test `create_personal_canister` endpoint with various user scenarios
+    - Test `get_creation_status` and `get_detailed_creation_status` queries
+    - Test `get_personal_canister_id` and `get_my_personal_canister_id` functions
+    - Test admin endpoints: `set_personal_canister_creation_enabled`, `get_personal_canister_creation_stats`
+    - _Requirements: 7.2, 7.4_
+
+  - [ ] 18.3 Test personal canister creation state transitions
+
+    - Test each creation state individually: NotStarted → Exporting → Creating → Installing → Importing → Verifying → Completed
+    - Test state persistence across canister restarts
+    - Test idempotent behavior at each state
+    - Test error state transitions and recovery
+    - _Requirements: 7.1, 7.6_
+
+  - [ ] 17.4 Test error conditions and edge cases
+
+    - Test insufficient cycles scenarios
+    - Test invalid user permissions and unauthorized access
+    - Test network failures and timeout scenarios
+    - Test partial data corruption and recovery
+    - Test concurrent migration attempts
+    - _Requirements: 7.3, 7.7_
+
+  - [ ] 17.5 Test data integrity and verification
+
+    - Test complete data export and import cycle
+    - Verify exported data matches original capsule data
+    - Test hash verification and checksum validation
+    - Test memory content integrity after migration
+    - Test connection data preservation
+    - _Requirements: 7.5_
+
+  - [ ] 18.6 Test admin functionality and monitoring
+
+    - Test personal canister creation enable/disable toggle functionality
+    - Test cycles reserve management and monitoring
+    - Test creation statistics and reporting
+    - Test admin-only access controls
+    - Test registry queries and user lookup functions
+    - _Requirements: 7.4_
+
+  - [ ] 18.7 Test feature flag functionality
+
+    - Test building and deploying with personal canister creation features enabled
+    - Test building and deploying with personal canister creation features disabled
+    - Test API availability based on feature flag configuration
+    - Test upgrade scenarios with different feature flag states
+    - _Requirements: 7.10_
+
+  - [ ] 17.8 Create test orchestration and reporting
+
+    - Create master test runner script that executes all test suites
+    - Implement parallel test execution for independent tests
+    - Add detailed test reporting with pass/fail status and timing
+    - Create CI/CD integration scripts for automated testing
+    - Add test coverage reporting and gap analysis
+    - _Requirements: 7.8, 7.9_

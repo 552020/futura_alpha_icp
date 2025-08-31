@@ -32,6 +32,7 @@ type Capsule = record {
   connections : vec record { PersonRef; Connection };
   memories : vec record { text; Memory };
   bound_to_web2 : bool;
+  galleries : vec record { text; Gallery };
 };
 type CapsuleCreationResult = record {
   capsule_id : opt text;
@@ -79,7 +80,64 @@ type ConnectionGroup = record {
 };
 type ConnectionStatus = variant { Blocked; Accepted; Revoked; Pending };
 type ControllerState = record { granted_at : nat64; granted_by : PersonRef };
+type CreationStatus = variant {
+  Importing;
+  Creating;
+  Failed;
+  Exporting;
+  Installing;
+  Completed;
+  Verifying;
+  NotStarted;
+};
+type CreationStatusResponse = record {
+  status : CreationStatus;
+  canister_id : opt principal;
+  message : opt text;
+};
+type DeleteGalleryResponse = record { message : text; success : bool };
+type DetailedCreationStatus = record {
+  status : CreationStatus;
+  progress_message : text;
+  canister_id : opt principal;
+  error_message : opt text;
+  created_at : nat64;
+  cycles_consumed : nat;
+  completed_at : opt nat64;
+};
 type DocumentMetadata = record { base : MemoryMetadataBase };
+type Gallery = record {
+  id : text;
+  is_public : bool;
+  title : text;
+  updated_at : nat64;
+  memory_entries : vec GalleryMemoryEntry;
+  description : opt text;
+  created_at : nat64;
+  storage_status : GalleryStorageStatus;
+  owner_principal : principal;
+};
+type GalleryData = record { owner_principal : principal; gallery : Gallery };
+type GalleryMemoryEntry = record {
+  memory_id : text;
+  is_featured : bool;
+  position : nat32;
+  gallery_metadata : text;
+  gallery_caption : opt text;
+};
+type GalleryStorageStatus = variant {
+  Web2Only;
+  Failed;
+  Both;
+  Migrating;
+  ICPOnly;
+};
+type GalleryUpdateData = record {
+  is_public : opt bool;
+  title : opt text;
+  memory_entries : opt vec GalleryMemoryEntry;
+  description : opt text;
+};
 type ImageMetadata = record {
   base : MemoryMetadataBase;
   dimensions : opt record { nat32; nat32 };
@@ -112,6 +170,11 @@ type MemoryInfo = record {
   created_at : nat64;
   uploaded_at : nat64;
 };
+type MemoryListResponse = record {
+  memories : vec Memory;
+  message : text;
+  success : bool;
+};
 type MemoryMetadata = variant {
   Note : NoteMetadata;
   Image : ImageMetadata;
@@ -128,10 +191,52 @@ type MemoryMetadataBase = record {
   uploaded_at : text;
   format : opt text;
 };
+type MemoryOperationResponse = record {
+  memory_id : opt text;
+  message : text;
+  success : bool;
+};
 type MemoryType = variant { Note; Image; Document; Audio; Video };
+type MemoryUpdateData = record {
+  access : opt MemoryAccess;
+  metadata : opt MemoryMetadata;
+  data : opt MemoryData;
+  info : opt MemoryInfo;
+};
 type NoteMetadata = record { base : MemoryMetadataBase; tags : opt vec text };
 type OwnerState = record { last_activity_at : nat64; since : nat64 };
 type PersonRef = variant { Opaque : text; Principal : principal };
+type PersonalCanisterCreationResponse = record {
+  canister_id : opt principal;
+  message : text;
+  success : bool;
+};
+type PersonalCanisterCreationStats = record {
+  total_successes : nat64;
+  total_failures : nat64;
+  total_attempts : nat64;
+  total_cycles_consumed : nat;
+};
+type Result = variant { Ok : bool; Err : text };
+type Result_1 = variant {
+  Ok : vec record { principal; DetailedCreationStatus };
+  Err : text;
+};
+type Result_2 = variant { Ok : PersonalCanisterCreationStats; Err : text };
+type Result_3 = variant { Ok : opt DetailedCreationStatus; Err : text };
+type Result_4 = variant { Ok; Err : text };
+type StoreGalleryResponse = record {
+  gallery_id : opt text;
+  message : text;
+  storage_status : GalleryStorageStatus;
+  icp_gallery_id : opt text;
+  success : bool;
+};
+type UpdateGalleryResponse = record {
+  message : text;
+  success : bool;
+  gallery : opt Gallery;
+};
 type VideoMetadata = record {
   height : opt nat32;
   duration : opt nat32;
@@ -139,71 +244,59 @@ type VideoMetadata = record {
   base : MemoryMetadataBase;
   width : opt nat32;
 };
-type MigrationResponse = record {
-  success : bool;
-  canister_id : opt principal;
-  message : text;
-};
-type MigrationStatus = variant {
-  NotStarted;
-  Exporting;
-  Creating;
-  Installing;
-  Importing;
-  Verifying;
-  Completed;
-  Failed;
-};
-type MigrationStatusResponse = record {
-  status : MigrationStatus;
-  canister_id : opt principal;
-  message : opt text;
-};
-type DetailedMigrationStatus = record {
-  status : MigrationStatus;
-  canister_id : opt principal;
-  created_at : nat64;
-  completed_at : opt nat64;
-  cycles_consumed : nat;
-  error_message : opt text;
-  progress_message : text;
-};
-type MigrationStats = record {
-  total_attempts : nat64;
-  total_successes : nat64;
-  total_failures : nat64;
-  total_cycles_consumed : nat;
-};
 service : () -> {
   add_admin : (principal) -> (bool);
+  add_memory_to_capsule : (MemoryData) -> (MemoryOperationResponse);
+  clear_creation_state : (principal) -> (Result);
+  clear_migration_state : (principal) -> (Result);
   create_capsule : (PersonRef) -> (CapsuleCreationResult);
+  create_personal_canister : () -> (PersonalCanisterCreationResponse);
+  delete_gallery : (text) -> (DeleteGalleryResponse);
+  delete_memory_from_capsule : (text) -> (MemoryOperationResponse);
+  get_api_version : () -> (text) query;
   get_capsule : (text) -> (opt Capsule) query;
+  get_creation_states_by_status : (CreationStatus) -> (Result_1) query;
+  get_creation_status : () -> (opt CreationStatusResponse) query;
+  get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
+  get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
+  get_gallery_by_id : (text) -> (opt Gallery) query;
+  get_memory_from_capsule : (text) -> (opt Memory) query;
+  get_migration_states_by_status : (CreationStatus) -> (Result_1) query;
+  get_migration_stats : () -> (Result_2) query;
+  get_migration_status : () -> (opt CreationStatusResponse) query;
+  get_my_galleries : () -> (vec Gallery) query;
+  get_my_personal_canister_id : () -> (opt principal) query;
+  get_personal_canister_creation_stats : () -> (Result_2) query;
+  get_personal_canister_id : (principal) -> (opt principal) query;
   get_user : () -> (opt CapsuleInfo) query;
+  get_user_creation_status : (principal) -> (Result_3) query;
+  get_user_galleries : (principal) -> (vec Gallery) query;
+  get_user_migration_status : (principal) -> (Result_3) query;
   greet : (text) -> (text) query;
+  is_migration_enabled : () -> (bool) query;
+  is_personal_canister_creation_enabled : () -> (bool) query;
   list_admins : () -> (vec principal) query;
+  list_all_creation_states : () -> (Result_1) query;
+  list_all_migration_states : () -> (Result_1) query;
+  list_capsule_memories : () -> (MemoryListResponse) query;
   list_my_capsules : () -> (vec CapsuleHeader) query;
   list_superadmins : () -> (vec principal) query;
   list_users : () -> (vec CapsuleHeader) query;
   mark_bound : () -> (bool);
   mark_capsule_bound_to_web2 : () -> (bool);
+  migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
   register : () -> (bool);
   register_capsule : () -> (CapsuleRegistrationResult);
   register_with_nonce : (text) -> (bool);
   remove_admin : (principal) -> (bool);
+  set_migration_enabled : (bool) -> (Result_4);
+  set_personal_canister_creation_enabled : (bool) -> (Result_4);
+  store_gallery_forever : (GalleryData) -> (StoreGalleryResponse);
+  update_gallery : (text, GalleryUpdateData) -> (UpdateGalleryResponse);
+  update_memory_in_capsule : (text, MemoryUpdateData) -> (
+      MemoryOperationResponse,
+    );
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;
-  migrate_capsule : () -> (MigrationResponse);
-  get_migration_status : () -> (opt MigrationStatusResponse) query;
-  get_personal_canister_id : (principal) -> (opt principal) query;
-  get_my_personal_canister_id : () -> (opt principal) query;
-  get_detailed_migration_status : () -> (opt DetailedMigrationStatus) query;
-  get_user_migration_status : (principal) -> (variant { Ok : opt DetailedMigrationStatus; Err : text }) query;
-  list_all_migration_states : () -> (variant { Ok : vec record { principal; DetailedMigrationStatus }; Err : text }) query;
-  get_migration_states_by_status : (MigrationStatus) -> (variant { Ok : vec record { principal; DetailedMigrationStatus }; Err : text }) query;
-  clear_migration_state : (principal) -> (variant { Ok : bool; Err : text });
-  set_migration_enabled : (bool) -> (variant { Ok : null; Err : text });
-  get_migration_stats : () -> (variant { Ok : MigrationStats; Err : text }) query;
-  is_migration_enabled : () -> (bool) query;
-  get_api_version : () -> (text) query;
 }

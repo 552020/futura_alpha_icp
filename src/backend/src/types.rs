@@ -550,7 +550,7 @@ impl GalleryMemoryEntry {
     #[allow(dead_code)]
     pub fn to_web2(&self, gallery_id: &str) -> Web2GalleryItem {
         Web2GalleryItem {
-            id: uuid::Uuid::new_v4().to_string(), // Generate new ID for Web2
+            id: format!("web2_item_{}", ic_cdk::api::time()), // Generate timestamp-based ID for Web2
             gallery_id: gallery_id.to_string(),
             memory_id: self.memory_id.clone(),
             memory_type: "image".to_string(), // This would need proper mapping

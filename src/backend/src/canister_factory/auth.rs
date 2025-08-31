@@ -168,6 +168,7 @@ mod tests {
             connections: HashMap::new(),
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
+            galleries: HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_web2: false,

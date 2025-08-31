@@ -233,7 +233,7 @@ pub async fn verify_handoff_readiness(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::canister_factory::export::*;
+
     use crate::types;
     use candid::Principal;
 
@@ -260,6 +260,7 @@ mod tests {
             connections: std::collections::HashMap::new(),
             connection_groups: std::collections::HashMap::new(),
             memories: std::collections::HashMap::new(),
+            galleries: std::collections::HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_web2: false,

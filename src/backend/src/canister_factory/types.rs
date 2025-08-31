@@ -6,17 +6,20 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 /// API version for compatibility checking between shared backend and personal canisters
 pub const API_VERSION: &str = "1.0.0";
 
-/// Response from migration operations
+/// Response from personal canister creation operations
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
-pub struct MigrationResponse {
+pub struct PersonalCanisterCreationResponse {
     pub success: bool,
     pub canister_id: Option<Principal>,
     pub message: String,
 }
 
-/// Migration status enum tracking the progression through migration states
+/// Legacy type alias for backward compatibility
+pub type MigrationResponse = PersonalCanisterCreationResponse;
+
+/// Personal canister creation status enum tracking the progression through creation states
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum MigrationStatus {
+pub enum CreationStatus {
     NotStarted,
     Exporting,
     Creating,
@@ -27,18 +30,24 @@ pub enum MigrationStatus {
     Failed,
 }
 
-/// Response for migration status queries
+/// Legacy type alias for backward compatibility
+pub type MigrationStatus = CreationStatus;
+
+/// Response for personal canister creation status queries
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
-pub struct MigrationStatusResponse {
-    pub status: MigrationStatus,
+pub struct CreationStatusResponse {
+    pub status: CreationStatus,
     pub canister_id: Option<Principal>,
     pub message: Option<String>,
 }
 
-/// Detailed migration status with progress information
+/// Legacy type alias for backward compatibility
+pub type MigrationStatusResponse = CreationStatusResponse;
+
+/// Detailed personal canister creation status with progress information
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
-pub struct DetailedMigrationStatus {
-    pub status: MigrationStatus,
+pub struct DetailedCreationStatus {
+    pub status: CreationStatus,
     pub canister_id: Option<Principal>,
     pub created_at: u64,
     pub completed_at: Option<u64>,
@@ -46,6 +55,9 @@ pub struct DetailedMigrationStatus {
     pub error_message: Option<String>,
     pub progress_message: String,
 }
+
+/// Legacy type alias for backward compatibility
+pub type DetailedMigrationStatus = DetailedCreationStatus;
 
 /// Exported capsule data for migration
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
@@ -77,11 +89,11 @@ pub struct DataManifest {
     pub manifest_version: String,
 }
 
-/// Migration state for tracking individual user migrations
+/// Personal canister creation state for tracking individual user creations
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
-pub struct MigrationState {
+pub struct PersonalCanisterCreationState {
     pub user: Principal,
-    pub status: MigrationStatus,
+    pub status: CreationStatus,
     pub created_at: u64,
     pub completed_at: Option<u64>,
     pub personal_canister_id: Option<Principal>,
@@ -89,16 +101,19 @@ pub struct MigrationState {
     pub error_message: Option<String>,
 }
 
-/// Configuration for migration system
+/// Legacy type alias for backward compatibility
+pub type MigrationState = PersonalCanisterCreationState;
+
+/// Configuration for personal canister creation system
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
-pub struct MigrationConfig {
+pub struct PersonalCanisterCreationConfig {
     pub enabled: bool,
     pub cycles_reserve: u128,
     pub min_cycles_threshold: u128,
     pub admin_principals: BTreeSet<Principal>,
 }
 
-impl Default for MigrationConfig {
+impl Default for PersonalCanisterCreationConfig {
     fn default() -> Self {
         Self {
             enabled: false, // Start disabled for safety
@@ -109,24 +124,30 @@ impl Default for MigrationConfig {
     }
 }
 
+/// Legacy type alias for backward compatibility
+pub type MigrationConfig = PersonalCanisterCreationConfig;
+
 /// Registry record for personal canisters
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
 pub struct PersonalCanisterRecord {
     pub canister_id: Principal,
     pub created_by: Principal,
     pub created_at: u64,
-    pub status: MigrationStatus,
+    pub status: CreationStatus,
     pub cycles_consumed: u128,
 }
 
-/// Statistics for migration operations
+/// Statistics for personal canister creation operations
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug, Default)]
-pub struct MigrationStats {
+pub struct PersonalCanisterCreationStats {
     pub total_attempts: u64,
     pub total_successes: u64,
     pub total_failures: u64,
     pub total_cycles_consumed: u128,
 }
+
+/// Legacy type alias for backward compatibility
+pub type MigrationStats = PersonalCanisterCreationStats;
 
 /// Minimal configuration for creating personal canisters
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug, Default)]
@@ -270,13 +291,27 @@ pub struct CyclesMonitoringReport {
     pub recommendations: Vec<String>,
 }
 
-/// Extended state structure with migration fields
+/// Extended state structure with personal canister creation fields
 #[derive(CandidType, Serialize, Deserialize, Default, Clone, Debug)]
-pub struct MigrationStateData {
-    pub migration_config: MigrationConfig,
-    pub migration_states: BTreeMap<Principal, MigrationState>,
-    pub migration_stats: MigrationStats,
+pub struct PersonalCanisterCreationStateData {
+    pub creation_config: PersonalCanisterCreationConfig,
+    pub creation_states: BTreeMap<Principal, PersonalCanisterCreationState>,
+    pub creation_stats: PersonalCanisterCreationStats,
     pub personal_canisters: BTreeMap<Principal, PersonalCanisterRecord>,
     pub import_config: ImportConfig,
     pub import_sessions: HashMap<String, ImportSession>,
+}
+
+/// Legacy type alias for backward compatibility
+pub type MigrationStateData = PersonalCanisterCreationStateData;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_types_simple() {
+        let config = PersonalCanisterCreationConfig::default();
+        assert!(!config.enabled);
+    }
 }

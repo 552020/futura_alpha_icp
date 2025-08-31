@@ -1,0 +1,3 @@
+[cargo]
+features = ["migration", "personal_canister_creation"]
+allFeatures = false

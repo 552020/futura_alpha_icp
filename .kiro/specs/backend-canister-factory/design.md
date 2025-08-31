@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design implements capsule migration functionality that allows users to create personal canisters containing their capsule data. The system provides internal data transfer capabilities, personal canister creation with admin-funded cycles, and seamless integration with the existing backend architecture. The design prioritizes MVP simplicity while ensuring core functionality works reliably.
+This design implements personal canister creation functionality that allows users to create their own dedicated canisters containing their capsule data. The system provides internal data transfer capabilities, personal canister creation with admin-funded cycles, and seamless integration with the existing backend architecture. The design prioritizes MVP simplicity while ensuring core functionality works reliably.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ graph TB
     Backend --> ICManagement[IC Management Canister]
     Backend --> PersonalCanister
 
-    subgraph "Migration Flow"
+    subgraph "Personal Canister Creation Flow"
         Export[Export] --> Create[Create]
         Create --> Install[Install]
         Install --> Import[Import]
@@ -25,30 +25,30 @@ graph TB
 
 ### Component Interaction
 
-The migration system consists of:
+The personal canister creation system consists of:
 
-1. **Migration Module**: Handles the core migration logic
+1. **Canister Factory Module**: Handles the core personal canister creation logic
 2. **Internal Data Transfer**: Manages data export and import between canisters
-3. **Canister Factory Module**: Creates and configures new canisters
+3. **Personal Canister Factory**: Creates and configures new personal canisters
 
 ## Components and Interfaces
 
-### Migration Module (`canister_factory.rs`)
+### Canister Factory Module (`canister_factory.rs`)
 
-This module will be added to the existing backend and provide the core migration functionality.
+This module will be added to the existing backend and provide the core personal canister creation functionality.
 
 #### Key Types
 
 ```rust
 #[derive(CandidType, Serialize, Deserialize)]
-pub struct MigrationResponse {
+pub struct PersonalCanisterCreationResponse {
     pub success: bool,
     pub canister_id: Option<Principal>,
     pub message: String,
 }
 
 #[derive(CandidType, Serialize, Deserialize)]
-pub enum MigrationStatus {
+pub enum CreationStatus {
     NotStarted,
     Exporting,
     Creating,
@@ -60,8 +60,8 @@ pub enum MigrationStatus {
 }
 
 #[derive(CandidType, Serialize, Deserialize)]
-pub struct MigrationStatusResponse {
-    pub status: MigrationStatus,
+pub struct CreationStatusResponse {
+    pub status: CreationStatus,
     pub canister_id: Option<Principal>,
     pub message: Option<String>,
 }
@@ -86,13 +86,13 @@ pub struct ExportMetadata {
 #### Core Functions
 
 ```rust
-// Migration functions
-pub async fn migrate_capsule() -> Result<MigrationResponse, String>;
-pub fn get_migration_status() -> Option<MigrationStatusResponse>;
+// Personal canister creation functions
+pub async fn create_personal_canister() -> Result<PersonalCanisterCreationResponse, String>;
+pub fn get_creation_status() -> Option<CreationStatusResponse>;
 
 // Admin functions
-pub fn set_migration_enabled(enabled: bool) -> Result<(), String>;
-pub fn get_migration_stats() -> MigrationStats;
+pub fn set_personal_canister_creation_enabled(enabled: bool) -> Result<(), String>;
+pub fn get_personal_canister_creation_stats() -> PersonalCanisterCreationStats;
 ```
 
 ### Internal Data Transfer

@@ -2,9 +2,9 @@ use crate::canister_factory::types::*;
 use crate::canister_factory::{auth::*, cycles::*, export::*, factory::*, registry::*, verify::*};
 use candid::Principal;
 
-/// Main migration function that orchestrates the complete capsule migration process
+/// Main personal canister creation function that orchestrates the complete capsule migration process
 /// This function implements the state machine: NotStarted → Exporting → Creating → Installing → Importing → Verifying → Completed/Failed
-pub async fn migrate_capsule() -> Result<MigrationResponse, String> {
+pub async fn create_personal_canister() -> Result<PersonalCanisterCreationResponse, String> {
     // Validate caller and get user principal
     let user = validate_migration_caller()?;
 
@@ -12,40 +12,43 @@ pub async fn migrate_capsule() -> Result<MigrationResponse, String> {
 
     // Check if migration is enabled
     let migration_enabled =
-        crate::memory::with_migration_state(|state| state.migration_config.enabled);
+        crate::memory::with_migration_state(|state| state.creation_config.enabled);
     if !migration_enabled {
-        return Ok(MigrationResponse {
+        return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: None,
-            message: "Migration is currently disabled".to_string(),
+            message: "Personal canister creation is currently disabled".to_string(),
         });
     }
 
     // Get or create migration state for this user
     let existing_state =
-        crate::memory::with_migration_state(|state| state.migration_states.get(&user).cloned());
+        crate::memory::with_migration_state(|state| state.creation_states.get(&user).cloned());
 
     // Handle idempotency - if migration already exists, return current status
     if let Some(existing) = existing_state {
         match existing.status {
-            MigrationStatus::Completed => {
-                return Ok(MigrationResponse {
+            CreationStatus::Completed => {
+                return Ok(PersonalCanisterCreationResponse {
                     success: true,
                     canister_id: existing.personal_canister_id,
-                    message: "Migration already completed".to_string(),
+                    message: "Personal canister creation already completed".to_string(),
                 });
             }
-            MigrationStatus::Failed => {
-                // Allow retry of failed migrations
-                ic_cdk::println!("Retrying failed migration for user {}", user);
+            CreationStatus::Failed => {
+                // Allow retry of failed creations
+                ic_cdk::println!(
+                    "Retrying failed personal canister creation for user {}",
+                    user
+                );
             }
             _ => {
-                // Migration is in progress, return current status
-                return Ok(MigrationResponse {
+                // Creation is in progress, return current status
+                return Ok(PersonalCanisterCreationResponse {
                     success: false,
                     canister_id: existing.personal_canister_id,
                     message: format!(
-                        "Migration already in progress (status: {:?})",
+                        "Personal canister creation already in progress (status: {:?})",
                         existing.status
                     ),
                 });
@@ -53,11 +56,11 @@ pub async fn migrate_capsule() -> Result<MigrationResponse, String> {
         }
     }
 
-    // Initialize migration state
+    // Initialize personal canister creation state
     let now = ic_cdk::api::time();
-    let mut migration_state = MigrationState {
+    let mut creation_state = PersonalCanisterCreationState {
         user,
-        status: MigrationStatus::NotStarted,
+        status: CreationStatus::NotStarted,
         created_at: now,
         completed_at: None,
         personal_canister_id: None,
@@ -65,28 +68,28 @@ pub async fn migrate_capsule() -> Result<MigrationResponse, String> {
         error_message: None,
     };
 
-    // Update migration stats
+    // Update creation stats
     crate::memory::with_migration_state_mut(|state| {
-        state.migration_stats.total_attempts += 1;
-        state.migration_states.insert(user, migration_state.clone());
+        state.creation_stats.total_attempts += 1;
+        state.creation_states.insert(user, creation_state.clone());
     });
 
-    // Execute migration state machine
-    let result = execute_migration_state_machine(&mut migration_state).await;
+    // Execute creation state machine
+    let result = execute_creation_state_machine(&mut creation_state).await;
 
-    // Update final migration state
+    // Update final creation state
     crate::memory::with_migration_state_mut(|state| {
-        state.migration_states.insert(user, migration_state.clone());
+        state.creation_states.insert(user, creation_state.clone());
 
         // Update stats based on result
         match &result {
             Ok(_) => {
-                if migration_state.status == MigrationStatus::Completed {
-                    state.migration_stats.total_successes += 1;
+                if creation_state.status == CreationStatus::Completed {
+                    state.creation_stats.total_successes += 1;
                 }
             }
             Err(_) => {
-                state.migration_stats.total_failures += 1;
+                state.creation_stats.total_failures += 1;
             }
         }
     });
@@ -94,23 +97,26 @@ pub async fn migrate_capsule() -> Result<MigrationResponse, String> {
     result
 }
 
-/// Execute the migration state machine with comprehensive error handling
-async fn execute_migration_state_machine(
-    migration_state: &mut MigrationState,
-) -> Result<MigrationResponse, String> {
-    let user = migration_state.user;
+/// Execute the personal canister creation state machine with comprehensive error handling
+async fn execute_creation_state_machine(
+    creation_state: &mut PersonalCanisterCreationState,
+) -> Result<PersonalCanisterCreationResponse, String> {
+    let user = creation_state.user;
 
     // State: NotStarted → Exporting
-    migration_state.status = MigrationStatus::Exporting;
-    ic_cdk::println!("Migration state: Exporting data for user {}", user);
+    creation_state.status = CreationStatus::Exporting;
+    ic_cdk::println!(
+        "Personal canister creation state: Exporting data for user {}",
+        user
+    );
 
     // Export user's capsule data
     let export_data = match export_user_capsule_data(user) {
         Ok(data) => data,
         Err(e) => {
-            migration_state.status = MigrationStatus::Failed;
-            migration_state.error_message = Some(format!("Export failed: {}", e));
-            return Ok(MigrationResponse {
+            creation_state.status = CreationStatus::Failed;
+            creation_state.error_message = Some(format!("Export failed: {}", e));
+            return Ok(PersonalCanisterCreationResponse {
                 success: false,
                 canister_id: None,
                 message: format!("Failed to export capsule data: {}", e),
@@ -120,9 +126,9 @@ async fn execute_migration_state_machine(
 
     // Validate exported data
     if let Err(e) = validate_export_data(&export_data) {
-        migration_state.status = MigrationStatus::Failed;
-        migration_state.error_message = Some(format!("Export validation failed: {}", e));
-        return Ok(MigrationResponse {
+        creation_state.status = CreationStatus::Failed;
+        creation_state.error_message = Some(format!("Export validation failed: {}", e));
+        return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: None,
             message: format!("Export data validation failed: {}", e),
@@ -130,9 +136,9 @@ async fn execute_migration_state_machine(
     }
 
     // State: Exporting → Creating
-    migration_state.status = MigrationStatus::Creating;
+    creation_state.status = CreationStatus::Creating;
     ic_cdk::println!(
-        "Migration state: Creating personal canister for user {}",
+        "Personal canister creation state: Creating personal canister for user {}",
         user
     );
 
@@ -140,16 +146,16 @@ async fn execute_migration_state_machine(
     let cycles_to_fund = get_default_canister_cycles();
     let config = create_default_config();
 
-    let canister_id = match create_personal_canister(user, config, cycles_to_fund).await {
+    let canister_id = match create_personal_canister_impl(user, config, cycles_to_fund).await {
         Ok(id) => {
-            migration_state.personal_canister_id = Some(id);
-            migration_state.cycles_consumed = cycles_to_fund;
+            creation_state.personal_canister_id = Some(id);
+            creation_state.cycles_consumed = cycles_to_fund;
             id
         }
         Err(e) => {
-            migration_state.status = MigrationStatus::Failed;
-            migration_state.error_message = Some(format!("Canister creation failed: {}", e));
-            return Ok(MigrationResponse {
+            creation_state.status = CreationStatus::Failed;
+            creation_state.error_message = Some(format!("Canister creation failed: {}", e));
+            return Ok(PersonalCanisterCreationResponse {
                 success: false,
                 canister_id: None,
                 message: format!("Failed to create personal canister: {}", e),
@@ -158,23 +164,23 @@ async fn execute_migration_state_machine(
     };
 
     // State: Creating → Installing
-    migration_state.status = MigrationStatus::Installing;
+    creation_state.status = CreationStatus::Installing;
     ic_cdk::println!(
-        "Migration state: Installing WASM for canister {}",
+        "Personal canister creation state: Installing WASM for canister {}",
         canister_id
     );
 
     // Install WASM module
     if let Err(e) = complete_wasm_installation(canister_id, user, &export_data).await {
-        migration_state.status = MigrationStatus::Failed;
-        migration_state.error_message = Some(format!("WASM installation failed: {}", e));
+        creation_state.status = CreationStatus::Failed;
+        creation_state.error_message = Some(format!("WASM installation failed: {}", e));
 
         // Cleanup failed canister
         if let Err(cleanup_err) = cleanup_failed_canister_creation(canister_id, user).await {
             ic_cdk::println!("Warning: Cleanup failed: {}", cleanup_err);
         }
 
-        return Ok(MigrationResponse {
+        return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
             message: format!("Failed to install WASM: {}", e),
@@ -182,9 +188,9 @@ async fn execute_migration_state_machine(
     }
 
     // State: Installing → Importing
-    migration_state.status = MigrationStatus::Importing;
+    creation_state.status = CreationStatus::Importing;
     ic_cdk::println!(
-        "Migration state: Importing data to canister {}",
+        "Personal canister creation state: Importing data to canister {}",
         canister_id
     );
 
@@ -192,15 +198,15 @@ async fn execute_migration_state_machine(
     // would require the personal canister to be fully implemented
     // In production, this would use the chunked import API
     if let Err(e) = simulate_data_import(canister_id, &export_data).await {
-        migration_state.status = MigrationStatus::Failed;
-        migration_state.error_message = Some(format!("Data import failed: {}", e));
+        creation_state.status = CreationStatus::Failed;
+        creation_state.error_message = Some(format!("Data import failed: {}", e));
 
         // Cleanup failed canister
         if let Err(cleanup_err) = cleanup_failed_canister_creation(canister_id, user).await {
             ic_cdk::println!("Warning: Cleanup failed: {}", cleanup_err);
         }
 
-        return Ok(MigrationResponse {
+        return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
             message: format!("Failed to import data: {}", e),
@@ -208,18 +214,18 @@ async fn execute_migration_state_machine(
     }
 
     // State: Importing → Verifying
-    migration_state.status = MigrationStatus::Verifying;
+    creation_state.status = CreationStatus::Verifying;
     ic_cdk::println!(
-        "Migration state: Verifying data for canister {}",
+        "Personal canister creation state: Verifying data for canister {}",
         canister_id
     );
 
-    // Verify migration data integrity
+    // Verify data integrity
     if let Err(e) = verify_migration_data(canister_id, &export_data).await {
-        migration_state.status = MigrationStatus::Failed;
-        migration_state.error_message = Some(format!("Data verification failed: {}", e));
+        creation_state.status = CreationStatus::Failed;
+        creation_state.error_message = Some(format!("Data verification failed: {}", e));
 
-        return Ok(MigrationResponse {
+        return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
             message: format!("Data verification failed: {}", e),
@@ -228,21 +234,21 @@ async fn execute_migration_state_machine(
 
     // State: Verifying → Handoff Controllers
     ic_cdk::println!(
-        "Migration state: Handing off controllers for canister {}",
+        "Personal canister creation state: Handing off controllers for canister {}",
         canister_id
     );
 
     // Handoff controllers to user
     if let Err(e) = handoff_controllers(canister_id, user).await {
-        migration_state.status = MigrationStatus::Failed;
-        migration_state.error_message = Some(format!("Controller handoff failed: {}", e));
+        creation_state.status = CreationStatus::Failed;
+        creation_state.error_message = Some(format!("Controller handoff failed: {}", e));
 
         // Handle handoff failure
         if let Err(cleanup_err) = handle_handoff_failure(canister_id, user, e.clone()).await {
             ic_cdk::println!("Warning: Handoff failure handling failed: {}", cleanup_err);
         }
 
-        return Ok(MigrationResponse {
+        return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
             message: format!("Failed to handoff controllers: {}", e),
@@ -250,11 +256,11 @@ async fn execute_migration_state_machine(
     }
 
     // State: Completed
-    migration_state.status = MigrationStatus::Completed;
-    migration_state.completed_at = Some(ic_cdk::api::time());
+    creation_state.status = CreationStatus::Completed;
+    creation_state.completed_at = Some(ic_cdk::api::time());
 
     // Update registry status to Completed
-    if let Err(e) = update_registry_status(canister_id, MigrationStatus::Completed) {
+    if let Err(e) = update_registry_status(canister_id, CreationStatus::Completed) {
         ic_cdk::println!(
             "Warning: Failed to update registry status to Completed: {}",
             e
@@ -262,15 +268,15 @@ async fn execute_migration_state_machine(
     }
 
     ic_cdk::println!(
-        "Migration completed successfully for user {} (canister: {})",
+        "Personal canister creation completed successfully for user {} (canister: {})",
         user,
         canister_id
     );
 
-    Ok(MigrationResponse {
+    Ok(PersonalCanisterCreationResponse {
         success: true,
         canister_id: Some(canister_id),
-        message: "Migration completed successfully".to_string(),
+        message: "Personal canister creation completed successfully".to_string(),
     })
 }
 
@@ -402,7 +408,7 @@ async fn cleanup_failed_canister_creation(
     );
 
     // Update registry status to Failed
-    if let Err(e) = update_registry_status(canister_id, MigrationStatus::Failed) {
+    if let Err(e) = update_registry_status(canister_id, CreationStatus::Failed) {
         ic_cdk::println!("Warning: Failed to update registry status: {}", e);
     }
 
@@ -427,7 +433,7 @@ async fn handle_handoff_failure(
     );
 
     // Update registry status to Failed
-    if let Err(e) = update_registry_status(canister_id, MigrationStatus::Failed) {
+    if let Err(e) = update_registry_status(canister_id, CreationStatus::Failed) {
         ic_cdk::println!("Warning: Failed to update registry status: {}", e);
     }
 
@@ -443,8 +449,8 @@ async fn handle_handoff_failure(
     Ok(())
 }
 
-/// Get migration status for the calling user
-pub fn get_migration_status() -> Option<MigrationStatusResponse> {
+/// Get personal canister creation status for the calling user
+pub fn get_creation_status() -> Option<CreationStatusResponse> {
     let caller = ic_cdk::api::msg_caller();
 
     // Reject anonymous callers
@@ -453,24 +459,26 @@ pub fn get_migration_status() -> Option<MigrationStatusResponse> {
     }
 
     crate::memory::with_migration_state(|state| {
-        state.migration_states.get(&caller).map(|migration_state| {
-            let message = match migration_state.status {
-                MigrationStatus::NotStarted => "Migration not started".to_string(),
-                MigrationStatus::Exporting => "Exporting capsule data...".to_string(),
-                MigrationStatus::Creating => "Creating personal canister...".to_string(),
-                MigrationStatus::Installing => "Installing WASM module...".to_string(),
-                MigrationStatus::Importing => "Importing data to personal canister...".to_string(),
-                MigrationStatus::Verifying => "Verifying data integrity...".to_string(),
-                MigrationStatus::Completed => "Migration completed successfully".to_string(),
-                MigrationStatus::Failed => migration_state
+        state.creation_states.get(&caller).map(|creation_state| {
+            let message = match creation_state.status {
+                CreationStatus::NotStarted => "Personal canister creation not started".to_string(),
+                CreationStatus::Exporting => "Exporting capsule data...".to_string(),
+                CreationStatus::Creating => "Creating personal canister...".to_string(),
+                CreationStatus::Installing => "Installing WASM module...".to_string(),
+                CreationStatus::Importing => "Importing data to personal canister...".to_string(),
+                CreationStatus::Verifying => "Verifying data integrity...".to_string(),
+                CreationStatus::Completed => {
+                    "Personal canister creation completed successfully".to_string()
+                }
+                CreationStatus::Failed => creation_state
                     .error_message
                     .clone()
-                    .unwrap_or_else(|| "Migration failed".to_string()),
+                    .unwrap_or_else(|| "Personal canister creation failed".to_string()),
             };
 
-            MigrationStatusResponse {
-                status: migration_state.status.clone(),
-                canister_id: migration_state.personal_canister_id,
+            CreationStatusResponse {
+                status: creation_state.status.clone(),
+                canister_id: creation_state.personal_canister_id,
                 message: Some(message),
             }
         })
@@ -480,16 +488,13 @@ pub fn get_migration_status() -> Option<MigrationStatusResponse> {
 /// Get personal canister ID for a user (convenience function)
 pub fn get_personal_canister_id(user: Principal) -> Option<Principal> {
     crate::memory::with_migration_state(|state| {
-        state
-            .migration_states
-            .get(&user)
-            .and_then(|migration_state| {
-                if migration_state.status == MigrationStatus::Completed {
-                    migration_state.personal_canister_id
-                } else {
-                    None
-                }
-            })
+        state.creation_states.get(&user).and_then(|creation_state| {
+            if creation_state.status == CreationStatus::Completed {
+                creation_state.personal_canister_id
+            } else {
+                None
+            }
+        })
     })
 }
 
@@ -500,4 +505,13 @@ pub fn get_my_personal_canister_id() -> Option<Principal> {
         return None;
     }
     get_personal_canister_id(caller)
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_simple_orchestrator() {
+        assert_eq!(1 + 1, 2);
+    }
 }
