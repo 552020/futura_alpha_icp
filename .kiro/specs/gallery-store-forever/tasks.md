@@ -32,7 +32,7 @@ This implementation plan transforms the existing "Store Forever" UI components a
   - Add memory manager for multiple stable memory regions
   - _Requirements: 23.1, 23.2, 23.3_
 
-- [ ] 1.3 Implement Memory Metadata Operations
+- [x] 1.3 Implement Memory Metadata Operations
 
   **Goal**: Create ICP canister endpoints to store and query memory metadata (not the actual files yet, just the metadata about memories like titles, descriptions, etc.)
 
@@ -70,7 +70,7 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 22.5, 24.3, 25.3_
 
-- [ ] 1.4 Implement Chunked Asset Upload Protocol
+- [x] 1.4 Implement Chunked Asset Upload Protocol
 
   **Goal**: Create a robust chunked upload system for large files (images, videos) with progress tracking, error recovery, and operational constraints.
 

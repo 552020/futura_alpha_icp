@@ -243,7 +243,7 @@ pub struct MemoryArtifact {
     pub metadata: Option<String>, // JSON metadata
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum ArtifactType {
     Metadata,
     Asset,
@@ -274,6 +274,17 @@ pub struct UploadSession {
     pub chunk_count: u32,
     pub total_size: u64,
     pub created_at: u64,
+    pub chunks_received: Vec<bool>, // Track which chunks have been received
+    pub bytes_received: u64,        // Total bytes received so far
+}
+
+// Structure for storing individual chunk data
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct ChunkData {
+    pub session_id: String,
+    pub chunk_index: u32,
+    pub data: Vec<u8>,
+    pub received_at: u64,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -936,7 +947,24 @@ impl Storable for UploadSession {
 
     const BOUND: ic_stable_structures::storable::Bound =
         ic_stable_structures::storable::Bound::Bounded {
-            max_size: 1024, // 1KB should be enough for upload session metadata
+            max_size: 2048, // Increased to 2KB for additional fields
+            is_fixed_size: false,
+        };
+}
+
+impl Storable for ChunkData {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        let bytes = candid::encode_one(self).expect("Failed to encode ChunkData");
+        Cow::Owned(bytes)
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        candid::decode_one(&bytes).expect("Failed to decode ChunkData")
+    }
+
+    const BOUND: ic_stable_structures::storable::Bound =
+        ic_stable_structures::storable::Bound::Bounded {
+            max_size: 1_048_576 + 1024, // 1MB for chunk data + 1KB for metadata
             is_fixed_size: false,
         };
 }

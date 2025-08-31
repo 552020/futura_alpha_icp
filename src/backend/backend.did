@@ -64,6 +64,21 @@ type CapsuleRegistrationResult = record {
   message : text;
   success : bool;
 };
+type ChunkResponse = record {
+  chunk_index : nat32;
+  error : opt ICPErrorCode;
+  message : text;
+  bytes_received : nat32;
+  success : bool;
+};
+type CommitResponse = record {
+  total_bytes : nat64;
+  memory_id : text;
+  error : opt ICPErrorCode;
+  message : text;
+  final_hash : text;
+  success : bool;
+};
 type Connection = record {
   status : ConnectionStatus;
   updated_at : nat64;
@@ -146,16 +161,36 @@ type ICPErrorCode = variant {
   AlreadyExists;
 };
 type ICPResult = record {
-  data : opt MemoryListPresenceResponse;
+  data : opt UploadSessionResponse;
   error : opt ICPErrorCode;
   success : bool;
 };
 type ICPResult_1 = record {
-  data : opt MemoryPresenceResponse;
+  data : opt null;
   error : opt ICPErrorCode;
   success : bool;
 };
 type ICPResult_2 = record {
+  data : opt CommitResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_3 = record {
+  data : opt MemoryListPresenceResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_4 = record {
+  data : opt MemoryPresenceResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_5 = record {
+  data : opt ChunkResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_6 = record {
   data : opt MetadataResponse;
   error : opt ICPErrorCode;
   success : bool;
@@ -292,6 +327,22 @@ type UpdateGalleryResponse = record {
   success : bool;
   gallery : opt Gallery;
 };
+type UploadSession = record {
+  session_id : text;
+  chunks_received : vec bool;
+  created_at : nat64;
+  memory_id : text;
+  expected_hash : text;
+  total_size : nat64;
+  chunk_count : nat32;
+  bytes_received : nat64;
+};
+type UploadSessionResponse = record {
+  error : opt ICPErrorCode;
+  session : opt UploadSession;
+  message : text;
+  success : bool;
+};
 type VideoMetadata = record {
   height : opt nat32;
   duration : opt nat32;
@@ -302,8 +353,14 @@ type VideoMetadata = record {
 service : () -> {
   add_admin : (principal) -> (bool);
   add_memory_to_capsule : (MemoryData) -> (MemoryOperationResponse);
+  // Begin chunked upload session for large files
+  begin_asset_upload : (text, text, nat32, nat64) -> (ICPResult);
+  // Cancel upload and cleanup resources
+  cancel_upload : (text) -> (ICPResult_1);
   clear_creation_state : (principal) -> (Result);
   clear_migration_state : (principal) -> (Result);
+  // Finalize upload after all chunks received
+  commit_asset : (text, text) -> (ICPResult_2);
   create_capsule : (PersonRef) -> (CapsuleCreationResult);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
   delete_gallery : (text) -> (DeleteGalleryResponse);
@@ -318,10 +375,10 @@ service : () -> {
   get_memory_from_capsule : (text) -> (opt Memory) query;
   // Check presence for multiple memories with pagination
   get_memory_list_presence_icp : (vec text, opt text, nat32) -> (
-      ICPResult,
+      ICPResult_3,
     ) query;
   // Check if a single memory's metadata exists on ICP
-  get_memory_presence_icp : (text) -> (ICPResult_1) query;
+  get_memory_presence_icp : (text) -> (ICPResult_4) query;
   get_migration_states_by_status : (CreationStatus) -> (Result_1) query;
   get_migration_stats : () -> (Result_2) query;
   get_migration_status : () -> (opt CreationStatusResponse) query;
@@ -347,6 +404,8 @@ service : () -> {
   mark_capsule_bound_to_web2 : () -> (bool);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
+  // Upload individual file chunk
+  put_chunk : (text, nat32, blob) -> (ICPResult_5);
   register : () -> (bool);
   register_capsule : () -> (CapsuleRegistrationResult);
   register_with_nonce : (text) -> (bool);
@@ -360,7 +419,7 @@ service : () -> {
     );
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
-      ICPResult_2,
+      ICPResult_6,
     );
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;

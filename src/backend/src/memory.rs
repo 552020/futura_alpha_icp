@@ -1,6 +1,6 @@
 #[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
-use crate::types::{Capsule, MemoryArtifact, UploadSession};
+use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{DefaultMemoryImpl, StableBTreeMap};
@@ -18,6 +18,7 @@ type Memory = VirtualMemory<DefaultMemoryImpl>;
 const CAPSULES_MEMORY_ID: MemoryId = MemoryId::new(0);
 const UPLOAD_SESSIONS_MEMORY_ID: MemoryId = MemoryId::new(1);
 const MEMORY_ARTIFACTS_MEMORY_ID: MemoryId = MemoryId::new(2);
+const CHUNK_DATA_MEMORY_ID: MemoryId = MemoryId::new(3);
 
 // Stable storage structures
 thread_local! {
@@ -41,6 +42,12 @@ thread_local! {
     static STABLE_MEMORY_ARTIFACTS: RefCell<StableBTreeMap<String, MemoryArtifact, Memory>> = RefCell::new(
         StableBTreeMap::init(
             MEMORY_MANAGER.with(|m| m.borrow().get(MEMORY_ARTIFACTS_MEMORY_ID))
+        )
+    );
+
+    static STABLE_CHUNK_DATA: RefCell<StableBTreeMap<String, ChunkData, Memory>> = RefCell::new(
+        StableBTreeMap::init(
+            MEMORY_MANAGER.with(|m| m.borrow().get(CHUNK_DATA_MEMORY_ID))
         )
     );
 }
@@ -108,6 +115,21 @@ where
     F: FnOnce(&mut StableBTreeMap<String, MemoryArtifact, Memory>) -> R,
 {
     STABLE_MEMORY_ARTIFACTS.with(|artifacts| f(&mut artifacts.borrow_mut()))
+}
+
+// Stable chunk data storage functions
+pub fn with_stable_chunk_data<F, R>(f: F) -> R
+where
+    F: FnOnce(&StableBTreeMap<String, ChunkData, Memory>) -> R,
+{
+    STABLE_CHUNK_DATA.with(|chunks| f(&chunks.borrow()))
+}
+
+pub fn with_stable_chunk_data_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut StableBTreeMap<String, ChunkData, Memory>) -> R,
+{
+    STABLE_CHUNK_DATA.with(|chunks| f(&mut chunks.borrow_mut()))
 }
 
 // ============================================================================

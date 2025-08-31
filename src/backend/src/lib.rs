@@ -12,6 +12,7 @@ mod capsule;
 mod memory;
 mod metadata;
 mod types;
+mod upload;
 // memories.rs removed - functionality moved to capsule-based architecture
 
 #[ic_cdk::query]
@@ -467,6 +468,46 @@ pub fn get_memory_list_presence_icp(
     limit: u32,
 ) -> types::ICPResult<types::MemoryListPresenceResponse> {
     metadata::get_memory_list_presence_icp(memory_ids, cursor, limit)
+}
+
+// ============================================================================
+// CHUNKED ASSET UPLOAD ENDPOINTS - ICP Canister API
+// ============================================================================
+
+/// Begin chunked upload session for large files
+#[ic_cdk::update]
+pub fn begin_asset_upload(
+    memory_id: String,
+    expected_hash: String,
+    chunk_count: u32,
+    total_size: u64,
+) -> types::ICPResult<types::UploadSessionResponse> {
+    upload::begin_asset_upload(memory_id, expected_hash, chunk_count, total_size)
+}
+
+/// Upload individual file chunk
+#[ic_cdk::update]
+pub fn put_chunk(
+    session_id: String,
+    chunk_index: u32,
+    chunk_data: Vec<u8>,
+) -> types::ICPResult<types::ChunkResponse> {
+    upload::put_chunk(session_id, chunk_index, chunk_data)
+}
+
+/// Finalize upload after all chunks received
+#[ic_cdk::update]
+pub fn commit_asset(
+    session_id: String,
+    final_hash: String,
+) -> types::ICPResult<types::CommitResponse> {
+    upload::commit_asset(session_id, final_hash)
+}
+
+/// Cancel upload and cleanup resources
+#[ic_cdk::update]
+pub fn cancel_upload(session_id: String) -> types::ICPResult<()> {
+    upload::cancel_upload(session_id)
 }
 
 // Export the interface for the smart contract.
