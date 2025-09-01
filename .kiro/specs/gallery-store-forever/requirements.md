@@ -76,15 +76,18 @@ The "Store Forever" feature enables users to permanently store their photo galle
 
 ### Requirement 5
 
-**User Story:** As a user, I want to view and manage my ICP-stored galleries with visual indicators, so that I can access my permanently stored memories and understand their storage status.
+**User Story:** As a user, I want to view and manage my ICP-stored memories and galleries with visual indicators across all memory display locations, so that I can access my permanently stored memories and understand their storage status wherever memories are shown.
 
 #### Acceptance Criteria
 
 1. WHEN viewing gallery lists THEN the system SHALL display storage status indicators derived from existing gallery_presence views
 2. WHEN gallery_presence.icp_complete = true THEN the system SHALL show "Stored Forever" badges on gallery cards and headers
-3. WHEN viewing gallery details THEN the system SHALL read from ICP iff icp_complete=true; if partial, prefer Web2, but allow per-memory 'view on ICP' where asset_icp=true
-4. WHEN galleries are partially on ICP THEN the system SHALL show "Partially on ICP" badges with unified view
-5. WHEN ICP storage fails to load THEN the system SHALL fallback to Web2 data with appropriate warnings using existing error handling
+3. WHEN viewing gallery details THEN the system SHALL read from ICP iff icp_complete=true; otherwise prefer Web2 data
+4. WHEN galleries are not fully on ICP THEN the system SHALL show "Standard Storage" status and allow complete storage retry
+5. WHEN viewing dashboard memory thumbnails THEN the system SHALL display storage status badges on individual memory thumbnails showing ICP vs Neon storage
+6. WHEN viewing folder pages THEN the system SHALL display storage status badges on memory thumbnails within folder views
+7. WHEN viewing individual memory detail pages THEN the system SHALL display storage status indicators showing whether the memory is stored on ICP or Neon
+8. WHEN ICP storage fails to load THEN the system SHALL fallback to Web2 data with appropriate warnings using existing error handling
 
 ### Requirement 6
 
@@ -268,15 +271,17 @@ The "Store Forever" feature enables users to permanently store their photo galle
 
 ### Requirement 21
 
-**User Story:** As a user, I want clear visual indicators for partial storage states, so that I understand exactly what's stored where and can take appropriate actions.
+**User Story:** As a user, I want clear visual indicators for partial storage states across all memory display locations, so that I understand exactly what's stored where and can take appropriate actions.
 
 #### Acceptance Criteria
 
-1. WHEN galleries have partial ICP presence THEN the system SHALL display per-item badges ('✓ ICP' / 'Web2 only') and a 'Complete storage' CTA
+1. WHEN galleries are not fully stored on ICP THEN the system SHALL display "Store Forever" CTA without showing partial storage badges
 2. WHEN showing storage benefits THEN the system SHALL show benefits and bytes stored; avoid price quotes/ETAs
 3. WHEN displaying storage costs THEN the system SHALL provide clear messaging about benefits without specific pricing
 4. WHEN users need storage details THEN the system SHALL show which specific memories are stored on ICP vs Web2
 5. WHEN partial storage exists THEN the system SHALL provide clear paths to complete the storage process
+6. WHEN viewing memory thumbnails in dashboard or folders THEN the system SHALL display individual memory storage badges showing ICP, Neon, or ICP\* (pending) status
+7. WHEN viewing individual memory pages THEN the system SHALL display clear storage status indicators with explanatory tooltips
 
 ### Requirement 22
 
@@ -337,3 +342,17 @@ The "Store Forever" feature enables users to permanently store their photo galle
 3. WHEN ICP stores galleries THEN the system SHALL use the gallery.id provided in GalleryData without overwriting it with generated IDs
 4. WHEN ICP stores memories THEN the system SHALL accept memory_id as a parameter and use it as the canonical identifier without generating timestamp-based IDs
 5. WHEN the same UUID is used across systems THEN operations SHALL be idempotent, returning success for existing entities rather than creating duplicates
+
+### Requirement 27
+
+**User Story:** As a user, I want a simple binary storage status system without confusing partial states, so that I can clearly understand whether my content is stored forever or not.
+
+#### Acceptance Criteria
+
+1. WHEN displaying storage status THEN the system SHALL show only two states: "Stored Forever" (ICP) or "Standard Storage" (Neon/Web2)
+2. WHEN a gallery is being stored THEN the system SHALL show progress indicators during the storage process but NOT partial storage badges after completion
+3. WHEN storage is incomplete THEN the system SHALL show the gallery as "Standard Storage" until ALL memories are fully stored on ICP
+4. WHEN individual memories are displayed THEN the system SHALL show only "ICP" or "NEON" badges, never partial states
+5. WHEN galleries have mixed storage states THEN the system SHALL show "Standard Storage" until the entire gallery is complete on ICP
+6. WHEN storage operations are in progress THEN the system MAY show loading indicators and progress bars but SHALL NOT persist partial status badges
+7. WHEN storage fails or is interrupted THEN the system SHALL revert to "Standard Storage" status and allow retry of the complete storage process

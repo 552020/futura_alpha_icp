@@ -252,7 +252,91 @@ pub struct MemoryPresenceResponse {
   - II authentication flow integration
   - Error handling and retry functionality
 
-#### 1.2 Component Enhancements Required
+#### 1.2 Memory Storage Badge Components
+
+**Memory Storage Badge Component** (`src/nextjs/src/components/memory-storage-badge.tsx`)
+
+```typescript
+// Individual memory storage status badge for thumbnails
+interface MemoryStorageBadgeProps {
+  memoryId: string;
+  memoryType: string;
+  className?: string;
+  size?: "sm" | "md";
+}
+
+export function MemoryStorageBadge({ memoryId, memoryType, className, size = "sm" }: MemoryStorageBadgeProps) {
+  const { data: storageStatus, isLoading } = useMemoryStorageStatus(memoryId, memoryType);
+
+  if (isLoading) return <Skeleton className="w-8 h-4" />;
+
+  const badgeVariant =
+    storageStatus?.overallStatus === "stored_forever"
+      ? "success"
+      : storageStatus?.overallStatus === "partially_stored"
+      ? "warning"
+      : "secondary";
+
+  const badgeText =
+    storageStatus?.overallStatus === "stored_forever"
+      ? "ICP"
+      : storageStatus?.overallStatus === "partially_stored"
+      ? "ICP*"
+      : "NEON";
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge variant={badgeVariant} className={cn("text-xs", className)} size={size}>
+            {badgeText}
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{getStorageStatusTooltip(storageStatus?.overallStatus)}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+```
+
+**Memory Storage Status Hook** (`src/nextjs/src/hooks/use-memory-storage-status.ts`)
+
+```typescript
+// Hook for fetching individual memory storage status
+export function useMemoryStorageStatus(memoryId: string, memoryType: string) {
+  return useQuery({
+    queryKey: ["memory-storage-status", memoryId, memoryType],
+    queryFn: async () => {
+      const response = await fetch(`/api/memories/${memoryId}/storage-status?type=${memoryType}`);
+      if (!response.ok) throw new Error("Failed to fetch memory storage status");
+      return response.json();
+    },
+    staleTime: 30000, // Cache for 30 seconds
+    enabled: !!memoryId && !!memoryType,
+  });
+}
+
+// Hook for batch memory storage status (for gallery views)
+export function useBatchMemoryStorageStatus(memories: Array<{ id: string; type: string }>) {
+  const memoryIds = memories.map((m) => m.id).join(",");
+  const memoryTypes = memories.map((m) => m.type).join(",");
+
+  return useQuery({
+    queryKey: ["batch-memory-storage-status", memoryIds, memoryTypes],
+    queryFn: async () => {
+      const response = await fetch(`/api/memories/storage-status?ids=${memoryIds}&types=${memoryTypes}`);
+      if (!response.ok) throw new Error("Failed to fetch batch memory storage status");
+      return response.json();
+    },
+    staleTime: 30000,
+    enabled: memories.length > 0,
+  });
+}
+```
+
+#### 1.3 Component Enhancements Required
 
 **Gallery Service** (`src/nextjs/src/services/gallery.ts`)
 

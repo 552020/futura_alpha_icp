@@ -252,46 +252,6 @@ This implementation plan transforms the existing "Store Forever" UI components a
   - Skip detailed audit logging and quotas for MVP (can be added post-MVP)
   - _Requirements: 17.1 (partial), 22.3 (basic)_
 
-- [ ] 1.6 Add Progress Tracking API for Large File Uploads
-
-  **Goal**: Create API endpoints to expose upload progress data for frontend progress tracking and user feedback.
-
-  **What to implement**:
-
-  1. **get_upload_progress endpoint** - Query upload session progress
-
-     - Function signature: `pub fn get_upload_progress(session_id: String) -> ICPResult<UploadProgressResponse>`
-     - Return: `{ session_id, memory_id, total_chunks, chunks_received, bytes_received, total_size, progress_percentage, estimated_time_remaining, status: "active"|"completed"|"expired"|"failed" }`
-     - Calculate progress percentage: `(chunks_received / total_chunks) * 100`
-     - Estimate time remaining based on upload rate (bytes_received / elapsed_time)
-     - Handle expired/failed sessions gracefully
-
-  2. **get_user_upload_sessions endpoint** - List user's active upload sessions
-
-     - Function signature: `pub fn get_user_upload_sessions() -> ICPResult<UserUploadSessionsResponse>`
-     - Return: Array of active upload sessions for the caller
-     - Include progress data for each session
-     - Filter out expired/completed sessions
-     - Limit to max 10 sessions per user for performance
-
-  3. **Add these endpoints to lib.rs** as public canister functions with #[ic_cdk::query] attributes
-
-  **Integration Points**:
-
-  - Support Task 4.2 (Detailed Progress Reporting) in frontend modal
-  - Enable real-time progress updates in UI components
-  - Provide data for progress bars and time estimates
-  - Support session monitoring and cleanup
-
-  **Performance Considerations**:
-
-  - Use efficient queries to stable memory
-  - Cache progress calculations for active sessions
-  - Implement rate limiting for progress queries
-  - Clean up expired session data periodically
-
-  _Requirements: 2.2, 10.2, 20.1_
-
 - [ ] 1.7 Implement Backend Retry Logic for Failed ICP Operations
 
   **Goal**: Add automatic retry mechanisms at the backend level for transient failures and network issues.
@@ -738,6 +698,73 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 5.1, 16.1, 21.1_
 
+- [ ] 5.5 Add Memory Storage Badges to Dashboard (MVP)
+
+  **Goal**: Add basic storage status badges to memory thumbnails in dashboard for MVP.
+
+  **MVP Implementation**:
+
+  1. **Simple badge integration** - Add badges to dashboard memory thumbnails
+
+     - Import existing `MemoryStorageBadge` component in dashboard page
+     - Add `<MemoryStorageBadge memoryId={memory.id} memoryType={memory.type} />` to memory thumbnails
+     - Position badges in top-right corner (consistent with galleries)
+
+  2. **Dashboard page updates** (`src/nextjs/src/app/[lang]/dashboard/page.tsx`)
+
+     - Find memory thumbnail rendering location
+     - Add badge component with minimal styling changes
+     - Test basic functionality with different memory types
+
+  **MVP Scope**: Basic badge display only - advanced features moved to post-MVP
+
+  _Requirements: 5.5, 27.4_
+
+- [ ] 5.6 Add Memory Storage Badges to Folder Views (MVP)
+
+  **Goal**: Add basic storage status badges to memory thumbnails in folder pages for MVP.
+
+  **MVP Implementation**:
+
+  1. **Simple badge integration** - Add badges to folder memory thumbnails
+
+     - Import existing `MemoryStorageBadge` component in folder detail page
+     - Add `<MemoryStorageBadge memoryId={memory.id} memoryType={memory.type} />` to memory thumbnails
+     - Position badges in top-right corner (consistent with other views)
+
+  2. **Folder page updates** (`src/nextjs/src/app/[lang]/dashboard/folder/[id]/page.tsx`)
+
+     - Find memory thumbnail rendering location in folder view
+     - Add badge component with minimal changes to existing layout
+     - Test basic functionality in folder context
+
+  **MVP Scope**: Basic badge display only - folder-specific optimizations moved to post-MVP
+
+  _Requirements: 5.6, 27.4_
+
+- [ ] 5.7 Add Storage Status to Individual Memory Detail Pages (MVP)
+
+  **Goal**: Add basic storage status display to individual memory pages for MVP.
+
+  **MVP Implementation**:
+
+  1. **Simple storage status display** - Add basic status indicator
+
+     - Find individual memory detail page component
+     - Add storage status query using existing `useMemoryStorageStatus` hook
+     - Display simple "ICP" or "NEON" status badge or text
+     - Use consistent styling with other storage indicators
+
+  2. **Memory page updates** (identify memory detail route)
+
+     - Add storage status section to memory detail page
+     - Show binary storage status without complex explanations
+     - Include basic "Store Forever" button if not on ICP
+
+  **MVP Scope**: Basic status display only - detailed information and actions moved to post-MVP
+
+  _Requirements: 5.7, 27.4_
+
 - [x] 5.3 Enhance Store Forever Button Logic (ALREADY IMPLEMENTED)
 
   **Current Implementation Status**: ✅ **COMPLETE FOR MVP**
@@ -790,13 +817,42 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 16.2, 16.5, 21.1_
 
-- [ ] 5.4 Create Partial Storage Detail View
+- [ ] 5.4 Add Per-Memory Storage Status Indicators
 
-  - Implement per-memory storage status indicators
-  - Add "Complete Storage" call-to-action for partial galleries
-  - Create detailed breakdown of what's stored where
-  - Add individual memory "Store on ICP" functionality
-  - _Requirements: 21.1, 21.4_
+  **Goal**: Show individual memory storage status within galleries to help users understand which specific memories are stored on ICP vs Neon.
+
+  **What to implement**:
+
+  1. **Memory-level storage badges** - Show storage status for each memory in gallery views
+
+     - Add small storage indicators on memory thumbnails in gallery detail page
+     - Use mini badges or icons to show "ICP" vs "NEON" storage per memory
+     - Implement hover tooltips explaining individual memory storage status
+
+  2. **Gallery storage breakdown** - Detailed view of what's stored where
+
+     - Add expandable section showing "X of Y memories stored on ICP"
+     - List which specific memories are on ICP vs Neon
+     - Show storage progress for partially stored galleries
+
+  3. **Individual memory actions** - Per-memory storage controls
+
+     - Add "Store on ICP" button for individual memories not yet stored
+     - Implement individual memory storage progress tracking
+     - Allow users to selectively store specific memories
+
+  4. **Storage status API integration** - Use existing memory presence endpoints
+     - Query `/api/memories/[id]/storage-status` for individual memory status
+     - Use batch endpoint `/api/memories/storage-status` for gallery memory lists
+     - Display real-time storage status updates
+
+  **Integration Points**:
+
+  - Enhance gallery detail page with per-memory indicators
+  - Add memory storage breakdown to gallery info panel
+  - Support selective memory storage in ForeverStorageProgressModal
+
+  _Requirements: 21.1, 21.4, 5.3_
 
 - [ ] 6. Implement Comprehensive Testing Suite
 
@@ -919,6 +975,38 @@ The overall feature is complete when users can successfully store galleries on I
 
 These tasks can be implemented after MVP launch to improve performance, user experience, and operational efficiency:
 
+- [ ] **Enhanced Progress Tracking API** (moved from 1.6)
+
+  **Goal**: Create detailed API endpoints to expose upload progress data for enhanced frontend progress tracking and user feedback.
+
+  **What to implement**:
+
+  1. **get_upload_progress endpoint** - Query upload session progress
+
+     - Function signature: `pub fn get_upload_progress(session_id: String) -> ICPResult<UploadProgressResponse>`
+     - Return: `{ session_id, memory_id, total_chunks, chunks_received, bytes_received, total_size, progress_percentage, estimated_time_remaining, status: "active"|"completed"|"expired"|"failed" }`
+     - Calculate progress percentage: `(chunks_received / total_chunks) * 100`
+     - Estimate time remaining based on upload rate (bytes_received / elapsed_time)
+     - Handle expired/failed sessions gracefully
+
+  2. **get_user_upload_sessions endpoint** - List user's active upload sessions
+
+     - Function signature: `pub fn get_user_upload_sessions() -> ICPResult<UserUploadSessionsResponse>`
+     - Return: Array of active upload sessions for the caller
+     - Include progress data for each session
+     - Filter out expired/completed sessions
+     - Limit to max 10 sessions per user for performance
+
+  3. **Real-time progress updates** - WebSocket or polling integration
+     - Add real-time progress updates in ForeverStorageProgressModal
+     - Show detailed progress per memory/chunk during uploads
+     - Display estimated time remaining and upload speed
+     - Enable progress monitoring across browser sessions
+
+  **Benefits**: Enhanced user experience with detailed progress tracking, better feedback during long uploads, and ability to monitor storage operations across sessions.
+
+  _Requirements: 2.2, 10.2, 20.1_
+
 ### Backend Performance Optimizations
 
 - [ ] **Batch Storage Status Endpoints**
@@ -951,6 +1039,31 @@ These tasks can be implemented after MVP launch to improve performance, user exp
   - Better progress tracking per memory/asset
 
 - [ ] **Chunked Upload Implementation**
+
+### Advanced Memory Storage Badge Features
+
+- [ ] **Enhanced Dashboard Badge Performance**
+
+  - Batch loading optimization with `useBatchMemoryStorageStatus` hook
+  - Virtualization for large memory collections
+  - Advanced loading states and error handling
+  - Performance monitoring and optimization
+
+- [ ] **Advanced Folder Badge Integration**
+
+  - Drag/drop compatibility with storage badges
+  - Folder-level storage summaries and statistics
+  - Advanced folder management integration
+  - Batch operations with storage status awareness
+
+- [ ] **Enhanced Memory Detail Page Storage**
+
+  - Detailed storage information and technical details
+  - Individual memory "Store Forever" functionality
+  - Storage timestamp and verification status display
+  - Educational content about ICP storage benefits
+  - Links to view memory on ICP explorer
+  - Advanced storage actions and management
 
   - `createChunks` utility for splitting large files (>1MB)
   - `ChunkedUploader` class with rate limiting and concurrency control
