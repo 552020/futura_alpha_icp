@@ -906,7 +906,7 @@ mod tests {
     fn test_get_upload_session_stats() {
         // Get initial stats
         let (sessions, chunks, bytes) = get_upload_session_stats();
-        
+
         // Should start with 0 in test environment
         assert_eq!(sessions, 0);
         assert_eq!(chunks, 0);
@@ -917,7 +917,7 @@ mod tests {
     fn test_emergency_cleanup_all_uploads() {
         // Test emergency cleanup
         let (sessions_cleaned, chunks_cleaned) = emergency_cleanup_all_uploads();
-        
+
         // Should be 0 in fresh test environment
         assert_eq!(sessions_cleaned, 0);
         assert_eq!(chunks_cleaned, 0);
@@ -946,14 +946,15 @@ mod tests {
 
         // This would be an async function in real usage, but we can test the validation part
         // The function should fail due to size validation
-        let validation_result = validate_memory_type_and_size(&sync_request.memory_type, sync_request.asset_size);
+        let validation_result =
+            validate_memory_type_and_size(&sync_request.memory_type, sync_request.asset_size);
         assert!(validation_result.is_err());
     }
 
     #[test]
     fn test_begin_asset_upload_with_different_memory_types() {
         // Test that different memory types have different size limits
-        
+
         // Test Image - should pass with 30MB
         let result_image = begin_asset_upload(
             "test_image".to_string(),
@@ -964,7 +965,7 @@ mod tests {
         );
         assert!(result_image.is_ok());
 
-        // Test Video - should pass with 80MB  
+        // Test Video - should pass with 80MB
         let result_video = begin_asset_upload(
             "test_video".to_string(),
             MemoryType::Video,
