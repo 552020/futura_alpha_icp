@@ -698,7 +698,7 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 5.1, 16.1, 21.1_
 
-- [ ] 5.5 Add Memory Storage Badges to Dashboard (MVP)
+- [x] 5.5 Add Memory Storage Badges to Dashboard (MVP)
 
   **Goal**: Add basic storage status badges to memory thumbnails in dashboard for MVP.
 
@@ -720,7 +720,7 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 5.5, 27.4_
 
-- [ ] 5.6 Add Memory Storage Badges to Folder Views (MVP)
+- [x] 5.6 Add Memory Storage Badges to Folder Views (MVP)
 
   **Goal**: Add basic storage status badges to memory thumbnails in folder pages for MVP.
 
@@ -742,7 +742,7 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 5.6, 27.4_
 
-- [ ] 5.7 Add Storage Status to Individual Memory Detail Pages (MVP)
+- [x] 5.7 Add Storage Status to Individual Memory Detail Pages (MVP)
 
   **Goal**: Add basic storage status display to individual memory pages for MVP.
 
@@ -817,7 +817,7 @@ This implementation plan transforms the existing "Store Forever" UI components a
 
   _Requirements: 16.2, 16.5, 21.1_
 
-- [ ] 5.4 Add Per-Memory Storage Status Indicators
+- [ ] 5.8 Add Per-Memory Storage Status Indicators
 
   **Goal**: Show individual memory storage status within galleries to help users understand which specific memories are stored on ICP vs Neon.
 

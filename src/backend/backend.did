@@ -16,6 +16,16 @@ type AudioMetadata = record {
   bitrate : opt nat32;
   format : opt text;
 };
+type BatchMemorySyncResponse = record {
+  total_memories : nat32;
+  failed_memories : nat32;
+  gallery_id : text;
+  results : vec MemorySyncResult;
+  error : opt ICPErrorCode;
+  message : text;
+  success : bool;
+  successful_memories : nat32;
+};
 type BlobRef = record {
   locator : text;
   hash : opt blob;
@@ -191,6 +201,11 @@ type ICPResult_5 = record {
   success : bool;
 };
 type ICPResult_6 = record {
+  data : opt BatchMemorySyncResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_7 = record {
   data : opt MetadataResponse;
   error : opt ICPErrorCode;
   success : bool;
@@ -271,6 +286,22 @@ type MemoryPresenceResult = record {
   memory_id : text;
   asset_present : bool;
 };
+type MemorySyncRequest = record {
+  asset_size : nat64;
+  memory_type : MemoryType;
+  metadata : SimpleMemoryMetadata;
+  expected_asset_hash : text;
+  memory_id : text;
+  asset_url : text;
+};
+type MemorySyncResult = record {
+  memory_id : text;
+  error : opt ICPErrorCode;
+  message : text;
+  metadata_stored : bool;
+  success : bool;
+  asset_stored : bool;
+};
 type MemoryType = variant { Note; Image; Document; Audio; Video };
 type MemoryUpdateData = record {
   access : opt MemoryAccess;
@@ -330,6 +361,7 @@ type UpdateGalleryResponse = record {
 type UploadSession = record {
   session_id : text;
   chunks_received : vec bool;
+  memory_type : MemoryType;
   created_at : nat64;
   memory_id : text;
   expected_hash : text;
@@ -354,9 +386,13 @@ service : () -> {
   add_admin : (principal) -> (bool);
   add_memory_to_capsule : (text, MemoryData) -> (MemoryOperationResponse);
   // Begin chunked upload session for large files
-  begin_asset_upload : (text, text, nat32, nat64) -> (ICPResult);
+  begin_asset_upload : (text, MemoryType, text, nat32, nat64) -> (ICPResult);
   // Cancel upload and cleanup resources
   cancel_upload : (text) -> (ICPResult_1);
+  // Clean up expired upload sessions (admin function)
+  cleanup_expired_sessions : () -> (nat32);
+  // Clean up orphaned chunks (admin function)
+  cleanup_orphaned_chunks : () -> (nat32);
   clear_creation_state : (principal) -> (Result);
   clear_migration_state : (principal) -> (Result);
   // Finalize upload after all chunks received
@@ -386,6 +422,8 @@ service : () -> {
   get_my_personal_canister_id : () -> (opt principal) query;
   get_personal_canister_creation_stats : () -> (Result_2) query;
   get_personal_canister_id : (principal) -> (opt principal) query;
+  // Get upload session statistics for monitoring
+  get_upload_session_stats : () -> (nat32, nat32, nat64) query;
   get_user : () -> (opt CapsuleInfo) query;
   get_user_creation_status : (principal) -> (Result_3) query;
   get_user_galleries : (principal) -> (vec Gallery) query;
@@ -413,13 +451,15 @@ service : () -> {
   set_migration_enabled : (bool) -> (Result_4);
   set_personal_canister_creation_enabled : (bool) -> (Result_4);
   store_gallery_forever : (GalleryData) -> (StoreGalleryResponse);
+  // Batch sync multiple memories for a gallery to ICP
+  sync_gallery_memories : (text, vec MemorySyncRequest) -> (ICPResult_6);
   update_gallery : (text, GalleryUpdateData) -> (UpdateGalleryResponse);
   update_memory_in_capsule : (text, MemoryUpdateData) -> (
       MemoryOperationResponse,
     );
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
-      ICPResult_6,
+      ICPResult_7,
     );
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;

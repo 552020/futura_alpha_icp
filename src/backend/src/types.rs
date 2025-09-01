@@ -270,6 +270,7 @@ pub struct MetadataResponse {
 pub struct UploadSession {
     pub session_id: String,
     pub memory_id: String,
+    pub memory_type: MemoryType, // Added to support different memory types
     pub expected_hash: String,
     pub chunk_count: u32,
     pub total_size: u64,
@@ -339,6 +340,41 @@ pub struct CommitResponse {
     pub memory_id: String,
     pub final_hash: String,
     pub total_bytes: u64,
+    pub message: String,
+    pub error: Option<ICPErrorCode>,
+}
+
+// Memory sync request for batch operations
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemorySyncRequest {
+    pub memory_id: String,
+    pub memory_type: MemoryType,
+    pub metadata: SimpleMemoryMetadata,
+    pub asset_url: String, // URL to fetch asset from (e.g., Vercel Blob)
+    pub expected_asset_hash: String, // Expected hash of the asset
+    pub asset_size: u64,   // Size of the asset in bytes
+}
+
+// Response for individual memory sync operation
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemorySyncResult {
+    pub memory_id: String,
+    pub success: bool,
+    pub metadata_stored: bool,
+    pub asset_stored: bool,
+    pub message: String,
+    pub error: Option<ICPErrorCode>,
+}
+
+// Response for batch memory sync operation
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct BatchMemorySyncResponse {
+    pub gallery_id: String,
+    pub success: bool,
+    pub total_memories: u32,
+    pub successful_memories: u32,
+    pub failed_memories: u32,
+    pub results: Vec<MemorySyncResult>,
     pub message: String,
     pub error: Option<ICPErrorCode>,
 }
@@ -1077,6 +1113,7 @@ mod tests {
         let session = UploadSession {
             session_id: "session_123".to_string(),
             memory_id: "memory_456".to_string(),
+            memory_type: MemoryType::Image,
             expected_hash: "abc123".to_string(),
             chunk_count: 5,
             total_size: 1024,

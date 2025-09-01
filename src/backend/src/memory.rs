@@ -266,6 +266,7 @@ mod stable_memory_tests {
         let session = UploadSession {
             session_id: "test_session_123".to_string(),
             memory_id: "memory_456".to_string(),
+            memory_type: MemoryType::Image,
             expected_hash: "abc123def456".to_string(),
             chunk_count: 5,
             total_size: 1024,
@@ -403,6 +404,7 @@ mod stable_memory_tests {
         let session = UploadSession {
             session_id: "upgrade_test_session".to_string(),
             memory_id: "upgrade_test_memory".to_string(),
+            memory_type: MemoryType::Document,
             expected_hash: "upgrade_test_hash".to_string(),
             chunk_count: 10,
             total_size: 5120,

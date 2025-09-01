@@ -480,11 +480,18 @@ pub fn get_memory_list_presence_icp(
 #[ic_cdk::update]
 pub fn begin_asset_upload(
     memory_id: String,
+    memory_type: types::MemoryType,
     expected_hash: String,
     chunk_count: u32,
     total_size: u64,
 ) -> types::ICPResult<types::UploadSessionResponse> {
-    upload::begin_asset_upload(memory_id, expected_hash, chunk_count, total_size)
+    upload::begin_asset_upload(
+        memory_id,
+        memory_type,
+        expected_hash,
+        chunk_count,
+        total_size,
+    )
 }
 
 /// Upload individual file chunk
@@ -510,6 +517,33 @@ pub fn commit_asset(
 #[ic_cdk::update]
 pub fn cancel_upload(session_id: String) -> types::ICPResult<()> {
     upload::cancel_upload(session_id)
+}
+
+/// Batch sync multiple memories for a gallery to ICP
+#[ic_cdk::update]
+pub async fn sync_gallery_memories(
+    gallery_id: String,
+    memory_sync_requests: Vec<types::MemorySyncRequest>,
+) -> types::ICPResult<types::BatchMemorySyncResponse> {
+    upload::sync_gallery_memories(gallery_id, memory_sync_requests).await
+}
+
+/// Clean up expired upload sessions (admin function)
+#[ic_cdk::update]
+pub fn cleanup_expired_sessions() -> u32 {
+    upload::cleanup_expired_sessions()
+}
+
+/// Clean up orphaned chunks (admin function)
+#[ic_cdk::update]
+pub fn cleanup_orphaned_chunks() -> u32 {
+    upload::cleanup_orphaned_chunks()
+}
+
+/// Get upload session statistics for monitoring
+#[ic_cdk::query]
+pub fn get_upload_session_stats() -> (u32, u32, u64) {
+    upload::get_upload_session_stats()
 }
 
 // Export the interface for the smart contract.

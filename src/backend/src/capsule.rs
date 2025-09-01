@@ -405,7 +405,7 @@ pub fn import_capsules_from_upgrade(capsule_data: Vec<(String, Capsule)>) {
 // GALLERY MANAGEMENT FUNCTIONS
 // ============================================================================
 
-/// Store a gallery in the caller's capsule
+/// Store a gallery in the caller's capsule (enhanced with progress tracking support)
 pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
     let caller = PersonRef::from_caller();
 
@@ -478,6 +478,94 @@ pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse 
     }
 }
 
+/// Store a gallery in the caller's capsule with memory synchronization support
+pub fn store_gallery_forever_with_memories(
+    gallery_data: GalleryData,
+    sync_memories: bool,
+) -> StoreGalleryResponse {
+    let caller = PersonRef::from_caller();
+
+    // Use the gallery ID provided by Web2 (don't generate new ID)
+    let gallery_id = gallery_data.gallery.id.clone();
+
+    // Find caller's self-capsule (where caller is both subject and owner)
+    let capsule = with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+            .cloned()
+    });
+
+    match capsule {
+        Some(mut capsule) => {
+            // Check if gallery already exists with this UUID (idempotency)
+            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
+                return StoreGalleryResponse {
+                    success: true,
+                    gallery_id: Some(gallery_id.clone()),
+                    icp_gallery_id: Some(gallery_id),
+                    message: "Gallery already exists with this UUID".to_string(),
+                    storage_status: GalleryStorageStatus::ICPOnly,
+                };
+            }
+
+            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
+            let mut gallery = gallery_data.gallery;
+            gallery.owner_principal = match caller {
+                PersonRef::Principal(p) => p,
+                PersonRef::Opaque(_) => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: "Only principals can store galleries".to_string(),
+                        storage_status: GalleryStorageStatus::Failed,
+                    }
+                }
+            };
+            gallery.created_at = ic_cdk::api::time();
+            gallery.updated_at = ic_cdk::api::time();
+
+            // Set storage status based on whether memories will be synced
+            let storage_status = if sync_memories {
+                GalleryStorageStatus::Both // Will be updated after memory sync
+            } else {
+                GalleryStorageStatus::ICPOnly
+            };
+            gallery.storage_status = storage_status.clone();
+
+            // Store gallery in capsule
+            capsule.galleries.insert(gallery_id.clone(), gallery);
+            capsule.touch(); // Update capsule timestamp
+
+            // Save updated capsule
+            with_capsules_mut(|capsules| {
+                capsules.insert(capsule.id.clone(), capsule);
+            });
+            let message = if sync_memories {
+                "Gallery stored successfully in capsule (memory sync pending)".to_string()
+            } else {
+                "Gallery stored successfully in capsule".to_string()
+            };
+
+            StoreGalleryResponse {
+                success: true,
+                gallery_id: Some(gallery_id.clone()),
+                icp_gallery_id: Some(gallery_id),
+                message,
+                storage_status,
+            }
+        }
+        None => StoreGalleryResponse {
+            success: false,
+            gallery_id: None,
+            icp_gallery_id: None,
+            message: "No capsule found for caller".to_string(),
+            storage_status: GalleryStorageStatus::Failed,
+        },
+    }
+}
+
 /// Get all galleries for a user principal
 pub fn get_user_galleries(user_principal: Principal) -> Vec<Gallery> {
     let person_ref = PersonRef::Principal(user_principal);
@@ -502,6 +590,26 @@ pub fn get_gallery_by_id(gallery_id: String) -> Option<Gallery> {
             .values()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .and_then(|capsule| capsule.galleries.get(&gallery_id).cloned())
+    })
+}
+
+/// Update gallery storage status after memory synchronization
+pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStorageStatus) -> bool {
+    let caller = PersonRef::from_caller();
+
+    with_capsules_mut(|capsules| {
+        if let Some(capsule) = capsules
+            .values_mut()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+        {
+            if let Some(gallery) = capsule.galleries.get_mut(&gallery_id) {
+                gallery.storage_status = new_status;
+                gallery.updated_at = ic_cdk::api::time();
+                capsule.touch(); // Update capsule timestamp
+                return true;
+            }
+        }
+        false
     })
 }
 
@@ -891,4 +999,80 @@ pub fn get_capsule_info() -> Option<CapsuleInfo> {
                 }
             })
     })
+}
+
+// ============================================================================
+// TESTS FOR GALLERY ENHANCEMENTS
+// ============================================================================
+
+#[cfg(test)]
+mod gallery_tests {
+    use super::*;
+
+    #[test]
+    fn test_gallery_storage_status_logic() {
+        // Test the logic for different storage status values
+        // This test doesn't call the actual functions to avoid canister time() calls
+
+        // Test storage status enum values
+        let status_icp = GalleryStorageStatus::ICPOnly;
+        let status_both = GalleryStorageStatus::Both;
+        let status_web2 = GalleryStorageStatus::Web2Only;
+        let status_failed = GalleryStorageStatus::Failed;
+
+        // Verify enum values are different
+        assert_ne!(status_icp, status_both);
+        assert_ne!(status_web2, status_failed);
+        assert_ne!(status_icp, status_web2);
+    }
+
+    #[test]
+    fn test_gallery_data_structure() {
+        // Test that we can create gallery data structures correctly
+        let gallery_data = create_test_gallery_data();
+
+        assert_eq!(gallery_data.gallery.title, "Test Gallery");
+        assert_eq!(
+            gallery_data.gallery.storage_status,
+            GalleryStorageStatus::Web2Only
+        );
+        assert!(!gallery_data.gallery.is_public);
+        assert!(gallery_data.gallery.memory_entries.is_empty());
+    }
+
+    #[test]
+    fn test_gallery_memory_entry_structure() {
+        // Test gallery memory entry structure
+        let entry = GalleryMemoryEntry {
+            memory_id: "test_memory_123".to_string(),
+            position: 1,
+            gallery_caption: Some("Test Caption".to_string()),
+            is_featured: true,
+            gallery_metadata: "{}".to_string(),
+        };
+
+        assert_eq!(entry.memory_id, "test_memory_123");
+        assert_eq!(entry.position, 1);
+        assert!(entry.is_featured);
+        assert_eq!(entry.gallery_caption, Some("Test Caption".to_string()));
+    }
+
+    // Helper function to create test gallery data
+    fn create_test_gallery_data() -> GalleryData {
+        let mock_time = 1234567890u64; // Mock timestamp for tests
+        GalleryData {
+            gallery: Gallery {
+                id: format!("test_gallery_{}", mock_time),
+                owner_principal: Principal::anonymous(),
+                title: "Test Gallery".to_string(),
+                description: Some("Test Description".to_string()),
+                is_public: false,
+                created_at: mock_time,
+                updated_at: mock_time,
+                storage_status: GalleryStorageStatus::Web2Only,
+                memory_entries: vec![],
+            },
+            owner_principal: Principal::anonymous(),
+        }
+    }
 }
