@@ -138,6 +138,22 @@ pub async fn store_gallery_forever(
     capsule::store_gallery_forever(gallery_data)
 }
 
+#[ic_cdk::update]
+pub async fn store_gallery_forever_with_memories(
+    gallery_data: types::GalleryData,
+    sync_memories: bool,
+) -> types::StoreGalleryResponse {
+    capsule::store_gallery_forever_with_memories(gallery_data, sync_memories)
+}
+
+#[ic_cdk::update]
+pub fn update_gallery_storage_status(
+    gallery_id: String,
+    new_status: types::GalleryStorageStatus,
+) -> bool {
+    capsule::update_gallery_storage_status(gallery_id, new_status)
+}
+
 #[ic_cdk::query]
 pub fn get_user_galleries(user_principal: Principal) -> Vec<types::Gallery> {
     capsule::get_user_galleries(user_principal)

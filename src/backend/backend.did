@@ -451,9 +451,13 @@ service : () -> {
   set_migration_enabled : (bool) -> (Result_4);
   set_personal_canister_creation_enabled : (bool) -> (Result_4);
   store_gallery_forever : (GalleryData) -> (StoreGalleryResponse);
+  store_gallery_forever_with_memories : (GalleryData, bool) -> (
+      StoreGalleryResponse,
+    );
   // Batch sync multiple memories for a gallery to ICP
   sync_gallery_memories : (text, vec MemorySyncRequest) -> (ICPResult_6);
   update_gallery : (text, GalleryUpdateData) -> (UpdateGalleryResponse);
+  update_gallery_storage_status : (text, GalleryStorageStatus) -> (bool);
   update_memory_in_capsule : (text, MemoryUpdateData) -> (
       MemoryOperationResponse,
     );

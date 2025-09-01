@@ -346,6 +346,14 @@ pub async fn sync_gallery_memories(
         return ICPResult::err(auth_error);
     }
 
+    // Validate that the gallery exists before attempting to sync memories
+    if let None = crate::capsule::get_gallery_by_id(gallery_id.clone()) {
+        return ICPResult::err(ICPErrorCode::Internal(format!(
+            "Gallery '{}' not found. Cannot sync memories to non-existent gallery.",
+            gallery_id
+        )));
+    }
+
     let total_memories = memory_sync_requests.len() as u32;
     let mut results = Vec::new();
     let mut successful_memories = 0u32;
