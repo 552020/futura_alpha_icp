@@ -390,6 +390,7 @@ service : () -> {
   // Cancel upload and cleanup resources
   cancel_upload : (text) -> (ICPResult_1);
   capsules_list : () -> (vec CapsuleHeader) query;
+  capsules_read : (text) -> (opt Capsule) query;
   // Clean up expired upload sessions (admin function)
   cleanup_expired_sessions : () -> (nat32);
   // Clean up orphaned chunks (admin function)
@@ -403,7 +404,6 @@ service : () -> {
   delete_gallery : (text) -> (DeleteGalleryResponse);
   delete_memory_from_capsule : (text) -> (MemoryOperationResponse);
   get_api_version : () -> (text) query;
-  get_capsule : (text) -> (opt Capsule) query;
   get_creation_states_by_status : (CreationStatus) -> (Result_1) query;
   get_creation_status : () -> (opt CreationStatusResponse) query;
   get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;

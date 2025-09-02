@@ -220,7 +220,7 @@ test_duplicate_capsule_registration() {
 # Test functions for capsule retrieval
 
 test_get_capsule_by_id() {
-    echo_info "Testing get capsule by ID..."
+    echo_info "Testing capsules_read by ID..."
     
     # Try to get capsule ID from previous tests
     local capsule_id=""
@@ -235,8 +235,8 @@ test_get_capsule_by_id() {
         return 1
     fi
     
-    # Call get_capsule endpoint
-    local result=$(dfx canister call backend get_capsule "(\"$capsule_id\")" 2>/dev/null)
+    # Call capsules_read endpoint
+    local result=$(dfx canister call backend capsules_read "(\"$capsule_id\")" 2>/dev/null)
     
     # Check if capsule was retrieved successfully
     if echo "$result" | grep -q "opt record" && echo "$result" | grep -q "id = \"$capsule_id\""; then
@@ -249,11 +249,11 @@ test_get_capsule_by_id() {
 }
 
 test_get_nonexistent_capsule() {
-    echo_info "Testing get non-existent capsule..."
+    echo_info "Testing capsules_read non-existent capsule..."
     
     # Try to get a capsule that doesn't exist
     local fake_id="nonexistent_capsule_12345"
-    local result=$(dfx canister call backend get_capsule "(\"$fake_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend capsules_read "(\"$fake_id\")" 2>/dev/null)
     
     # Should return null for non-existent capsule
     if echo "$result" | grep -q "(null)"; then
@@ -266,17 +266,17 @@ test_get_nonexistent_capsule() {
 }
 
 test_list_my_capsules() {
-    echo_info "Testing list my capsules..."
+    echo_info "Testing capsules_list..."
     
-    # Call list_my_capsules endpoint
-    local result=$(dfx canister call backend list_my_capsules 2>/dev/null)
+    # Call capsules_list endpoint
+    local result=$(dfx canister call backend capsules_list 2>/dev/null)
     
     # Should return a vector (might be empty)
     if echo "$result" | grep -q "vec {" || echo "$result" | grep -q "(vec {})"; then
-        echo_info "List my capsules successful: $result"
+        echo_info "capsules_list successful: $result"
         return 0
     else
-        echo_info "List my capsules failed: $result"
+        echo_info "capsules_list failed: $result"
         return 1
     fi
 }
@@ -300,7 +300,7 @@ test_capsule_metadata_integrity() {
     fi
     
     # Retrieve capsule and check metadata fields
-    local result=$(dfx canister call backend get_capsule "(\"$capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend capsules_read "(\"$capsule_id\")" 2>/dev/null)
     
     # Check if essential metadata fields are present
     if echo "$result" | grep -q "id = \"$capsule_id\"" && \

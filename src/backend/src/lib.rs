@@ -121,8 +121,8 @@ pub fn create_capsule(subject: types::PersonRef) -> types::CapsuleCreationResult
 }
 
 #[ic_cdk::query]
-pub fn get_capsule(capsule_id: String) -> Option<types::Capsule> {
-    capsule::get_capsule(capsule_id)
+pub fn capsules_read(capsule_id: String) -> Option<types::Capsule> {
+    capsule::capsules_read(capsule_id)
 }
 
 #[ic_cdk::query]

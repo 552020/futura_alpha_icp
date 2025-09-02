@@ -207,7 +207,7 @@ pub fn create_capsule(subject: PersonRef) -> CapsuleCreationResult {
 }
 
 /// Get capsule by ID (with read access check)
-pub fn get_capsule(capsule_id: String) -> Option<Capsule> {
+pub fn capsules_read(capsule_id: String) -> Option<Capsule> {
     let caller = PersonRef::from_caller();
 
     with_capsules(|capsules| {
