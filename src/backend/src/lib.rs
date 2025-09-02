@@ -78,7 +78,7 @@ pub fn get_user() -> Option<types::CapsuleInfo> {
 #[ic_cdk::query]
 pub fn list_users() -> Vec<types::CapsuleHeader> {
     // Redirect to capsule listing
-    capsule::list_my_capsules()
+    capsules_list()
 }
 
 // Admin management endpoints
@@ -126,8 +126,8 @@ pub fn get_capsule(capsule_id: String) -> Option<types::Capsule> {
 }
 
 #[ic_cdk::query]
-pub fn list_my_capsules() -> Vec<types::CapsuleHeader> {
-    capsule::list_my_capsules()
+pub fn capsules_list() -> Vec<types::CapsuleHeader> {
+    capsule::capsules_list()
 }
 
 // Gallery storage endpoints

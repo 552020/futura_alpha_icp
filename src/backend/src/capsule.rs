@@ -219,7 +219,7 @@ pub fn get_capsule(capsule_id: String) -> Option<Capsule> {
 }
 
 /// List capsules owned or controlled by caller
-pub fn list_my_capsules() -> Vec<CapsuleHeader> {
+pub fn capsules_list() -> Vec<CapsuleHeader> {
     let caller = PersonRef::from_caller();
 
     with_capsules(|capsules| {
