@@ -412,13 +412,44 @@ pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse 
     // Use the gallery ID provided by Web2 (don't generate new ID)
     let gallery_id = gallery_data.gallery.id.clone();
 
-    // Find caller's self-capsule (where caller is both subject and owner)
-    let capsule = with_capsules(|capsules| {
+    // Ensure caller has a capsule - create one if it doesn't exist
+    let capsule = match with_capsules(|capsules| {
         capsules
             .values()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .cloned()
-    });
+    }) {
+        Some(capsule) => Some(capsule),
+        None => {
+            // No capsule found - create one automatically for first-time users
+            match create_capsule(caller.clone()) {
+                CapsuleCreationResult { success: true, .. } => {
+                    // Now get the newly created capsule
+                    with_capsules(|capsules| {
+                        capsules
+                            .values()
+                            .find(|capsule| {
+                                capsule.subject == caller && capsule.owners.contains_key(&caller)
+                            })
+                            .cloned()
+                    })
+                }
+                CapsuleCreationResult {
+                    success: false,
+                    message,
+                    ..
+                } => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: format!("Failed to create capsule: {}", message),
+                        storage_status: GalleryStorageStatus::Failed,
+                    };
+                }
+            }
+        }
+    };
 
     match capsule {
         Some(mut capsule) => {
@@ -488,13 +519,44 @@ pub fn store_gallery_forever_with_memories(
     // Use the gallery ID provided by Web2 (don't generate new ID)
     let gallery_id = gallery_data.gallery.id.clone();
 
-    // Find caller's self-capsule (where caller is both subject and owner)
-    let capsule = with_capsules(|capsules| {
+    // Ensure caller has a capsule - create one if it doesn't exist
+    let capsule = match with_capsules(|capsules| {
         capsules
             .values()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .cloned()
-    });
+    }) {
+        Some(capsule) => Some(capsule),
+        None => {
+            // No capsule found - create one automatically for first-time users
+            match create_capsule(caller.clone()) {
+                CapsuleCreationResult { success: true, .. } => {
+                    // Now get the newly created capsule
+                    with_capsules(|capsules| {
+                        capsules
+                            .values()
+                            .find(|capsule| {
+                                capsule.subject == caller && capsule.owners.contains_key(&caller)
+                            })
+                            .cloned()
+                    })
+                }
+                CapsuleCreationResult {
+                    success: false,
+                    message,
+                    ..
+                } => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: format!("Failed to create capsule: {}", message),
+                        storage_status: GalleryStorageStatus::Failed,
+                    };
+                }
+            }
+        }
+    };
 
     match capsule {
         Some(mut capsule) => {
