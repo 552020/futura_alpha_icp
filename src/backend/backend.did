@@ -68,12 +68,6 @@ type CapsuleInfo = record {
   is_self_capsule : bool;
   is_controller : bool;
 };
-type CapsuleRegistrationResult = record {
-  capsule_id : opt text;
-  is_new : bool;
-  message : text;
-  success : bool;
-};
 type ChunkResponse = record {
   chunk_index : nat32;
   error : opt ICPErrorCode;
@@ -391,7 +385,8 @@ service : () -> {
   cancel_upload : (text) -> (ICPResult_1);
   capsules_create : (opt PersonRef) -> (CapsuleCreationResult);
   capsules_list : () -> (vec CapsuleHeader) query;
-  capsules_read : (opt text) -> (opt Capsule) query;
+  capsules_read_basic : (opt text) -> (opt CapsuleInfo) query;
+  capsules_read_full : (opt text) -> (opt Capsule) query;
   // Clean up expired upload sessions (admin function)
   cleanup_expired_sessions : () -> (nat32);
   // Clean up orphaned chunks (admin function)
@@ -400,7 +395,6 @@ service : () -> {
   clear_migration_state : (principal) -> (Result);
   // Finalize upload after all chunks received
   commit_asset : (text, text) -> (ICPResult_2);
-  create_capsule : (PersonRef) -> (CapsuleCreationResult);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
   delete_gallery : (text) -> (DeleteGalleryResponse);
   delete_memory_from_capsule : (text) -> (MemoryOperationResponse);
@@ -426,7 +420,6 @@ service : () -> {
   get_personal_canister_id : (principal) -> (opt principal) query;
   // Get upload session statistics for monitoring
   get_upload_session_stats : () -> (nat32, nat32, nat64) query;
-  get_user : () -> (opt CapsuleInfo) query;
   get_user_creation_status : (principal) -> (Result_3) query;
   get_user_galleries : (principal) -> (vec Gallery) query;
   get_user_migration_status : (principal) -> (Result_3) query;
@@ -446,7 +439,6 @@ service : () -> {
   // Upload individual file chunk
   put_chunk : (text, nat32, blob) -> (ICPResult_5);
   register : () -> (bool);
-  register_capsule : () -> (CapsuleRegistrationResult);
   register_with_nonce : (text) -> (bool);
   remove_admin : (principal) -> (bool);
   set_migration_enabled : (bool) -> (Result_4);

@@ -260,15 +260,61 @@ pub fn capsules_read(capsule_id: String) -> Option<Capsule> {
     })
 }
 
+/// Get capsule info by ID (basic version with read access check)
+pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
+    let caller = PersonRef::from_caller();
+
+    with_capsules(|capsules| {
+        capsules
+            .get(&capsule_id)
+            .filter(|capsule| capsule.has_write_access(&caller))
+            .map(|capsule| {
+                CapsuleInfo {
+                    capsule_id: capsule.id.clone(),
+                    subject: capsule.subject.clone(),
+                    is_owner: capsule.owners.contains_key(&caller),
+                    is_controller: capsule.controllers.contains_key(&caller),
+                    is_self_capsule: capsule.subject == caller,
+                    bound_to_web2: capsule.bound_to_web2,
+                    created_at: capsule.created_at,
+                    updated_at: capsule.updated_at,
+                }
+            })
+    })
+}
+
 /// Get caller's self-capsule (where caller is the subject)
 pub fn capsule_read_self() -> Option<Capsule> {
     let caller = PersonRef::from_caller();
-
+    
     with_capsules(|capsules| {
         capsules
             .values()
             .find(|capsule| capsule.subject == caller)
             .cloned()
+    })
+}
+
+/// Get caller's self-capsule info (basic version)
+pub fn capsule_read_self_basic() -> Option<CapsuleInfo> {
+    let caller = PersonRef::from_caller();
+    
+    with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == caller)
+            .map(|capsule| {
+                CapsuleInfo {
+                    capsule_id: capsule.id.clone(),
+                    subject: capsule.subject.clone(),
+                    is_owner: capsule.owners.contains_key(&caller),
+                    is_controller: capsule.controllers.contains_key(&caller),
+                    is_self_capsule: true,
+                    bound_to_web2: capsule.bound_to_web2,
+                    created_at: capsule.created_at,
+                    updated_at: capsule.updated_at,
+                }
+            })
     })
 }
 
@@ -1021,36 +1067,7 @@ pub fn list_capsule_memories() -> MemoryListResponse {
     }
 }
 
-/// Get capsule information for the caller
-/// Returns capsule info if caller is owner/controller of any capsule
-pub fn get_capsule_info() -> Option<CapsuleInfo> {
-    let caller_ref = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
-            .find(|capsule| {
-                // Check if caller is owner or controller
-                capsule.owners.contains_key(&caller_ref)
-                    || capsule.controllers.contains_key(&caller_ref)
-            })
-            .map(|capsule| {
-                // Check if this is caller's self-capsule (subject == caller)
-                let is_self_capsule = capsule.subject == caller_ref;
-
-                CapsuleInfo {
-                    capsule_id: capsule.id.clone(),
-                    subject: capsule.subject.clone(),
-                    is_owner: capsule.owners.contains_key(&caller_ref),
-                    is_controller: capsule.controllers.contains_key(&caller_ref),
-                    is_self_capsule,
-                    bound_to_web2: capsule.bound_to_web2,
-                    created_at: capsule.created_at,
-                    updated_at: capsule.updated_at,
-                }
-            })
-    })
-}
 
 // ============================================================================
 // TESTS FOR GALLERY ENHANCEMENTS

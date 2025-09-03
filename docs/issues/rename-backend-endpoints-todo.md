@@ -62,33 +62,40 @@ For each endpoint:
    - [ ] Test with `scripts/deploy-local.sh`
    - [ ] Compile and verify no errors
    - [ ] Commit with conventional format: `feat(api): rename get_capsule to capsules_read`
-3. [ ] Implement `capsules_create(subject: Option<PersonRef>)` - replace both `create_capsule()` and `register_capsule()`
-   - [ ] Check if frontend uses `create_capsule()` or `register_capsule()` endpoints
-   - [ ] Rename frontend endpoint calls if found
-   - [ ] Create bash test script for `capsules_create()` endpoint
-   - [ ] Test with `scripts/deploy-local.sh`
-   - [ ] Compile and verify no errors
-   - [ ] Commit with conventional format: `feat(api): consolidate create_capsule and register_capsule into capsules_create`
+3. [x] Implement `capsules_create(subject: Option<PersonRef>)` - replace both `create_capsule()` and `register_capsule()`
+   - [x] Check if frontend uses `create_capsule()` or `register_capsule()` endpoints
+   - [x] Rename frontend endpoint calls if found
+   - [x] Create bash test script for `capsules_create()` endpoint
+   - [x] Test with `scripts/deploy-local.sh`
+   - [x] Compile and verify no errors
+   - [x] Commit with conventional format: `feat(api): consolidate create_capsule and register_capsule into capsules_create`
 4. [ ] Test unified create function with both `None` and `Some(subject)` parameters
    - [ ] Test with `scripts/deploy-local.sh`
    - [ ] Compile and verify no errors
    - [ ] Commit changes
+5. [x] Implement `capsules_read_basic()` and `capsules_read_full()` - replace `get_user()` endpoint
+   - [x] Check if frontend uses `get_user()` endpoint
+   - [x] Rename frontend endpoint calls if found
+   - [x] Create bash test script for both endpoints
+   - [x] Test with `scripts/deploy-local.sh`
+   - [x] Compile and verify no errors
+   - [x] Commit with conventional format: `feat(api): replace get_user with capsules_read_basic and capsules_read_full`
 
 ### Galleries
 
-5. [ ] Implement `galleries_list()` - replace `get_my_galleries()`
+6. [ ] Implement `galleries_list()` - replace `get_my_galleries()`
    - [ ] Check if frontend uses `get_my_galleries()` endpoint
    - [ ] Rename frontend endpoint calls if found
    - [ ] Test with `scripts/deploy-local.sh`
    - [ ] Compile and verify no errors
    - [ ] Commit changes
-6. [ ] Implement `galleries_read(id)` - replace `get_gallery_by_id(id)`
+7. [ ] Implement `galleries_read(id)` - replace `get_gallery_by_id(id)`
    - [ ] Check if frontend uses `get_gallery_by_id()` endpoint
    - [ ] Rename frontend endpoint calls if found
    - [ ] Test with `scripts/deploy-local.sh`
    - [ ] Compile and verify no errors
    - [ ] Commit changes
-7. [ ] Implement `galleries_create(data)` - replace `store_gallery_forever(data)`
+8. [ ] Implement `galleries_create(data)` - replace `store_gallery_forever(data)`
    - [ ] Check if frontend uses `store_gallery_forever()` endpoint
    - [ ] Rename frontend endpoint calls if found
    - [ ] Test with `scripts/deploy-local.sh`
@@ -97,121 +104,121 @@ For each endpoint:
 
 ### General
 
-8. [ ] Verify `whoami()` remains unchanged (classic API function)
+9. [ ] Verify `whoami()` remains unchanged (classic API function)
    - [ ] Check if frontend uses `whoami()` endpoint
    - [ ] Verify no changes needed in frontend
    - [ ] Test with `scripts/deploy-local.sh`
    - [ ] Compile and verify no errors
    - [ ] Commit changes
-9. [ ] Update backend.did interface definitions
-   - [ ] Test with `scripts/deploy-local.sh`
-   - [ ] Compile and verify no errors
-   - [ ] Commit changes
-10. [ ] Add deprecation warnings to old functions
+10. [ ] Update backend.did interface definitions
     - [ ] Test with `scripts/deploy-local.sh`
     - [ ] Compile and verify no errors
     - [ ] Commit changes
+11. [ ] Add deprecation warnings to old functions
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
 
 ## 📋 Phase 2: Management Functions (Week 2)
 
 ### Galleries (continued)
 
-11. [ ] Implement `galleries_update(id, patch)` - replace `update_gallery(id, data)`
-    - [ ] Check if frontend uses `update_gallery()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-12. [ ] Implement `galleries_delete(id)` - replace `delete_gallery(id)`
-    - [ ] Check if frontend uses `delete_gallery()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
+12. [ ] Implement `galleries_update(id, patch)` - replace `update_gallery(id, data)`
+     - [ ] Check if frontend uses `update_gallery()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+13. [ ] Implement `galleries_delete(id)` - replace `delete_gallery(id)`
+     - [ ] Check if frontend uses `delete_gallery()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
 
 ### Memories
 
-13. [ ] Implement `memories_list(capsule_id)` - replace `list_capsule_memories()`
-    - [ ] Check if frontend uses `list_capsule_memories()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-14. [ ] Implement `memories_create(capsule_id, data)` - replace `add_memory_to_capsule(id, data)`
-    - [ ] Check if frontend uses `add_memory_to_capsule()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-15. [ ] Implement `memories_read(id)` - replace `get_memory_from_capsule(id)`
-    - [ ] Check if frontend uses `get_memory_from_capsule()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-16. [ ] Implement `memories_update(id, patch)` - replace `update_memory_in_capsule(id, data)`
-    - [ ] Check if frontend uses `update_memory_in_capsule()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-17. [ ] Implement `memories_delete(id)` - replace `delete_memory_from_capsule(id)`
-    - [ ] Check if frontend uses `delete_memory_from_capsule()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
+14. [ ] Implement `memories_list(capsule_id)` - replace `list_capsule_memories()`
+     - [ ] Check if frontend uses `list_capsule_memories()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+15. [ ] Implement `memories_create(capsule_id, data)` - replace `add_memory_to_capsule(id, data)`
+     - [ ] Check if frontend uses `add_memory_to_capsule()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+16. [ ] Implement `memories_read(id)` - replace `get_memory_from_capsule(id)`
+     - [ ] Check if frontend uses `get_memory_from_capsule()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+17. [ ] Implement `memories_update(id, patch)` - replace `update_memory_in_capsule(id, data)`
+     - [ ] Check if frontend uses `update_memory_in_capsule()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+18. [ ] Implement `memories_delete(id)` - replace `delete_memory_from_capsule(id)`
+     - [ ] Check if frontend uses `delete_memory_from_capsule()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
 
 ### Capsules (continued)
 
-18. [ ] Implement `capsules_bind_neon()` - replace `mark_bound()`
-    - [ ] Check if frontend uses `mark_bound()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-19. [ ] Implement `capsules_verify_nonce(nonce)` - replace `verify_nonce(nonce)`
-    - [ ] Check if frontend uses `verify_nonce()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
+19. [ ] Implement `capsules_bind_neon()` - replace `mark_bound()`
+     - [ ] Check if frontend uses `mark_bound()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+20. [ ] Implement `capsules_verify_nonce(nonce)` - replace `verify_nonce(nonce)`
+     - [ ] Check if frontend uses `verify_nonce()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
 
 ## 📋 Phase 3: Admin & Advanced (Week 3)
 
 ### Admin Functions
 
-20. [ ] Implement `capsules_list_all()` - admin-only, all capsules in system
-    - [ ] Check if frontend uses `capsules_list_all()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-21. [ ] Implement `capsules_list_by_owner(owner)` - admin-only, role-gated cross-account queries
-    - [ ] Check if frontend uses `capsules_list_by_owner()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-22. [ ] Implement `auth_register()` - replace `register()`
-    - [ ] Check if frontend uses `register()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-23. [ ] Implement `auth_nonce_verify()` - replace `verify_nonce()`
-    - [ ] Check if frontend uses `verify_nonce()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-24. [ ] Implement personal canister creation functions
-    - [ ] Check if frontend uses personal canister endpoints
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
-25. [ ] Implement admin personal canister management functions
+21. [ ] Implement `capsules_list_all()` - admin-only, all capsules in system
+     - [ ] Check if frontend uses `capsules_list_all()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+22. [ ] Implement `capsules_list_by_owner(owner)` - admin-only, role-gated cross-account queries
+     - [ ] Check if frontend uses `capsules_list_by_owner()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+23. [ ] Implement `auth_register()` - replace `register()`
+     - [ ] Check if frontend uses `register()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+24. [ ] Implement `auth_nonce_verify()` - replace `verify_nonce()`
+     - [ ] Check if frontend uses `verify_nonce()` endpoint
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+25. [ ] Implement personal canister creation functions
+     - [ ] Check if frontend uses personal canister endpoints
+     - [ ] Rename frontend endpoint calls if found
+     - [ ] Test with `scripts/deploy-local.sh`
+     - [ ] Compile and verify no errors
+     - [ ] Commit changes
+26. [ ] Implement admin personal canister management functions
     - [ ] Check if frontend uses admin personal canister endpoints
     - [ ] Rename frontend endpoint calls if found
     - [ ] Test with `scripts/deploy-local.sh`

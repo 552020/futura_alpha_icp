@@ -69,11 +69,7 @@ pub fn verify_nonce(nonce: String) -> Option<Principal> {
     memory::get_nonce_proof(nonce)
 }
 
-#[ic_cdk::query]
-pub fn get_user() -> Option<types::CapsuleInfo> {
-    // Redirect to capsule info
-    capsule::get_capsule_info()
-}
+
 
 #[ic_cdk::query]
 pub fn list_users() -> Vec<types::CapsuleHeader> {
@@ -115,10 +111,18 @@ pub fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreat
 }
 
 #[ic_cdk::query]
-pub fn capsules_read(capsule_id: Option<String>) -> Option<types::Capsule> {
+pub fn capsules_read_full(capsule_id: Option<String>) -> Option<types::Capsule> {
     match capsule_id {
         Some(id) => capsule::capsules_read(id),
         None => capsule::capsule_read_self(),
+    }
+}
+
+#[ic_cdk::query]
+pub fn capsules_read_basic(capsule_id: Option<String>) -> Option<types::CapsuleInfo> {
+    match capsule_id {
+        Some(id) => capsule::capsules_read_basic(id),
+        None => capsule::capsule_read_self_basic(),
     }
 }
 
