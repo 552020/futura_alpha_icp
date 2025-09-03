@@ -1,5 +1,8 @@
 use crate::capsule_store::CapsuleStore;
-use crate::memory::{with_capsules, with_capsules_mut, with_stable_capsules, with_stable_capsules_mut};
+use crate::memory::{
+    with_capsule_store, with_capsules, with_capsules_mut, with_stable_capsules,
+    with_stable_capsules_mut,
+};
 use crate::types::*;
 
 use candid::Principal;
@@ -301,11 +304,11 @@ pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
 pub fn capsules_read(capsule_id: String) -> Option<Capsule> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
+    // MIGRATED: Using new trait-based API
+    with_capsule_store(|store| {
+        store
             .get(&capsule_id)
             .filter(|capsule| capsule.has_write_access(&caller))
-            .cloned()
     })
 }
 
@@ -313,8 +316,9 @@ pub fn capsules_read(capsule_id: String) -> Option<Capsule> {
 pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
+    // MIGRATED: Using new trait-based API
+    with_capsule_store(|store| {
+        store
             .get(&capsule_id)
             .filter(|capsule| capsule.has_write_access(&caller))
             .map(|capsule| CapsuleInfo {

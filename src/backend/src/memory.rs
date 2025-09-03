@@ -1,6 +1,6 @@
 #[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
-use crate::capsule_store::{CapsuleStore, HashMapCapsuleStore, StableCapsuleStore};
+use crate::capsule_store::Store;
 use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
@@ -137,23 +137,23 @@ where
 // NEW TRAIT-BASED ACCESS FUNCTIONS (recommended approach)
 // ============================================================================
 
-/// Access capsules using trait-based storage (object-safe, supports runtime polymorphism)
+/// Access capsules using Store enum (runtime polymorphism without dyn)
 pub fn with_capsule_store<F, R>(f: F) -> R
 where
-    F: FnOnce(&dyn CapsuleStore) -> R,
+    F: FnOnce(&Store) -> R,
 {
     // Use HashMap for now during transition - switch to Stable later
-    let store = HashMapCapsuleStore::new();
+    let store = Store::new_hash();
     f(&store)
 }
 
-/// Mutably access capsules using trait-based storage
+/// Mutably access capsules using Store enum
 pub fn with_capsule_store_mut<F, R>(f: F) -> R
 where
-    F: FnOnce(&mut dyn CapsuleStore) -> R,
+    F: FnOnce(&mut Store) -> R,
 {
     // Use HashMap for now during transition - switch to Stable later
-    let mut store = HashMapCapsuleStore::new();
+    let mut store = Store::new_hash();
     f(&mut store)
 }
 

@@ -422,6 +422,16 @@ pub enum PersonRef {
     Opaque(String),       // non-principal subject (e.g., deceased), UUID-like
 }
 
+impl PersonRef {
+    /// Extract the Principal if this is a Principal variant, None otherwise
+    pub fn principal(&self) -> Option<&Principal> {
+        match self {
+            PersonRef::Principal(p) => Some(p),
+            PersonRef::Opaque(_) => None,
+        }
+    }
+}
+
 // Connection status for peer relationships
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum ConnectionStatus {
@@ -984,19 +994,7 @@ pub struct Web2GalleryItem {
 // STORABLE TRAIT IMPLEMENTATIONS FOR STABLE MEMORY
 // ============================================================================
 
-impl Storable for Capsule {
-    fn to_bytes(&self) -> Cow<[u8]> {
-        let bytes = candid::encode_one(self).expect("Failed to encode Capsule");
-        Cow::Owned(bytes)
-    }
 
-    fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        candid::decode_one(&bytes).expect("Failed to decode Capsule")
-    }
-
-    const BOUND: ic_stable_structures::storable::Bound =
-        ic_stable_structures::storable::Bound::Unbounded;
-}
 
 impl Storable for UploadSession {
     fn to_bytes(&self) -> Cow<[u8]> {
