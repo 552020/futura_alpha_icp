@@ -55,7 +55,7 @@ main() {
     run_test_file "$SCRIPT_DIR/test_memories_update.sh" "Update Memory Test"
     run_test_file "$SCRIPT_DIR/test_memories_delete.sh" "Delete Memory Test"
     run_test_file "$SCRIPT_DIR/test_memories_list.sh" "List Memories Test"
-    run_test_file "$SCRIPT_DIR/test_memory_upload.sh" "Memory Upload Test"
+    run_test_file "$SCRIPT_DIR/test_memories_advanced.sh" "Advanced Memory Test"
     run_test_file "$SCRIPT_DIR/test_memory_crud.sh" "Memory CRUD Test"
     
     # Print summary
