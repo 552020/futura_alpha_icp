@@ -219,7 +219,84 @@ test_memories_update_access() {
 
 
 
-# Test 6: Verify old update_memory_in_capsule endpoint is removed
+# Test 6: Test memories_update with comprehensive info update (merged from test_update_memory.sh)
+test_memories_update_comprehensive_info() {
+    echo_debug "Testing memories_update with comprehensive info update..."
+    
+    # First, create a memory to test with
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    # Create test memory data
+    local memory_data='(record {
+      blob_ref = record {
+        kind = variant { ICPCapsule };
+        locator = "test_memory_update_comprehensive";
+        hash = null;
+      };
+      data = opt blob "VGVzdCBtZW1vcnkgZm9yIHVwZGF0ZSB0ZXN0";
+    })'
+    
+    # Create the memory first
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    
+    if [[ $create_result != *"success = true"* ]]; then
+        echo_error "Failed to create test memory"
+        echo_debug "Create result: $create_result"
+        return 1
+    fi
+    
+    # Extract memory ID from creation result
+    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    
+    if [[ -z "$memory_id" ]]; then
+        echo_error "Failed to extract memory ID from creation result"
+        return 1
+    fi
+    
+    echo_debug "Testing with memory ID: $memory_id"
+    
+    # Create comprehensive update data (merged from old test)
+    local update_data='(record {
+      name = opt "Updated Test Memory";
+      metadata = null;
+      access = null;
+    })'
+    
+    # Call memories_update with the memory ID and update data
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
+    
+    if [[ $result == *"success = true"* ]]; then
+        echo_success "✅ memories_update with comprehensive info succeeded"
+        echo_debug "Result: $result"
+        
+        # Verify the update by reading the memory (merged verification logic)
+        local read_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory_id\")" 2>/dev/null)
+        
+        if [[ $read_result == *'name = "Updated Test Memory"'* ]]; then
+            echo_success "✅ Verification PASSED: Memory name updated correctly"
+        else
+            echo_error "❌ Verification FAILED: Memory name not updated"
+            echo_debug "Read result: $read_result"
+            return 1
+        fi
+        
+        # Save memory ID for other tests (merged functionality)
+        echo "$memory_id" > /tmp/test_memory_id.txt
+        echo_debug "Memory ID saved to /tmp/test_memory_id.txt for other tests"
+        
+    else
+        echo_error "❌ memories_update with comprehensive info failed"
+        echo_debug "Result: $result"
+        return 1
+    fi
+}
+
+# Test 7: Verify old update_memory_in_capsule endpoint is removed
 test_old_endpoint_removed() {
     echo_debug "Verifying old update_memory_in_capsule endpoint is removed..."
     
@@ -269,6 +346,7 @@ main() {
     run_test "Invalid memory ID" test_memories_update_invalid_memory
     run_test "Empty update data" test_memories_update_empty_data
     run_test "Access changes" test_memories_update_access
+    run_test "Comprehensive info update" test_memories_update_comprehensive_info
     run_test "Old endpoint removal" test_old_endpoint_removed
     
     echo_header "🎉 All memories_update tests completed successfully!"
