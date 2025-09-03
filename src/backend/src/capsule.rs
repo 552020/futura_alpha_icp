@@ -447,8 +447,8 @@ pub fn import_capsules_from_upgrade(capsule_data: Vec<(String, Capsule)>) {
 // GALLERY MANAGEMENT FUNCTIONS
 // ============================================================================
 
-/// Store a gallery in the caller's capsule (enhanced with progress tracking support)
-pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse {
+/// Create a gallery in the caller's capsule (replaces store_gallery_forever)
+pub fn galleries_create(gallery_data: GalleryData) -> StoreGalleryResponse {
     let caller = PersonRef::from_caller();
 
     // Use the gallery ID provided by Web2 (don't generate new ID)
@@ -551,8 +551,8 @@ pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse 
     }
 }
 
-/// Store a gallery in the caller's capsule with memory synchronization support
-pub fn store_gallery_forever_with_memories(
+/// Create a gallery with memories in the caller's capsule (replaces store_gallery_forever_with_memories)
+pub fn galleries_create_with_memories(
     gallery_data: GalleryData,
     sync_memories: bool,
 ) -> StoreGalleryResponse {
@@ -683,8 +683,8 @@ pub fn galleries_list() -> Vec<Gallery> {
     })
 }
 
-/// Get gallery by ID from caller's capsule
-pub fn get_gallery_by_id(gallery_id: String) -> Option<Gallery> {
+/// Get gallery by ID from caller's capsule (replaces get_gallery_by_id)
+pub fn galleries_read(gallery_id: String) -> Option<Gallery> {
     let caller = PersonRef::from_caller();
 
     with_capsules(|capsules| {

@@ -401,13 +401,17 @@ service : () -> {
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
   delete_gallery : (text) -> (DeleteGalleryResponse);
   delete_memory_from_capsule : (text) -> (MemoryOperationResponse);
+  galleries_create : (GalleryData) -> (StoreGalleryResponse);
+  galleries_create_with_memories : (GalleryData, bool) -> (
+      StoreGalleryResponse,
+    );
   galleries_list : () -> (vec Gallery) query;
+  galleries_read : (text) -> (opt Gallery) query;
   get_api_version : () -> (text) query;
   get_creation_states_by_status : (CreationStatus) -> (Result_1) query;
   get_creation_status : () -> (opt CreationStatusResponse) query;
   get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
   get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
-  get_gallery_by_id : (text) -> (opt Gallery) query;
   get_memory_from_capsule : (text) -> (opt Memory) query;
   // Check presence for multiple memories with pagination
   get_memory_list_presence_icp : (vec text, opt text, nat32) -> (
@@ -445,10 +449,6 @@ service : () -> {
   remove_admin : (principal) -> (bool);
   set_migration_enabled : (bool) -> (Result_4);
   set_personal_canister_creation_enabled : (bool) -> (Result_4);
-  store_gallery_forever : (GalleryData) -> (StoreGalleryResponse);
-  store_gallery_forever_with_memories : (GalleryData, bool) -> (
-      StoreGalleryResponse,
-    );
   // Batch sync multiple memories for a gallery to ICP
   sync_gallery_memories : (text, vec MemorySyncRequest) -> (ICPResult_6);
   update_gallery : (text, GalleryUpdateData) -> (UpdateGalleryResponse);

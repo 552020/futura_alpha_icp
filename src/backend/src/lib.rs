@@ -131,18 +131,16 @@ pub fn capsules_list() -> Vec<types::CapsuleHeader> {
 
 // Gallery storage endpoints
 #[ic_cdk::update]
-pub async fn store_gallery_forever(
-    gallery_data: types::GalleryData,
-) -> types::StoreGalleryResponse {
-    capsule::store_gallery_forever(gallery_data)
+pub async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
+    capsule::galleries_create(gallery_data)
 }
 
 #[ic_cdk::update]
-pub async fn store_gallery_forever_with_memories(
+pub async fn galleries_create_with_memories(
     gallery_data: types::GalleryData,
     sync_memories: bool,
 ) -> types::StoreGalleryResponse {
-    capsule::store_gallery_forever_with_memories(gallery_data, sync_memories)
+    capsule::galleries_create_with_memories(gallery_data, sync_memories)
 }
 
 #[ic_cdk::update]
@@ -159,8 +157,8 @@ pub fn galleries_list() -> Vec<types::Gallery> {
 }
 
 #[ic_cdk::query]
-pub fn get_gallery_by_id(gallery_id: String) -> Option<types::Gallery> {
-    capsule::get_gallery_by_id(gallery_id)
+pub fn galleries_read(gallery_id: String) -> Option<types::Gallery> {
+    capsule::galleries_read(gallery_id)
 }
 
 #[ic_cdk::update]
