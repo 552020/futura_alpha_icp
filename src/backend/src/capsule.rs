@@ -1056,7 +1056,33 @@ pub fn delete_memory_from_capsule(memory_id: String) -> MemoryOperationResponse 
     }
 }
 
-/// List all memories in the caller's capsule
+/// List all memories in a specific capsule by ID
+pub fn memories_list(capsule_id: String) -> MemoryListResponse {
+    let caller = PersonRef::from_caller();
+
+    let memories = with_capsules(|capsules| {
+        capsules
+            .get(&capsule_id)
+            .and_then(|capsule| {
+                // Check if caller has access to this capsule
+                if capsule.owners.contains_key(&caller) || capsule.subject == caller {
+                    Some(capsule.memories.values().cloned().collect::<Vec<_>>())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default()
+    });
+
+    MemoryListResponse {
+        success: true,
+        memories,
+        message: "Memories retrieved successfully".to_string(),
+    }
+}
+
+/// List all memories in the caller's capsule (deprecated - use memories_list instead)
+#[deprecated(since = "0.7.0", note = "Use memories_list with capsule_id parameter instead")]
 pub fn list_capsule_memories() -> MemoryListResponse {
     let caller = PersonRef::from_caller();
 

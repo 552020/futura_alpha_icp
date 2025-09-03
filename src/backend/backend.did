@@ -436,11 +436,11 @@ service : () -> {
   list_admins : () -> (vec principal) query;
   list_all_creation_states : () -> (Result_1) query;
   list_all_migration_states : () -> (Result_1) query;
-  list_capsule_memories : () -> (MemoryListResponse) query;
   list_superadmins : () -> (vec principal) query;
   list_users : () -> (vec CapsuleHeader) query;
   mark_bound : () -> (bool);
   mark_capsule_bound_to_web2 : () -> (bool);
+  memories_list : (text) -> (MemoryListResponse) query;
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
   // Upload individual file chunk

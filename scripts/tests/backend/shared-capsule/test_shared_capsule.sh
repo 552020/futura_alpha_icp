@@ -393,18 +393,35 @@ test_mark_capsule_bound_to_web2() {
 }
 
 test_list_capsule_memories() {
-    echo_info "Testing list capsule memories..."
+    echo_info "Testing memories_list endpoint..."
     
-    # Call list_capsule_memories endpoint
-    local result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
+    # First get a capsule ID to test with
+    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local capsule_id=""
+    
+    if [[ $capsule_result == *"null"* ]]; then
+        echo_info "No capsule found, creating one first..."
+        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+    else
+        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    fi
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_info "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    # Call memories_list endpoint with the capsule ID
+    local result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
     
     # Should return a MemoryListResponse with success field
     if echo "$result" | grep -q "success = " && echo "$result" | grep -q "memories = "; then
         local success=$(echo "$result" | grep -o 'success = [^;]*' | sed 's/success = //')
-        echo_info "List capsule memories successful - success: $success"
+        echo_info "memories_list successful - success: $success"
         return 0
     else
-        echo_info "List capsule memories failed: $result"
+        echo_info "memories_list failed: $result"
         return 1
     fi
 }
@@ -461,7 +478,7 @@ test_capsule_memories_integration() {
     local add_result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
     
     # Then list capsule memories to see if it appears
-    local list_result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
+    local list_result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
     
     # Check if the operation completed successfully
     if echo "$list_result" | grep -q "success = true" || echo "$list_result" | grep -q "success = false"; then

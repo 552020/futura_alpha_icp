@@ -202,8 +202,8 @@ pub async fn delete_memory_from_capsule(memory_id: String) -> types::MemoryOpera
 }
 
 #[ic_cdk::query]
-pub fn list_capsule_memories() -> types::MemoryListResponse {
-    capsule::list_capsule_memories()
+pub fn memories_list(capsule_id: String) -> types::MemoryListResponse {
+    capsule::memories_list(capsule_id)
 }
 
 // Note: User principal management is handled through capsule registration

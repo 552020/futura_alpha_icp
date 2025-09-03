@@ -140,12 +140,12 @@ For each endpoint:
 
 ### Memories
 
-14. [ ] Implement `memories_list(capsule_id)` - replace `list_capsule_memories()`
-    - [ ] Check if frontend uses `list_capsule_memories()` endpoint
-    - [ ] Rename frontend endpoint calls if found
-    - [ ] Test with `scripts/deploy-local.sh`
-    - [ ] Compile and verify no errors
-    - [ ] Commit changes
+14. [x] Implement `memories_list(capsule_id)` - replace `list_capsule_memories()`
+    - [x] Check if frontend uses `list_capsule_memories()` endpoint
+    - [x] Rename frontend endpoint calls if found
+    - [x] Test with `scripts/deploy-local.sh`
+    - [x] Compile and verify no errors
+    - [x] Commit changes
 15. [ ] Implement `memories_create(capsule_id, data)` - replace `add_memory_to_capsule(id, data)`
     - [ ] Check if frontend uses `add_memory_to_capsule()` endpoint
     - [ ] Rename frontend endpoint calls if found

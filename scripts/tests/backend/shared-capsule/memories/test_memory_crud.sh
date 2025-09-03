@@ -464,11 +464,28 @@ test_delete_memory_with_empty_id() {
     fi
 }
 
-# Test functions for list_capsule_memories
+# Test functions for memories_list
 
 test_list_empty_memories() {
     # This test assumes we start with no memories or we're testing the list function
-    local result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
+    # First get a capsule ID to test with
+    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local capsule_id=""
+    
+    if [[ $capsule_result == *"null"* ]]; then
+        echo_info "No capsule found, creating one first..."
+        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+    else
+        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    fi
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_info "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
     
     # Should return a successful response with memories array (empty or populated)
     if echo "$result" | grep -q "success = true" && echo "$result" | grep -q "memories = vec"; then
@@ -491,7 +508,7 @@ test_list_memories_after_upload() {
     fi
     
     # List memories
-    local result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
+    local result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
     
     # Should return success and contain our uploaded memories
     if echo "$result" | grep -q "success = true" && echo "$result" | grep -q "memories = vec"; then
@@ -519,7 +536,7 @@ test_list_memories_structure() {
     fi
     
     # List memories and check structure
-    local result=$(dfx canister call backend list_capsule_memories 2>/dev/null)
+    local result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
     
     # Check for expected structure fields
     if echo "$result" | grep -q "success = true" && \
@@ -543,7 +560,7 @@ test_list_memories_consistency() {
     fi
     
     # List memories before deletion
-    local list_before=$(dfx canister call backend list_capsule_memories 2>/dev/null)
+    local list_before=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
     local count_before=$(echo "$list_before" | grep -o "record {" | wc -l)
     
     # Delete the memory
@@ -555,7 +572,7 @@ test_list_memories_consistency() {
     fi
     
     # List memories after deletion
-    local list_after=$(dfx canister call backend list_capsule_memories 2>/dev/null)
+    local list_after=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
     local count_after=$(echo "$list_after" | grep -o "record {" | wc -l)
     
     # Count should be reduced (or at least the specific memory should be gone)
@@ -614,7 +631,7 @@ main() {
     run_test "Delete memory and verify removal" "test_delete_memory_verify_removal"
     run_test "Delete memory with empty ID" "test_delete_memory_with_empty_id"
     
-    echo_info "=== Testing list_capsule_memories endpoint ==="
+    echo_info "=== Testing memories_list endpoint ==="
     run_test "List memories (empty or populated)" "test_list_empty_memories"
     run_test "List memories after upload" "test_list_memories_after_upload"
     run_test "List memories response structure" "test_list_memories_structure"
