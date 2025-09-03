@@ -345,11 +345,12 @@ pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
 pub fn capsule_read_self() -> Option<Capsule> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Find caller's self-capsule
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules.items
+            .into_iter()
             .find(|capsule| capsule.subject == caller)
-            .cloned()
     })
 }
 
@@ -357,9 +358,11 @@ pub fn capsule_read_self() -> Option<Capsule> {
 pub fn capsule_read_self_basic() -> Option<CapsuleInfo> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Find caller's self-capsule and create basic info
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules.items
+            .into_iter()
             .find(|capsule| capsule.subject == caller)
             .map(|capsule| CapsuleInfo {
                 capsule_id: capsule.id.clone(),
@@ -534,10 +537,12 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
 
 /// Export all capsules for upgrade persistence
 pub fn export_capsules_for_upgrade() -> Vec<(String, Capsule)> {
-    with_capsules(|capsules| {
-        capsules
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
+    // MIGRATED: Export all capsules using pagination
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules.items
+            .into_iter()
+            .map(|capsule| (capsule.id.clone(), capsule))
             .collect()
     })
 }
@@ -560,26 +565,25 @@ pub fn galleries_create(gallery_data: GalleryData) -> StoreGalleryResponse {
     // Use the gallery ID provided by Web2 (don't generate new ID)
     let gallery_id = gallery_data.gallery.id.clone();
 
-    // Ensure caller has a capsule - create one if it doesn't exist
-    let capsule = match with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Ensure caller has a capsule - create one if it doesn't exist
+    let capsule = match with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .into_iter()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .cloned()
     }) {
         Some(capsule) => Some(capsule),
         None => {
             // No capsule found - create one automatically for first-time users
             match capsules_create(None) {
                 CapsuleCreationResult { success: true, .. } => {
-                    // Now get the newly created capsule
-                    with_capsules(|capsules| {
-                        capsules
-                            .values()
-                            .find(|capsule| {
-                                capsule.subject == caller && capsule.owners.contains_key(&caller)
-                            })
-                            .cloned()
+                    // MIGRATED: Now get the newly created capsule
+                    with_capsule_store(|store| {
+                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+                        all_capsules.items.into_iter().find(|capsule| {
+                            capsule.subject == caller && capsule.owners.contains_key(&caller)
+                        })
                     })
                 }
                 CapsuleCreationResult {
@@ -632,11 +636,12 @@ pub fn galleries_create(gallery_data: GalleryData) -> StoreGalleryResponse {
 
             // Store gallery in capsule
             capsule.galleries.insert(gallery_id.clone(), gallery);
-            capsule.touch(); // Update capsule timestamp
+            capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
 
-            // Save updated capsule
-            with_capsules_mut(|capsules| {
-                capsules.insert(capsule.id.clone(), capsule);
+            // MIGRATED: Save updated capsule
+            let capsule_id = capsule.id.clone();
+            with_capsule_store_mut(|store| {
+                store.upsert(capsule_id, capsule);
             });
 
             StoreGalleryResponse {
@@ -783,7 +788,8 @@ pub fn galleries_list() -> Vec<Gallery> {
     // MIGRATED: List all galleries from caller's self-capsule
     with_capsule_store(|store| {
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules.items
+        all_capsules
+            .items
             .into_iter()
             .filter(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
@@ -798,7 +804,8 @@ pub fn galleries_read(gallery_id: String) -> Option<Gallery> {
     // MIGRATED: Find gallery in caller's self-capsule
     with_capsule_store(|store| {
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules.items
+        all_capsules
+            .items
             .into_iter()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .and_then(|capsule| capsule.galleries.get(&gallery_id).cloned())
@@ -814,10 +821,11 @@ pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStor
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
 
         // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller) && capsule.galleries.contains_key(&gallery_id))
-        {
+        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
+            capsule.subject == caller
+                && capsule.owners.contains_key(&caller)
+                && capsule.galleries.contains_key(&gallery_id)
+        }) {
             let capsule_id = capsule.id.clone();
 
             // Update the capsule with the new gallery status
@@ -851,10 +859,11 @@ pub fn galleries_update(
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
 
         // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller) && capsule.galleries.contains_key(&gallery_id))
-        {
+        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
+            capsule.subject == caller
+                && capsule.owners.contains_key(&caller)
+                && capsule.galleries.contains_key(&gallery_id)
+        }) {
             capsule_found = true;
             let capsule_id = capsule.id.clone();
 
@@ -926,10 +935,11 @@ pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
 
         // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller) && capsule.galleries.contains_key(&gallery_id))
-        {
+        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
+            capsule.subject == caller
+                && capsule.owners.contains_key(&caller)
+                && capsule.galleries.contains_key(&gallery_id)
+        }) {
             capsule_found = true;
             let capsule_id = capsule.id.clone();
 
@@ -1175,9 +1185,11 @@ pub fn add_memory_to_capsule(
 pub fn memories_read(memory_id: String) -> Option<Memory> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Find memory across caller's accessible capsules
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules.items
+            .into_iter()
             .find(|capsule| {
                 // Check if caller has access to this capsule
                 capsule.owners.contains_key(&caller) || capsule.subject == caller
@@ -1191,17 +1203,27 @@ pub fn memories_update(memory_id: String, updates: MemoryUpdateData) -> MemoryOp
     let caller = PersonRef::from_caller();
     let memory_id_clone = memory_id.clone();
 
-    // Find the capsule containing the memory and perform update
+    // MIGRATED: Find and update memory across caller's accessible capsules
     let mut capsule_found = false;
     let mut memory_found = false;
 
-    with_capsules_mut(|capsules| {
-        for capsule in capsules.values_mut() {
-            // Check if caller has access to this capsule
-            if capsule.owners.contains_key(&caller) || capsule.subject == caller {
-                // Check if memory exists in this capsule
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the memory
+        if let Some(capsule) = all_capsules.items
+            .into_iter()
+            .find(|capsule| {
+                capsule.owners.contains_key(&caller) || capsule.subject == caller
+            })
+            .filter(|capsule| capsule.memories.contains_key(&memory_id))
+        {
+            capsule_found = true;
+            let capsule_id = capsule.id.clone();
+
+            // Update the capsule with the modified memory
+            let update_result = store.update(&capsule_id, |capsule| {
                 if let Some(memory) = capsule.memories.get(&memory_id) {
-                    capsule_found = true;
                     memory_found = true;
 
                     // Update memory fields
@@ -1220,9 +1242,12 @@ pub fn memories_update(memory_id: String, updates: MemoryUpdateData) -> MemoryOp
 
                     // Store updated memory
                     capsule.memories.insert(memory_id, updated_memory);
-                    capsule.touch(); // Update capsule timestamp
-                    break; // Found and updated, no need to continue searching
+                    capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
                 }
+            });
+
+            if !update_result.is_ok() {
+                capsule_found = false;
             }
         }
     });
