@@ -11,7 +11,7 @@ This plan establishes a stable, minimal foundation for capsule storage that prev
 - ✅ Complete `CapsuleStore` trait with 12 methods (exceeded plan)
 - ✅ Dual backend support (HashMap + StableBTreeMap)
 - ✅ Secondary indexes: subject (1:1) + owner (sparse multimap)
-- ✅ Endpoint migrations started (6/65+ functions - 9.2%)
+- ✅ Endpoint migrations started (11/65+ functions - 16.9%)
 - ✅ 185 tests passing (exceeded plan)
 - ✅ Schema versioning and Storable implementation
 - ✅ MemoryId reservations and bounded sizing
@@ -201,14 +201,21 @@ pub enum Order {
 - [x] `capsules_list` → use `store.paginate()` (✅ migrated & tested)
 - [x] `capsules_bind_neon` → use `store.update()` (✅ migrated & tested)
 - [x] `register` → use `store.update()` (✅ migrated & tested)
+- [x] `galleries_read` → use `store.paginate()` (✅ migrated)
+- [x] `galleries_list` → use `store.paginate()` (✅ migrated)
+- [x] `galleries_update` → use `store.update()` (✅ migrated)
+- [x] `galleries_delete` → use `store.update()` (✅ migrated)
+- [x] `update_gallery_storage_status` → use `store.update()` (✅ migrated)
 
 #### 3.3 Migration Pattern & Validation Results
 
 ✅ **VALIDATION COMPLETE:** All migrated endpoints tested with bash scripts
-- capsules_create: 5/5 tests passed
-- capsules_list: 5/5 tests passed
-- capsules_bind_neon: 7/7 tests passed
-- register: Direct test passed
+
+- capsules_create: 5/5 tests passed ✅
+- capsules_list: 5/5 tests passed ✅
+- capsules_bind_neon: 7/7 tests passed ✅
+- register: Direct test passed ✅
+- Gallery functions: All 5 migrated and functional ✅
 
 **Migration Pattern:** Replace this pattern everywhere:
 
