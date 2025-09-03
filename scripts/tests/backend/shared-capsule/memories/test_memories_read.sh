@@ -6,7 +6,7 @@
 set -e
 
 # Source test utilities
-source "$(dirname "$0")/../test_utils.sh"
+source "$(dirname "$0")/../../test_utils.sh"
 
 # Configuration
 CANISTER_ID="backend"
@@ -155,13 +155,37 @@ test_memories_read_cross_capsules() {
     fi
 }
 
-# Test 5: Verify old get_memory_from_capsule endpoint is removed
+# Test 5: Test memories_read with saved memory ID (persistence test)
+test_memories_read_persistence() {
+    echo_debug "Testing memories_read with saved memory ID for persistence..."
+    
+    if [ ! -f /tmp/test_memory_id.txt ]; then
+        echo_debug "No saved memory ID found, skipping persistence test"
+        return 0
+    fi
+    
+    local saved_memory_id=$(cat /tmp/test_memory_id.txt)
+    echo_debug "Using saved memory ID: $saved_memory_id"
+    
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$saved_memory_id\")" 2>/dev/null)
+    
+    if [[ $result == *"opt record"* ]] && [[ $result == *"id = \"$saved_memory_id\""* ]]; then
+        echo_success "✅ memories_read with saved memory ID succeeded (persistence verified)"
+        echo_debug "Result: $result"
+    else
+        echo_error "❌ memories_read with saved memory ID failed"
+        echo_debug "Result: $result"
+        return 1
+    fi
+}
+
+# Test 6: Verify old get_memory_from_capsule endpoint is removed
 test_old_endpoint_removed() {
     echo_debug "Verifying old get_memory_from_capsule endpoint is removed..."
     
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID get_memory_from_capsule "(\"test_id\")" 2>/dev/null 2>&1 || true)
     
-    if [[ $result == *"Method not found"* ]] || [[ $result == *"Unknown method"* ]] || [[ $result == *"Canister has no query method"* ]]; then
+    if [[ $result == *"Method not found"* ]] || [[ $result == *"Unknown method"* ]] || [[ $result == *"Canister has no query method"* ]] || [[ $result == *"Canister has no update method"* ]]; then
         echo_success "✅ Old get_memory_from_capsule endpoint successfully removed"
     else
         echo_error "❌ Old get_memory_from_capsule endpoint still exists"
@@ -199,6 +223,7 @@ main() {
     run_test "Invalid memory ID" test_memories_read_invalid
     run_test "Empty memory ID" test_memories_read_empty
     run_test "Cross-capsule access" test_memories_read_cross_capsules
+    run_test "Memory ID persistence" test_memories_read_persistence
     run_test "Old endpoint removal" test_old_endpoint_removed
     
     echo_header "🎉 All memories_read tests completed successfully!"

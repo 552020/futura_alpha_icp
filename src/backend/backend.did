@@ -412,7 +412,6 @@ service : () -> {
   get_creation_status : () -> (opt CreationStatusResponse) query;
   get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
   get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
-  memories_read : (text) -> (opt Memory) query;
   // Check presence for multiple memories with pagination
   get_memory_list_presence_icp : (vec text, opt text, nat32) -> (
       ICPResult_3,
@@ -441,6 +440,7 @@ service : () -> {
   mark_capsule_bound_to_web2 : () -> (bool);
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
+  memories_read : (text) -> (opt Memory) query;
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
   // Upload individual file chunk
