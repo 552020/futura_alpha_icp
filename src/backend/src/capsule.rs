@@ -836,7 +836,106 @@ pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
 // more complex memory-specific logic.
 // ============================================================================
 
-/// Add a memory to the caller's capsule
+/// Create a new memory in a specific capsule
+pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOperationResponse {
+    let caller = PersonRef::from_caller();
+
+    // Find the specified capsule
+    let capsule = with_capsules(|capsules| {
+        capsules.get(&capsule_id).and_then(|capsule| {
+            // Check if caller has access to this capsule
+            if capsule.owners.contains_key(&caller) || capsule.subject == caller {
+                Some(capsule.clone())
+            } else {
+                None
+            }
+        })
+    });
+
+    match capsule {
+        Some(mut capsule) => {
+            // Extract memory ID from the data or generate one
+            let memory_id = memory_data.blob_ref.locator.clone();
+
+            // Check if memory already exists with this UUID (idempotency)
+            if capsule.memories.contains_key(&memory_id) {
+                return MemoryOperationResponse {
+                    success: true,
+                    memory_id: Some(memory_id),
+                    message: "Memory already exists with this UUID".to_string(),
+                };
+            }
+
+            // Create memory info
+            let now = ic_cdk::api::time();
+            let memory_info = MemoryInfo {
+                memory_type: MemoryType::Image, // Default type, can be updated later
+                name: format!("Memory {}", memory_id),
+                content_type: "application/octet-stream".to_string(),
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: None,
+            };
+
+            // Create memory metadata (default to Image type)
+            let memory_metadata = MemoryMetadata::Image(ImageMetadata {
+                base: MemoryMetadataBase {
+                    size: memory_data
+                        .data
+                        .as_ref()
+                        .map(|d| d.len() as u64)
+                        .unwrap_or(0),
+                    mime_type: "application/octet-stream".to_string(),
+                    original_name: format!("Memory {}", memory_id),
+                    uploaded_at: now.to_string(),
+                    date_of_memory: None,
+                    people_in_memory: None,
+                    format: None,
+                },
+                dimensions: None,
+            });
+
+            // Create memory access (default to private)
+            let memory_access = MemoryAccess::Private;
+
+            // Create the memory
+            let memory = Memory {
+                id: memory_id.clone(),
+                info: memory_info,
+                metadata: memory_metadata,
+                access: memory_access,
+                data: memory_data,
+            };
+
+            // Store memory in capsule
+            capsule.memories.insert(memory_id.clone(), memory);
+            capsule.touch(); // Update capsule timestamp
+
+            // Save updated capsule
+            with_capsules_mut(|capsules| {
+                capsules.insert(capsule.id.clone(), capsule);
+            });
+
+            MemoryOperationResponse {
+                success: true,
+                memory_id: Some(memory_id),
+                message: "Memory created successfully in capsule".to_string(),
+            }
+        }
+        None => MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "Capsule not found or access denied".to_string(),
+        },
+    }
+}
+
+/// Add a memory to the caller's capsule (deprecated - use memories_create instead)
+#[deprecated(
+    since = "0.7.0",
+    note = "Use memories_create with capsule_id parameter instead"
+)]
 pub fn add_memory_to_capsule(
     memory_id: String,
     memory_data: MemoryData,

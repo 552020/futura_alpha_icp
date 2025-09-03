@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test memory upload functionality
-# Tests add_memory_to_capsule and get_memory_from_capsule endpoints
+# Tests memories_create and get_memory_from_capsule endpoints
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -88,12 +88,38 @@ create_document_memory_data() {
 EOF
 }
 
+# Helper function to get a capsule ID for testing
+get_test_capsule_id() {
+    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local capsule_id=""
+    
+    if [[ $capsule_result == *"null"* ]]; then
+        echo_info "No capsule found, creating one first..."
+        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+    else
+        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    fi
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    echo "$capsule_id"
+}
+
 # Test functions
 
 test_add_text_memory() {
     local memory_data=$(create_text_memory_data "This is a test note" "test_note_1")
+    local capsule_id=$(get_test_capsule_id)
     
-    local result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     # Check if the call was successful
     if echo "$result" | grep -q "success = true"; then
@@ -107,8 +133,13 @@ test_add_text_memory() {
 
 test_add_image_memory() {
     local memory_data=$(create_image_memory_data "test_image_1")
+    local capsule_id=$(get_test_capsule_id)
     
-    local result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     # Check if the call was successful
     if echo "$result" | grep -q "success = true"; then
@@ -122,8 +153,13 @@ test_add_image_memory() {
 
 test_add_document_memory() {
     local memory_data=$(create_document_memory_data "test_doc_1")
+    local capsule_id=$(get_test_capsule_id)
     
-    local result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     # Check if the call was successful
     if echo "$result" | grep -q "success = true"; then
@@ -139,7 +175,13 @@ test_memory_metadata_validation() {
     # Test with invalid memory data (missing required fields)
     local invalid_data='(record { blob_ref = record { kind = variant { ICPCapsule }; locator = ""; hash = null; }; data = null; })'
     
-    local result=$(dfx canister call backend add_memory_to_capsule "$invalid_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $invalid_data)" 2>/dev/null)
     
     # Should fail with validation error or handle gracefully
     if echo "$result" | grep -q "success = false" || echo "$result" | grep -q "Error"; then
@@ -225,7 +267,13 @@ test_large_memory_upload() {
     local large_content=$(printf 'A%.0s' {1..1000})  # 1000 character string
     local memory_data=$(create_text_memory_data "$large_content" "large_test")
     
-    local result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     if echo "$result" | grep -q "success = true"; then
         echo_info "Large memory upload successful"
@@ -240,7 +288,13 @@ test_empty_memory_data() {
     # Test uploading memory with empty data
     local empty_data='(record { blob_ref = record { kind = variant { ICPCapsule }; locator = "empty_test"; hash = null; }; data = null; })'
     
-    local result=$(dfx canister call backend add_memory_to_capsule "$empty_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $empty_data)" 2>/dev/null)
     
     # This should either succeed (if backend handles null data) or fail gracefully
     if echo "$result" | grep -q "success = true" || echo "$result" | grep -q "success = false"; then
@@ -256,7 +310,13 @@ test_memory_with_external_reference() {
     # Test memory with external blob reference (no inline data)
     local external_data='(record { blob_ref = record { kind = variant { MemoryBlobKindExternal }; locator = "https://example.com/test.jpg"; hash = null; }; data = null; })'
     
-    local result=$(dfx canister call backend add_memory_to_capsule "$external_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $external_data)" 2>/dev/null)
     
     # Should handle external references appropriately
     if echo "$result" | grep -q "success = true" || echo "$result" | grep -q "success = false"; then

@@ -381,7 +381,7 @@ type VideoMetadata = record {
 };
 service : () -> {
   add_admin : (principal) -> (bool);
-  add_memory_to_capsule : (text, MemoryData) -> (MemoryOperationResponse);
+  memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   // Begin chunked upload session for large files
   begin_asset_upload : (text, MemoryType, text, nat32, nat64) -> (ICPResult);
   // Cancel upload and cleanup resources
