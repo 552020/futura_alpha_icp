@@ -347,7 +347,7 @@ pub async fn sync_gallery_memories(
     }
 
     // Validate that the gallery exists before attempting to sync memories
-    if let None = crate::capsule::get_gallery_by_id(gallery_id.clone()) {
+    if let None = crate::capsule::galleries_read(gallery_id.clone()) {
         return ICPResult::err(ICPErrorCode::Internal(format!(
             "Gallery '{}' not found. Cannot sync memories to non-existent gallery.",
             gallery_id
