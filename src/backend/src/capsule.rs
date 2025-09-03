@@ -268,17 +268,20 @@ pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
         capsules
             .get(&capsule_id)
             .filter(|capsule| capsule.has_write_access(&caller))
-            .map(|capsule| {
-                CapsuleInfo {
-                    capsule_id: capsule.id.clone(),
-                    subject: capsule.subject.clone(),
-                    is_owner: capsule.owners.contains_key(&caller),
-                    is_controller: capsule.controllers.contains_key(&caller),
-                    is_self_capsule: capsule.subject == caller,
-                    bound_to_web2: capsule.bound_to_web2,
-                    created_at: capsule.created_at,
-                    updated_at: capsule.updated_at,
-                }
+            .map(|capsule| CapsuleInfo {
+                capsule_id: capsule.id.clone(),
+                subject: capsule.subject.clone(),
+                is_owner: capsule.owners.contains_key(&caller),
+                is_controller: capsule.controllers.contains_key(&caller),
+                is_self_capsule: capsule.subject == caller,
+                bound_to_web2: capsule.bound_to_web2,
+                created_at: capsule.created_at,
+                updated_at: capsule.updated_at,
+
+                // Add lightweight counts for summary information
+                memory_count: capsule.memories.len() as u32,
+                gallery_count: capsule.galleries.len() as u32,
+                connection_count: capsule.connections.len() as u32,
             })
     })
 }
@@ -286,7 +289,7 @@ pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
 /// Get caller's self-capsule (where caller is the subject)
 pub fn capsule_read_self() -> Option<Capsule> {
     let caller = PersonRef::from_caller();
-    
+
     with_capsules(|capsules| {
         capsules
             .values()
@@ -298,22 +301,25 @@ pub fn capsule_read_self() -> Option<Capsule> {
 /// Get caller's self-capsule info (basic version)
 pub fn capsule_read_self_basic() -> Option<CapsuleInfo> {
     let caller = PersonRef::from_caller();
-    
+
     with_capsules(|capsules| {
         capsules
             .values()
             .find(|capsule| capsule.subject == caller)
-            .map(|capsule| {
-                CapsuleInfo {
-                    capsule_id: capsule.id.clone(),
-                    subject: capsule.subject.clone(),
-                    is_owner: capsule.owners.contains_key(&caller),
-                    is_controller: capsule.controllers.contains_key(&caller),
-                    is_self_capsule: true,
-                    bound_to_web2: capsule.bound_to_web2,
-                    created_at: capsule.created_at,
-                    updated_at: capsule.updated_at,
-                }
+            .map(|capsule| CapsuleInfo {
+                capsule_id: capsule.id.clone(),
+                subject: capsule.subject.clone(),
+                is_owner: capsule.owners.contains_key(&caller),
+                is_controller: capsule.controllers.contains_key(&caller),
+                is_self_capsule: true,
+                bound_to_web2: capsule.bound_to_web2,
+                created_at: capsule.created_at,
+                updated_at: capsule.updated_at,
+
+                // Add lightweight counts for summary information
+                memory_count: capsule.memories.len() as u32,
+                gallery_count: capsule.galleries.len() as u32,
+                connection_count: capsule.connections.len() as u32,
             })
     })
 }
@@ -1066,8 +1072,6 @@ pub fn list_capsule_memories() -> MemoryListResponse {
         message: "Memories retrieved successfully".to_string(),
     }
 }
-
-
 
 // ============================================================================
 // TESTS FOR GALLERY ENHANCEMENTS

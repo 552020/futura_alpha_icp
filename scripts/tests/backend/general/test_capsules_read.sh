@@ -42,13 +42,20 @@ has_expected_capsule_fields() {
 # Helper function to check if response contains expected CapsuleInfo field hashes
 has_expected_capsule_info_fields() {
     local response="$1"
-    # Check for common Candid field hashes that indicate a valid CapsuleInfo
-    # These are the hash values from the actual response
-    echo "$response" | grep -q "948_848_493 = " && \
-    echo "$response" | grep -q "696_779_180 = " && \
-    echo "$response" | grep -q "2_528_759_137 = " && \
-    echo "$response" | grep -q "3_728_306_799 = " && \
-    echo "$response" | grep -q "1_479_739_102 = "
+    # Check for expected CapsuleInfo fields by name (more reliable than hash values)
+    # Check for essential fields that should always be present
+    echo "$response" | grep -q "capsule_id" && \
+    echo "$response" | grep -q "subject" && \
+    echo "$response" | grep -q "is_owner" && \
+    echo "$response" | grep -q "is_controller" && \
+    echo "$response" | grep -q "is_self_capsule" && \
+    echo "$response" | grep -q "bound_to_web2" && \
+    echo "$response" | grep -q "created_at" && \
+    echo "$response" | grep -q "updated_at" && \
+    # Check for new count fields
+    echo "$response" | grep -q "memory_count" && \
+    echo "$response" | grep -q "gallery_count" && \
+    echo "$response" | grep -q "connection_count"
 }
 
 # Helper function to increment test counters

@@ -502,6 +502,11 @@ pub struct CapsuleInfo {
     pub bound_to_web2: bool,
     pub created_at: u64,
     pub updated_at: u64,
+
+    // Lightweight counts for summary information
+    pub memory_count: u32,     // Number of memories in this capsule
+    pub gallery_count: u32,    // Number of galleries in this capsule
+    pub connection_count: u32, // Number of connections to other people
 }
 
 // Capsule header for listing

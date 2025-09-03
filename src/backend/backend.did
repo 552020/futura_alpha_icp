@@ -60,11 +60,14 @@ type CapsuleHeader = record {
 };
 type CapsuleInfo = record {
   updated_at : nat64;
+  gallery_count : nat32;
   subject : PersonRef;
   capsule_id : text;
   is_owner : bool;
   created_at : nat64;
+  memory_count : nat32;
   bound_to_web2 : bool;
+  connection_count : nat32;
   is_self_capsule : bool;
   is_controller : bool;
 };
