@@ -430,7 +430,7 @@
     - Create `test_memory_crud.sh` for memory management operations
     - Test `update_memory_in_capsule` endpoint with different update scenarios
     - Test `delete_memory_from_capsule` endpoint
-    - Test `list_capsule_memories` query function
+    - Test `memories_list` query function
     - _Requirements: 7.2_
     - _Commit: `test: add memory CRUD operations tests`_
 

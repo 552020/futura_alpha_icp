@@ -1082,7 +1082,10 @@ pub fn memories_list(capsule_id: String) -> MemoryListResponse {
 }
 
 /// List all memories in the caller's capsule (deprecated - use memories_list instead)
-#[deprecated(since = "0.7.0", note = "Use memories_list with capsule_id parameter instead")]
+#[deprecated(
+    since = "0.7.0",
+    note = "Use memories_list with capsule_id parameter instead"
+)]
 pub fn list_capsule_memories() -> MemoryListResponse {
     let caller = PersonRef::from_caller();
 

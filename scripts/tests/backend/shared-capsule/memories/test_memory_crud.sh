@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test memory CRUD operations
-# Tests update_memory_in_capsule, delete_memory_from_capsule, and list_capsule_memories endpoints
+# Tests update_memory_in_capsule, delete_memory_from_capsule, and memories_list endpoints
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

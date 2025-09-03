@@ -6,7 +6,7 @@
 # - Capsule creation (create_capsule)
 # - Capsule registration (register_capsule)  
 # - Capsule retrieval (get_capsule, list_my_capsules)
-# - Additional capsule endpoints (mark_capsule_bound_to_web2, list_capsule_memories, list_users)
+# - Additional capsule endpoints (mark_capsule_bound_to_web2, memories_list, list_users)
 # - Edge cases and error handling
 
 # Load test configuration and utilities
@@ -392,7 +392,7 @@ test_mark_capsule_bound_to_web2() {
     fi
 }
 
-test_list_capsule_memories() {
+test_memories_list() {
     echo_info "Testing memories_list endpoint..."
     
     # First get a capsule ID to test with
@@ -604,7 +604,7 @@ main() {
     # Run additional capsule endpoint tests
     echo_info "=== Testing Additional Capsule Endpoints ==="
     run_test "Mark capsule bound to web2" "test_mark_capsule_bound_to_web2"
-    run_test "List capsule memories" "test_list_capsule_memories"
+    run_test "List capsule memories" "test_memories_list"
     run_test "List users" "test_list_users"
     run_test "Capsule web2 binding status" "test_capsule_web2_binding_status"
     run_test "Capsule memories integration" "test_capsule_memories_integration"
