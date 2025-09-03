@@ -77,8 +77,13 @@ To test and develop locally:
 2. **Deploy canisters**:
 
    ```bash
-   chmod +x scripts/deploy.sh  # Only needed first time
-   ./scripts/deploy.sh
+   # Install required tools for the deploy script
+   cargo install generate-did
+   cargo install ic-cdk-optimizer --locked
+   cargo install candid-extractor --locked
+
+   chmod +x scripts/deploy-local.sh  # Only needed first time
+   ./scripts/deploy-local.sh
    ```
 
 3. **Start Next.js development server**:

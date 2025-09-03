@@ -18,6 +18,31 @@ if ! dfx ping >/dev/null 2>&1; then
     sleep 3
 fi
 
+# Check if required tools are installed
+MISSING_TOOLS=()
+
+if ! command -v generate-did >/dev/null 2>&1; then
+    MISSING_TOOLS+=("generate-did")
+fi
+
+if ! command -v ic-cdk-optimizer >/dev/null 2>&1; then
+    MISSING_TOOLS+=("ic-cdk-optimizer")
+fi
+
+if ! command -v candid-extractor >/dev/null 2>&1; then
+    MISSING_TOOLS+=("candid-extractor")
+fi
+
+if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
+    echo -e "${RED}❌ Missing required tools: ${MISSING_TOOLS[*]}${NC}"
+    echo -e "${YELLOW}Please install them using:${NC}"
+    echo -e "${CYAN}   cargo install generate-did${NC}"
+    echo -e "${CYAN}   cargo install ic-cdk-optimizer --locked${NC}"
+    echo -e "${CYAN}   cargo install candid-extractor --locked${NC}"
+    echo -e "${YELLOW}Then run this script again.${NC}"
+    exit 1
+fi
+
 # Check if MIGRATION_ENABLED environment variable is set to false
 if [ "${MIGRATION_ENABLED:-true}" = "false" ]; then
     echo -e "${YELLOW}Deploying backend without migration features...${NC}"
