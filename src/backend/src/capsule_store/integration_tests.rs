@@ -8,6 +8,11 @@ use crate::types::{Capsule, OwnerState, PersonRef};
 use candid::Principal;
 use std::collections::HashMap;
 
+#[cfg(test)]
+use proptest::prelude::*;
+#[cfg(test)]
+use proptest::strategy::Just;
+
 #[test]
 fn test_store_enum_delegation() {
     // Hash backend
@@ -177,6 +182,366 @@ fn test_store_operations(store: &mut Store, backend_name: &str) {
     assert!(!store.exists(&id));
 
     println!("✅ {} backend tests passed!", backend_name);
+}
+
+#[test]
+fn test_index_consistency_property_based() {
+    // Test both backends for index consistency
+    test_index_consistency_on_backend("HashMap", Store::new_hash());
+    test_index_consistency_on_backend("StableBTreeMap", Store::new_stable());
+}
+
+fn test_index_consistency_on_backend(backend_name: &str, mut store: Store) {
+    println!(
+        "🧪 Testing index consistency on {} backend...",
+        backend_name
+    );
+
+    // Ground truth maps for verification
+    let mut ground_truth_by_subject = std::collections::HashMap::new();
+    let mut ground_truth_by_owner = std::collections::HashMap::new();
+
+    // Test sequence of operations
+    let alice_principal = Principal::from_text("2vxsx-fae").unwrap();
+    let bob_principal = Principal::from_text("w7x7r-cok77-xa").unwrap();
+
+    let operations = vec![
+        (
+            "create_user_alice",
+            create_test_capsule_with_principal("alice-001".to_string(), alice_principal.clone()),
+        ),
+        (
+            "create_user_bob",
+            create_test_capsule_with_principal("bob-001".to_string(), bob_principal.clone()),
+        ),
+        (
+            "create_alice_capsule_2",
+            create_test_capsule_with_principal("alice-002".to_string(), alice_principal.clone()),
+        ),
+        (
+            "create_bob_capsule_2",
+            create_test_capsule_with_principal("bob-002".to_string(), bob_principal.clone()),
+        ),
+    ];
+
+    // Execute operations and maintain ground truth
+    for (op_name, capsule) in operations {
+        let id = capsule.id.clone();
+        let subject = capsule.subject.clone();
+
+        // Update ground truth for owners before moving capsule
+        for (owner_ref, _) in &capsule.owners {
+            if let crate::types::PersonRef::Principal(owner_principal) = owner_ref {
+                ground_truth_by_owner
+                    .entry(owner_principal.clone())
+                    .or_insert_with(Vec::new)
+                    .push(id.clone());
+            }
+        }
+
+        // Store in our indexed store
+        assert!(
+            store.upsert(id.clone(), capsule).is_none(),
+            "Should be new capsule: {}",
+            op_name
+        );
+
+        // Update ground truth
+        ground_truth_by_subject.insert(subject.clone(), id.clone());
+    }
+
+    // Verify subject index consistency
+    for (subject, expected_id) in &ground_truth_by_subject {
+        let found = store.find_by_subject(subject);
+        assert!(found.is_some(), "Subject {:?} should find capsule", subject);
+        assert_eq!(
+            found.unwrap().id,
+            *expected_id,
+            "Subject index should return correct capsule"
+        );
+    }
+
+    // Verify owner index consistency (simplified check)
+    for (subject, expected_id) in &ground_truth_by_subject {
+        if let crate::types::PersonRef::Principal(owner_principal) = subject {
+            let owner_capsules = store.list_by_owner(subject);
+            assert!(!owner_capsules.is_empty(), "Owner should have capsules");
+            assert!(
+                owner_capsules.contains(expected_id),
+                "Owner index should include capsule"
+            );
+        }
+    }
+
+    println!(
+        "✅ Index consistency verified for {} backend!",
+        backend_name
+    );
+}
+
+proptest! {
+    #[test]
+    fn test_property_based_operations_hash(operations in prop::collection::vec(operation_strategy(), 10..50)) {
+        test_property_based_operations_on_backend("HashMap", Store::new_hash(), operations);
+    }
+
+    #[test]
+    fn test_property_based_operations_stable(operations in prop::collection::vec(operation_strategy(), 10..50)) {
+        test_property_based_operations_on_backend("StableBTreeMap", Store::new_stable(), operations);
+    }
+}
+
+fn operation_strategy() -> impl Strategy<Value = Operation> {
+    prop_oneof![
+        // Create/Update operation
+        (any::<String>(), principal_strategy())
+            .prop_map(|(id, subject)| Operation::Upsert { id, subject }),
+        // Remove operation
+        any::<String>().prop_map(Operation::Remove),
+        // Read operation
+        any::<String>().prop_map(Operation::Read),
+        // Find by subject operation
+        principal_strategy().prop_map(Operation::FindBySubject),
+    ]
+}
+
+fn principal_strategy() -> impl Strategy<Value = Principal> {
+    // Generate valid principals for testing
+    prop_oneof![
+        Just(Principal::from_text("2vxsx-fae").unwrap()),
+        Just(Principal::from_text("w7x7r-cok77-xa").unwrap()),
+        Just(Principal::from_text("aaaaa-aa").unwrap()),
+        Just(Principal::from_text("2ibo7-dia").unwrap()),
+    ]
+}
+
+#[derive(Debug, Clone)]
+enum Operation {
+    Upsert { id: String, subject: Principal },
+    Remove(String),
+    Read(String),
+    FindBySubject(Principal),
+}
+
+fn test_property_based_operations_on_backend(
+    backend_name: &str,
+    mut store: Store,
+    operations: Vec<Operation>,
+) {
+    println!(
+        "🧪 Property testing {} operations on {} backend...",
+        operations.len(),
+        backend_name
+    );
+
+    let mut ground_truth = std::collections::HashMap::new();
+
+    for operation in operations {
+        match operation {
+            Operation::Upsert { id, subject } => {
+                let capsule = create_test_capsule_with_principal(id.clone(), subject.clone());
+                store.upsert(id.clone(), capsule);
+                ground_truth.insert(id, subject);
+            }
+            Operation::Remove(id) => {
+                if ground_truth.contains_key(&id) {
+                    let removed = store.remove(&id);
+                    assert!(removed.is_some(), "Should remove existing capsule");
+                    ground_truth.remove(&id);
+                }
+            }
+            Operation::Read(id) => {
+                let store_result = store.get(&id);
+                let ground_truth_result = ground_truth.get(&id);
+
+                match (store_result, ground_truth_result) {
+                    (Some(capsule), Some(expected_subject)) => {
+                        assert_eq!(capsule.id, id, "Capsule ID should match");
+                        if let crate::types::PersonRef::Principal(subject_principal) =
+                            &capsule.subject
+                        {
+                            assert_eq!(
+                                subject_principal, expected_subject,
+                                "Subject should match ground truth"
+                            );
+                        }
+                    }
+                    (None, None) => {} // Both don't exist - correct
+                    (Some(_), None) => panic!("Store has capsule but ground truth doesn't: {}", id),
+                    (None, Some(_)) => panic!("Ground truth has capsule but store doesn't: {}", id),
+                }
+            }
+            Operation::FindBySubject(subject) => {
+                let person_ref = crate::types::PersonRef::Principal(subject.clone());
+                let found = store.find_by_subject(&person_ref);
+
+                // Check if any capsule in ground truth has this subject
+                let expected_ids: Vec<_> = ground_truth
+                    .iter()
+                    .filter(|(_, subj)| **subj == subject)
+                    .map(|(id, _)| id.clone())
+                    .collect();
+
+                if expected_ids.is_empty() {
+                    assert!(
+                        found.is_none(),
+                        "No capsules with subject, should not find any"
+                    );
+                } else {
+                    assert!(found.is_some(), "Should find capsule with subject");
+                    let capsule = found.unwrap();
+                    assert!(
+                        expected_ids.contains(&capsule.id),
+                        "Found capsule ID should be in expected list"
+                    );
+                    if let crate::types::PersonRef::Principal(subject_principal) = &capsule.subject
+                    {
+                        assert_eq!(
+                            subject_principal, &subject,
+                            "Found capsule should have correct subject"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Final consistency check
+    verify_property_consistency(&store, &ground_truth);
+    println!("✅ Property test passed for {} backend!", backend_name);
+}
+
+fn verify_full_consistency(
+    store: &Store,
+    ground_truth: &std::collections::HashMap<String, String>,
+    operation_count: usize,
+) {
+    // Verify all capsules in ground truth exist in store
+    for (id, _expected_subject) in ground_truth {
+        let capsule = store.get(id).expect("Capsule should exist in store");
+        assert_eq!(capsule.id, *id, "Capsule ID should match");
+
+        // Verify subject index
+        let found = store.find_by_subject(&capsule.subject);
+        assert!(found.is_some(), "Subject index should find capsule");
+        assert_eq!(
+            found.unwrap().id,
+            *id,
+            "Subject index should return correct capsule"
+        );
+
+        // Verify owner index (if capsule has owners)
+        if !capsule.owners.is_empty() {
+            for (owner_ref, _) in &capsule.owners {
+                let owner_capsules = store.list_by_owner(owner_ref);
+                assert!(
+                    owner_capsules.contains(id),
+                    "Owner index should include capsule"
+                );
+            }
+        }
+    }
+
+    // Verify store count matches ground truth
+    assert_eq!(
+        store.count() as usize,
+        ground_truth.len(),
+        "Store count should match ground truth after {} operations",
+        operation_count
+    );
+}
+
+fn verify_property_consistency(
+    store: &Store,
+    ground_truth: &std::collections::HashMap<String, Principal>,
+) {
+    // Verify all capsules in ground truth exist in store
+    for (id, expected_subject) in ground_truth {
+        let capsule = store.get(id).expect("Capsule should exist in store");
+        assert_eq!(capsule.id, *id, "Capsule ID should match");
+
+        // Verify subject index
+        let found = store.find_by_subject(&capsule.subject);
+        assert!(found.is_some(), "Subject index should find capsule");
+        assert_eq!(
+            found.unwrap().id,
+            *id,
+            "Subject index should return correct capsule"
+        );
+    }
+
+    // Verify store count matches ground truth
+    assert_eq!(
+        store.count() as usize,
+        ground_truth.len(),
+        "Store count should match ground truth"
+    );
+}
+
+fn create_test_capsule_with_principal(
+    id: String,
+    subject_principal: Principal,
+) -> crate::types::Capsule {
+    use crate::types::{Capsule, OwnerState, PersonRef};
+    use std::collections::HashMap;
+
+    let subject = PersonRef::Principal(subject_principal);
+    let mut owners = HashMap::new();
+
+    // Add the subject as an owner too
+    owners.insert(
+        PersonRef::Principal(subject_principal),
+        OwnerState {
+            since: 1234567890,
+            last_activity_at: 1234567890,
+        },
+    );
+
+    Capsule {
+        id,
+        subject,
+        owners,
+        controllers: HashMap::new(),
+        connections: HashMap::new(),
+        connection_groups: HashMap::new(),
+        memories: HashMap::new(),
+        galleries: HashMap::new(),
+        created_at: 1234567890,
+        updated_at: 1234567890,
+        bound_to_neon: false,
+    }
+}
+
+fn create_test_capsule_with_subject(id: String, subject_principal: &str) -> crate::types::Capsule {
+    use crate::types::{Capsule, OwnerState, PersonRef};
+    use std::collections::HashMap;
+
+    let subject = PersonRef::Opaque(subject_principal.to_string());
+    let mut owners = HashMap::new();
+
+    // Add the subject as an owner too
+    let owner_principal = candid::Principal::from_text("2vxsx-fae").unwrap(); // Use valid principal
+    owners.insert(
+        PersonRef::Principal(owner_principal),
+        OwnerState {
+            since: 1234567890,
+            last_activity_at: 1234567890,
+        },
+    );
+
+    Capsule {
+        id,
+        subject,
+        owners,
+        controllers: HashMap::new(),
+        connections: HashMap::new(),
+        connection_groups: HashMap::new(),
+        memories: HashMap::new(),
+        galleries: HashMap::new(),
+        created_at: 1234567890,
+        updated_at: 1234567890,
+        bound_to_neon: false,
+    }
 }
 
 fn create_test_capsule(id: CapsuleId) -> Capsule {
