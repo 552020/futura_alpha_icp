@@ -146,6 +146,8 @@ For each endpoint:
     - [x] Test with `scripts/deploy-local.sh`
     - [x] Compile and verify no errors
     - [x] Commit changes
+    - [x] Remove deprecated function completely
+    - [x] Clean up all documentation references
 15. [ ] Implement `memories_create(capsule_id, data)` - replace `add_memory_to_capsule(id, data)`
     - [ ] Check if frontend uses `add_memory_to_capsule()` endpoint
     - [ ] Rename frontend endpoint calls if found

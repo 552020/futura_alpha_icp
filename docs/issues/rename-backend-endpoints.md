@@ -32,7 +32,7 @@ delete_gallery(id)         → galleries_delete(id)               [update]
 ### Memories
 
 ```
-list_capsule_memories()    → memories_list(capsule_id)         [query]
+list_capsule_memories()    → memories_list(capsule_id)         [query] ✅ REMOVED
 add_memory_to_capsule(..)  → memories_create(..)               [update]
 get_memory_from_capsule(id)→ memories_read(id)                 [query]
 update_memory_in_capsule   → memories_update(id, patch)        [update]
@@ -341,7 +341,7 @@ struct NeonBindResult { bound: bool, bound_at: Timestamp, scope: Option<Text> }
 | `store_gallery_forever(data)`        | `galleries_create(data)`              | Deprecated | v0.8    |
 | `update_gallery(id, data)`           | `galleries_update(id, data)`          | Deprecated | v0.8    |
 | `delete_gallery(id)`                 | `galleries_delete(id)`                | Deprecated | v0.8    |
-| `list_capsule_memories()`            | `memories_list(capsule_id)`           | Deprecated | v0.8    |
+| `list_capsule_memories()`            | `memories_list(capsule_id)`           | ✅ REMOVED | v0.7    |
 | `add_memory_to_capsule(id, data)`    | `memories_create(id, data)`           | Deprecated | v0.8    |
 | `get_memory_from_capsule(id)`        | `memories_read(id)`                   | Deprecated | v0.8    |
 | `update_memory_in_capsule(id, data)` | `memories_update(id, data)`           | Deprecated | v0.8    |

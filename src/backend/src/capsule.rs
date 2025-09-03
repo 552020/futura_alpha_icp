@@ -1081,28 +1081,7 @@ pub fn memories_list(capsule_id: String) -> MemoryListResponse {
     }
 }
 
-/// List all memories in the caller's capsule (deprecated - use memories_list instead)
-#[deprecated(
-    since = "0.7.0",
-    note = "Use memories_list with capsule_id parameter instead"
-)]
-pub fn list_capsule_memories() -> MemoryListResponse {
-    let caller = PersonRef::from_caller();
 
-    let memories = with_capsules(|capsules| {
-        capsules
-            .values()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .map(|capsule| capsule.memories.values().cloned().collect::<Vec<_>>())
-            .unwrap_or_default()
-    });
-
-    MemoryListResponse {
-        success: true,
-        memories,
-        message: "Memories retrieved successfully".to_string(),
-    }
-}
 
 // ============================================================================
 // TESTS FOR GALLERY ENHANCEMENTS

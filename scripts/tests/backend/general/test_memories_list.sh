@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test script for memories_list endpoint
-# Tests the new memories_list(capsule_id) endpoint that replaces list_capsule_memories()
+# Tests the memories_list(capsule_id) endpoint
 
 set -e
 
@@ -88,21 +88,7 @@ test_memories_list_empty_string() {
     fi
 }
 
-# Test 4: Verify old list_capsule_memories endpoint is removed
-test_old_endpoint_removed() {
-    echo_debug "Verifying old list_capsule_memories endpoint is removed..."
-    
-    # Try to call the old endpoint as a query method
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID list_capsule_memories 2>/dev/null 2>&1 || true)
-    
-    if [[ $result == *"Method not found"* ]] || [[ $result == *"Unknown method"* ]] || [[ $result == *"Canister has no query method"* ]] || [[ $result == *"Canister has no update method"* ]]; then
-        echo_success "✅ Old list_capsule_memories endpoint successfully removed"
-    else
-        echo_error "❌ Old list_capsule_memories endpoint still exists"
-        echo_debug "Result: $result"
-        return 1
-    fi
-}
+
 
 # Test 5: Test memories_list response structure
 test_memories_list_response_structure() {
@@ -139,7 +125,6 @@ main() {
     run_test "Valid capsule ID" test_memories_list_valid_capsule
     run_test "Invalid capsule ID" test_memories_list_invalid_capsule
     run_test "Empty string" test_memories_list_empty_string
-    run_test "Old endpoint removal" test_old_endpoint_removed
     run_test "Response structure" test_memories_list_response_structure
     
     echo_header "🎉 All memories_list tests completed successfully!"
