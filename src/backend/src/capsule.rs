@@ -1,6 +1,6 @@
-use crate::capsule_store::CapsuleStore;
+use crate::capsule_store::{CapsuleStore, Order};
 use crate::memory::{
-    with_capsule_store, with_capsules, with_capsules_mut, with_stable_capsules,
+    with_capsule_store, with_capsule_store_mut, with_capsules, with_capsules_mut, with_stable_capsules,
     with_stable_capsules_mut,
 };
 use crate::types::*;
@@ -381,9 +381,12 @@ pub fn capsule_read_self_basic() -> Option<CapsuleInfo> {
 pub fn capsules_list() -> Vec<CapsuleHeader> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Using new trait-based API with pagination
+    // Note: Using large limit to get all capsules, maintaining backward compatibility
+    with_capsule_store(|store| {
+        let page = store.paginate(None, u32::MAX, Order::Asc);
+        page.items
+            .into_iter()
             .filter(|capsule| capsule.has_write_access(&caller))
             .map(|capsule| capsule.to_header())
             .collect()
@@ -437,9 +440,9 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
 
     match resource_type {
         ResourceType::Capsule => {
-            // Bind specific capsule if caller owns it
-            with_capsules_mut(|capsules| {
-                if let Some(capsule) = capsules.get_mut(&resource_id) {
+            // MIGRATED: Bind specific capsule if caller owns it
+            with_capsule_store_mut(|store| {
+                store.update(&resource_id, |capsule| {
                     if capsule.owners.contains_key(&caller_ref) {
                         capsule.bound_to_neon = bind;
                         capsule.updated_at = time();
@@ -448,26 +451,31 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                         if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
                             owner_state.last_activity_at = time();
                         }
-                        return true;
                     }
-                }
-                false
+                }).is_ok()
             })
         }
         ResourceType::Gallery => {
-            // Bind specific gallery if caller owns the capsule containing it
-            with_capsules_mut(|capsules| {
-                for capsule in capsules.values_mut() {
-                    if capsule.owners.contains_key(&caller_ref) {
-                        if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
-                            gallery.bound_to_neon = bind;
-                            capsule.updated_at = time();
+            // MIGRATED: Bind specific gallery if caller owns the capsule containing it
+            with_capsule_store_mut(|store| {
+                let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
 
-                            // Update owner activity
-                            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                                owner_state.last_activity_at = time();
-                            }
-                            return true;
+                for capsule in all_capsules.items {
+                    if capsule.owners.contains_key(&caller_ref) {
+                        if capsule.galleries.contains_key(&resource_id) {
+                            // Found the capsule containing the gallery
+                            let update_result = store.update(&capsule.id, |capsule| {
+                                if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
+                                    gallery.bound_to_neon = bind;
+                                    capsule.updated_at = time();
+
+                                    // Update owner activity
+                                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                                        owner_state.last_activity_at = time();
+                                    }
+                                }
+                            });
+                            return update_result.is_ok();
                         }
                     }
                 }
@@ -475,27 +483,34 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
             })
         }
         ResourceType::Memory => {
-            // Bind specific memory if caller owns the capsule containing it
-            with_capsules_mut(|capsules| {
-                for capsule in capsules.values_mut() {
+            // MIGRATED: Bind specific memory if caller owns the capsule containing it
+            with_capsule_store_mut(|store| {
+                let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+                for capsule in all_capsules.items {
                     if capsule.owners.contains_key(&caller_ref) {
-                        if let Some(memory) = capsule.memories.get_mut(&resource_id) {
-                            // Update the bound_to_neon field in the memory's metadata
-                            match &mut memory.metadata {
-                                MemoryMetadata::Image(meta) => meta.base.bound_to_neon = bind,
-                                MemoryMetadata::Video(meta) => meta.base.bound_to_neon = bind,
-                                MemoryMetadata::Audio(meta) => meta.base.bound_to_neon = bind,
-                                MemoryMetadata::Document(meta) => meta.base.bound_to_neon = bind,
-                                MemoryMetadata::Note(meta) => meta.base.bound_to_neon = bind,
-                            }
+                        if capsule.memories.contains_key(&resource_id) {
+                            // Found the capsule containing the memory
+                            let update_result = store.update(&capsule.id, |capsule| {
+                                if let Some(memory) = capsule.memories.get_mut(&resource_id) {
+                                    // Update the bound_to_neon field in the memory's metadata
+                                    match &mut memory.metadata {
+                                        MemoryMetadata::Image(meta) => meta.base.bound_to_neon = bind,
+                                        MemoryMetadata::Video(meta) => meta.base.bound_to_neon = bind,
+                                        MemoryMetadata::Audio(meta) => meta.base.bound_to_neon = bind,
+                                        MemoryMetadata::Document(meta) => meta.base.bound_to_neon = bind,
+                                        MemoryMetadata::Note(meta) => meta.base.bound_to_neon = bind,
+                                    }
 
-                            capsule.updated_at = time();
+                                    capsule.updated_at = time();
 
-                            // Update owner activity
-                            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                                owner_state.last_activity_at = time();
-                            }
-                            return true;
+                                    // Update owner activity
+                                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                                        owner_state.last_activity_at = time();
+                                    }
+                                }
+                            });
+                            return update_result.is_ok();
                         }
                     }
                 }
