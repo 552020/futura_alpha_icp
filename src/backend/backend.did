@@ -41,7 +41,7 @@ type Capsule = record {
   connection_groups : vec record { text; ConnectionGroup };
   connections : vec record { PersonRef; Connection };
   memories : vec record { text; Memory };
-  bound_to_web2 : bool;
+  bound_to_neon : bool;
   galleries : vec record { text; Gallery };
 };
 type CapsuleCreationResult = record {
@@ -65,8 +65,8 @@ type CapsuleInfo = record {
   capsule_id : text;
   is_owner : bool;
   created_at : nat64;
+  bound_to_neon : bool;
   memory_count : nat32;
-  bound_to_web2 : bool;
   connection_count : nat32;
   is_self_capsule : bool;
   is_controller : bool;
@@ -136,6 +136,7 @@ type Gallery = record {
   memory_entries : vec GalleryMemoryEntry;
   description : opt text;
   created_at : nat64;
+  bound_to_neon : bool;
   storage_status : GalleryStorageStatus;
   owner_principal : principal;
 };
@@ -263,6 +264,7 @@ type MemoryMetadataBase = record {
   size : nat64;
   people_in_memory : opt vec text;
   mime_type : text;
+  bound_to_neon : bool;
   original_name : text;
   uploaded_at : text;
   format : opt text;
@@ -325,6 +327,7 @@ type PersonalCanisterCreationStats = record {
   total_attempts : nat64;
   total_cycles_consumed : nat;
 };
+type ResourceType = variant { Memory; Capsule; Gallery };
 type Result = variant { Ok : bool; Err : text };
 type Result_1 = variant {
   Ok : vec record { principal; DetailedCreationStatus };
@@ -385,6 +388,7 @@ service : () -> {
   begin_asset_upload : (text, MemoryType, text, nat32, nat64) -> (ICPResult);
   // Cancel upload and cleanup resources
   cancel_upload : (text) -> (ICPResult_1);
+  capsules_bind_neon : (ResourceType, text, bool) -> (bool);
   capsules_create : (opt PersonRef) -> (CapsuleCreationResult);
   capsules_list : () -> (vec CapsuleHeader) query;
   capsules_read_basic : (opt text) -> (opt CapsuleInfo) query;
@@ -435,8 +439,6 @@ service : () -> {
   list_all_migration_states : () -> (Result_1) query;
   list_superadmins : () -> (vec principal) query;
   list_users : () -> (vec CapsuleHeader) query;
-  mark_bound : () -> (bool);
-  mark_capsule_bound_to_web2 : () -> (bool);
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;

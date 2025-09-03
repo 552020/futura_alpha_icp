@@ -32,11 +32,6 @@ pub fn register() -> bool {
     capsule::register()
 }
 
-#[ic_cdk::update]
-pub fn mark_bound() -> bool {
-    capsule::mark_bound()
-}
-
 // Register user and prove nonce in one call (optimized for II auth flow)
 #[ic_cdk::update]
 pub fn register_with_nonce(nonce: String) -> bool {
@@ -96,10 +91,16 @@ pub fn list_superadmins() -> Vec<Principal> {
     admin::list_superadmins()
 }
 
-// Mark capsule as bound to Web2 (replaces mark_bound)
+
+
+// Flexible resource binding function for Neon database
 #[ic_cdk::update]
-pub fn mark_capsule_bound_to_web2() -> bool {
-    capsule::mark_capsule_bound_to_web2()
+pub fn capsules_bind_neon(
+    resource_type: types::ResourceType,
+    resource_id: String,
+    bind: bool,
+) -> bool {
+    capsule::capsules_bind_neon(resource_type, resource_id, bind)
 }
 
 // Capsule management endpoints
@@ -207,7 +208,7 @@ pub fn memories_list(capsule_id: String) -> types::MemoryListResponse {
 }
 
 // Note: User principal management is handled through capsule registration
-// The existing register() and mark_bound() functions handle user principal management
+// The existing register() function handles user principal management
 
 // Migration endpoints (only available with migration feature)
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]

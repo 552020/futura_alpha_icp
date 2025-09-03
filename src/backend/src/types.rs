@@ -471,7 +471,7 @@ pub struct Capsule {
     pub galleries: HashMap<String, Gallery>,                 // galleries (collections of memories)
     pub created_at: u64,
     pub updated_at: u64,
-    pub bound_to_web2: bool, // Web2 (NextAuth) binding status
+    pub bound_to_neon: bool, // Neon database binding status
 }
 
 // Capsule creation result
@@ -499,7 +499,7 @@ pub struct CapsuleInfo {
     pub is_owner: bool,
     pub is_controller: bool,
     pub is_self_capsule: bool, // true if subject == caller
-    pub bound_to_web2: bool,
+    pub bound_to_neon: bool,
     pub created_at: u64,
     pub updated_at: u64,
 
@@ -532,6 +532,7 @@ pub struct MemoryMetadataBase {
     pub date_of_memory: Option<String>,
     pub people_in_memory: Option<Vec<String>>,
     pub format: Option<String>,
+    pub bound_to_neon: bool, // whether linked to Neon database
 }
 
 // Extended metadata for specific memory types
@@ -719,6 +720,7 @@ pub struct Gallery {
     pub updated_at: u64,                         // last update timestamp (nanoseconds)
     pub storage_status: GalleryStorageStatus,    // where this gallery is stored
     pub memory_entries: Vec<GalleryMemoryEntry>, // minimal extra data for each memory
+    pub bound_to_neon: bool,                     // whether linked to Neon database
 }
 
 // Gallery creation result
@@ -777,7 +779,7 @@ pub struct UserPrincipalData {
     pub web2_user_id: Option<String>, // Link to Web2 user ID
     pub registered_at: u64,           // Registration timestamp
     pub last_activity_at: u64,        // Last activity timestamp
-    pub bound_to_web2: bool,          // Whether linked to Web2 account
+    pub bound_to_neon: bool,          // Whether linked to Neon database
 }
 
 // User principal registration result
@@ -831,6 +833,18 @@ pub struct MemoryListResponse {
 }
 
 // ============================================================================
+// RESOURCE BINDING TYPES
+// ============================================================================
+
+/// Resource types that can be bound to Neon database
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub enum ResourceType {
+    Capsule,
+    Gallery,
+    Memory,
+}
+
+// ============================================================================
 // TYPE MAPPING FUNCTIONS - Web2 ↔ ICP Conversion
 // ============================================================================
 
@@ -857,6 +871,7 @@ impl Gallery {
             updated_at: Self::timestamp_to_nanoseconds(web2_gallery.updated_at),
             storage_status: GalleryStorageStatus::Web2Only,
             memory_entries,
+            bound_to_neon: false,
         }
     }
 

@@ -51,7 +51,7 @@ impl Capsule {
             galleries: HashMap::new(),
             created_at: now,
             updated_at: now,
-            bound_to_web2: false, // Initially not bound to Web2
+            bound_to_neon: false, // Initially not bound to Neon
         }
     }
 
@@ -275,7 +275,7 @@ pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
                 is_owner: capsule.owners.contains_key(&caller),
                 is_controller: capsule.controllers.contains_key(&caller),
                 is_self_capsule: capsule.subject == caller,
-                bound_to_web2: capsule.bound_to_web2,
+                bound_to_neon: capsule.bound_to_neon,
                 created_at: capsule.created_at,
                 updated_at: capsule.updated_at,
 
@@ -313,7 +313,7 @@ pub fn capsule_read_self_basic() -> Option<CapsuleInfo> {
                 is_owner: capsule.owners.contains_key(&caller),
                 is_controller: capsule.controllers.contains_key(&caller),
                 is_self_capsule: true,
-                bound_to_web2: capsule.bound_to_web2,
+                bound_to_neon: capsule.bound_to_neon,
                 created_at: capsule.created_at,
                 updated_at: capsule.updated_at,
 
@@ -378,52 +378,79 @@ pub fn register() -> bool {
     }
 }
 
-/// Simple binding function for II integration
-/// Sets bound=true for the caller's self-capsule
-pub fn mark_bound() -> bool {
+/// Flexible resource binding function for Neon database
+/// Can bind capsules, galleries, or memories to Neon
+pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind: bool) -> bool {
     let caller_ref = PersonRef::from_caller();
 
-    with_capsules_mut(|capsules| {
-        // Find caller's self-capsule (where caller is both subject and owner)
-        for capsule in capsules.values_mut() {
-            if capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref) {
-                capsule.bound_to_web2 = true;
-                capsule.updated_at = time();
+    match resource_type {
+        ResourceType::Capsule => {
+            // Bind specific capsule if caller owns it
+            with_capsules_mut(|capsules| {
+                if let Some(capsule) = capsules.get_mut(&resource_id) {
+                    if capsule.owners.contains_key(&caller_ref) {
+                        capsule.bound_to_neon = bind;
+                        capsule.updated_at = time();
 
-                // Update owner activity too
-                if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                    owner_state.last_activity_at = time();
+                        // Update owner activity
+                        if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                            owner_state.last_activity_at = time();
+                        }
+                        return true;
+                    }
                 }
-
-                return true;
-            }
+                false
+            })
         }
-        false // No self-capsule found
-    })
-}
+        ResourceType::Gallery => {
+            // Bind specific gallery if caller owns the capsule containing it
+            with_capsules_mut(|capsules| {
+                for capsule in capsules.values_mut() {
+                    if capsule.owners.contains_key(&caller_ref) {
+                        if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
+                            gallery.bound_to_neon = bind;
+                            capsule.updated_at = time();
 
-/// Mark caller's self-capsule as bound to Web2
-/// Called after successful NextAuth authentication
-pub fn mark_capsule_bound_to_web2() -> bool {
-    let caller_ref = PersonRef::from_caller();
-
-    with_capsules_mut(|capsules| {
-        // Find caller's self-capsule (where caller is both subject and owner)
-        for capsule in capsules.values_mut() {
-            if capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref) {
-                capsule.bound_to_web2 = true;
-                capsule.updated_at = time();
-
-                // Update owner activity too
-                if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                    owner_state.last_activity_at = time();
+                            // Update owner activity
+                            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                                owner_state.last_activity_at = time();
+                            }
+                            return true;
+                        }
+                    }
                 }
-
-                return true;
-            }
+                false
+            })
         }
-        false // No self-capsule found
-    })
+        ResourceType::Memory => {
+            // Bind specific memory if caller owns the capsule containing it
+            with_capsules_mut(|capsules| {
+                for capsule in capsules.values_mut() {
+                    if capsule.owners.contains_key(&caller_ref) {
+                        if let Some(memory) = capsule.memories.get_mut(&resource_id) {
+                            // Update the bound_to_neon field in the memory's metadata
+                            match &mut memory.metadata {
+                                MemoryMetadata::Image(meta) => meta.base.bound_to_neon = bind,
+                                MemoryMetadata::Video(meta) => meta.base.bound_to_neon = bind,
+                                MemoryMetadata::Audio(meta) => meta.base.bound_to_neon = bind,
+                                MemoryMetadata::Document(meta) => meta.base.bound_to_neon = bind,
+                                MemoryMetadata::Note(meta) => meta.base.bound_to_neon = bind,
+                            }
+
+                            capsule.updated_at = time();
+
+                            // Update owner activity
+                            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                                owner_state.last_activity_at = time();
+                            }
+                            return true;
+                        }
+                    }
+                }
+                false
+            })
+        }
+    }
 }
 
 /// Export all capsules for upgrade persistence
@@ -892,6 +919,7 @@ pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOpe
                     date_of_memory: None,
                     people_in_memory: None,
                     format: None,
+                    bound_to_neon: false,
                 },
                 dimensions: None,
             });
@@ -989,6 +1017,7 @@ pub fn add_memory_to_capsule(
                     date_of_memory: None,
                     people_in_memory: None,
                     format: None,
+                    bound_to_neon: false,
                 },
                 dimensions: None,
             });
@@ -1251,6 +1280,7 @@ mod gallery_tests {
                 updated_at: mock_time,
                 storage_status: GalleryStorageStatus::Web2Only,
                 memory_entries: vec![],
+                bound_to_neon: false,
             },
             owner_principal: Principal::anonymous(),
         }
