@@ -1,5 +1,6 @@
 use crate::memory::{with_capsules, with_capsules_mut};
 use crate::types::*;
+
 use candid::Principal;
 use ic_cdk::api::{msg_caller, time};
 use std::collections::HashMap;
@@ -669,16 +670,14 @@ pub fn store_gallery_forever_with_memories(
     }
 }
 
-/// Get all galleries for a user principal
-pub fn get_user_galleries(user_principal: Principal) -> Vec<Gallery> {
-    let person_ref = PersonRef::Principal(user_principal);
+/// Get all galleries for the caller (replaces get_user_galleries)
+pub fn galleries_list() -> Vec<Gallery> {
+    let caller = PersonRef::from_caller();
 
     with_capsules(|capsules| {
         capsules
             .values()
-            .filter(|capsule| {
-                capsule.subject == person_ref && capsule.owners.contains_key(&person_ref)
-            })
+            .filter(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
             .collect()
     })

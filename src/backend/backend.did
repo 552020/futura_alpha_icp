@@ -401,6 +401,7 @@ service : () -> {
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
   delete_gallery : (text) -> (DeleteGalleryResponse);
   delete_memory_from_capsule : (text) -> (MemoryOperationResponse);
+  galleries_list : () -> (vec Gallery) query;
   get_api_version : () -> (text) query;
   get_creation_states_by_status : (CreationStatus) -> (Result_1) query;
   get_creation_status : () -> (opt CreationStatusResponse) query;
@@ -417,14 +418,12 @@ service : () -> {
   get_migration_states_by_status : (CreationStatus) -> (Result_1) query;
   get_migration_stats : () -> (Result_2) query;
   get_migration_status : () -> (opt CreationStatusResponse) query;
-  get_my_galleries : () -> (vec Gallery) query;
   get_my_personal_canister_id : () -> (opt principal) query;
   get_personal_canister_creation_stats : () -> (Result_2) query;
   get_personal_canister_id : (principal) -> (opt principal) query;
   // Get upload session statistics for monitoring
   get_upload_session_stats : () -> (nat32, nat32, nat64) query;
   get_user_creation_status : (principal) -> (Result_3) query;
-  get_user_galleries : (principal) -> (vec Gallery) query;
   get_user_migration_status : (principal) -> (Result_3) query;
   greet : (text) -> (text) query;
   is_migration_enabled : () -> (bool) query;

@@ -69,8 +69,6 @@ pub fn verify_nonce(nonce: String) -> Option<Principal> {
     memory::get_nonce_proof(nonce)
 }
 
-
-
 #[ic_cdk::query]
 pub fn list_users() -> Vec<types::CapsuleHeader> {
     // Redirect to capsule listing
@@ -156,14 +154,8 @@ pub fn update_gallery_storage_status(
 }
 
 #[ic_cdk::query]
-pub fn get_user_galleries(user_principal: Principal) -> Vec<types::Gallery> {
-    capsule::get_user_galleries(user_principal)
-}
-
-#[ic_cdk::query]
-pub fn get_my_galleries() -> Vec<types::Gallery> {
-    let caller = ic_cdk::api::msg_caller();
-    capsule::get_user_galleries(caller)
+pub fn galleries_list() -> Vec<types::Gallery> {
+    capsule::galleries_list()
 }
 
 #[ic_cdk::query]
