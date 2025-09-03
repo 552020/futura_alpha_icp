@@ -5,8 +5,8 @@
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../test_config.sh"
-source "$SCRIPT_DIR/../../test_utils.sh"
+source "scripts/tests/backend/test_config.sh"
+source "scripts/tests/backend/test_utils.sh"
 
 # Test configuration
 TEST_NAME="Memory Upload Tests"
@@ -198,7 +198,13 @@ test_memory_metadata_validation() {
 test_retrieve_uploaded_memory() {
     # First upload a memory
     local memory_data=$(create_text_memory_data "Retrieval test content" "retrieval_test")
-    local upload_result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     # Extract memory ID from upload result
     local memory_id=$(echo "$upload_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
@@ -209,11 +215,13 @@ test_retrieve_uploaded_memory() {
     fi
     
     # Try to retrieve the memory
-    local retrieve_result=$(dfx canister call backend get_memory_from_capsule "\"$memory_id\"" 2>/dev/null)
+    local retrieve_result=$(dfx canister call backend memories_read "\"$memory_id\"" 2>/dev/null)
     
     # Check if retrieval was successful
     if echo "$retrieve_result" | grep -q "opt record" && echo "$retrieve_result" | grep -q "id = \"$memory_id\""; then
         echo_info "Memory retrieval successful for ID: $memory_id"
+        # Save memory ID for other tests
+        echo "$memory_id" > /tmp/test_memory_id.txt
         return 0
     else
         echo_info "Memory retrieval failed for ID: $memory_id, result: $retrieve_result"
@@ -239,7 +247,13 @@ test_retrieve_nonexistent_memory() {
 test_memory_storage_persistence() {
     # Upload a memory and verify it persists across multiple retrievals
     local memory_data=$(create_text_memory_data "Persistence test content" "persistence_test")
-    local upload_result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     local memory_id=$(echo "$upload_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
     
@@ -250,7 +264,7 @@ test_memory_storage_persistence() {
     
     # Retrieve the memory multiple times
     for i in {1..3}; do
-        local retrieve_result=$(dfx canister call backend get_memory_from_capsule "\"$memory_id\"" 2>/dev/null)
+        local retrieve_result=$(dfx canister call backend memories_read "\"$memory_id\"" 2>/dev/null)
         
         if ! echo "$retrieve_result" | grep -q "opt record"; then
             echo_info "Memory persistence failed on retrieval $i"
