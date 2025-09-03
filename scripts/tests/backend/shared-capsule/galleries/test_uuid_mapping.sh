@@ -83,6 +83,27 @@ EOF
     fi
 }
 
+# Helper function to get a capsule ID for testing
+get_test_capsule_id() {
+    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local capsule_id=""
+    
+    if [[ $capsule_result == *"null"* ]]; then
+        echo_info "No capsule found, creating one first..."
+        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+    else
+        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    fi
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    echo "$capsule_id"
+}
+
 # Test that memory UUIDs are preserved from Web2
 test_memory_uuid_preservation() {
     # Use a canonical UUID format (lowercase, hyphenated)
@@ -102,7 +123,13 @@ EOF
 )
     
     # Store the memory with the Web2 UUID
-    local result=$(dfx canister call backend add_memory_to_capsule "(\"$web2_memory_uuid\", $memory_data)" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     if ! is_success "$result"; then
         echo_info "Failed to store memory: $result"
@@ -191,7 +218,13 @@ EOF
 )
     
     # Store the memory first time
-    local result1=$(dfx canister call backend add_memory_to_capsule "(\"$web2_memory_uuid\", $memory_data)" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local result1=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     if ! is_success "$result1"; then
         echo_info "Failed to store memory first time: $result1"
@@ -199,7 +232,7 @@ EOF
     fi
     
     # Store the same memory second time (should be idempotent)
-    local result2=$(dfx canister call backend add_memory_to_capsule "(\"$web2_memory_uuid\", $memory_data)" 2>/dev/null)
+    local result2=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     if ! is_success "$result2"; then
         echo_info "Failed to store memory second time (idempotency failed): $result2"

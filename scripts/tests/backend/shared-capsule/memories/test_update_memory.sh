@@ -35,7 +35,25 @@ if [ ! -f /tmp/test_memory_id.txt ]; then
     
     # Add the memory
     echo "🚀 Adding test memory..."
-    ADD_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID add_memory_to_capsule "$TEST_MEMORY_DATA")
+    # First get a capsule ID to test with
+CAPSULE_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "(null)")
+
+if [[ $CAPSULE_RESULT == *"null"* ]]; then
+    echo "No capsule found, creating one first..."
+    CREATE_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_create "(null)")
+    CAPSULE_ID=$(echo "$CREATE_RESULT" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+else
+    CAPSULE_ID=$(echo "$CAPSULE_RESULT" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+fi
+
+if [[ -z "$CAPSULE_ID" ]]; then
+    echo "❌ Failed to get capsule ID for testing"
+    exit 1
+fi
+
+echo "Testing with capsule ID: $CAPSULE_ID"
+
+ADD_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$CAPSULE_ID\", $TEST_MEMORY_DATA)")
     
     if echo "$ADD_RESULT" | grep -q 'success = true'; then
         MEMORY_ID=$(echo "$ADD_RESULT" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')

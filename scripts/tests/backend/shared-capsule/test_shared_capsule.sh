@@ -55,6 +55,27 @@ get_current_principal() {
     dfx identity get-principal 2>/dev/null
 }
 
+# Helper function to get a capsule ID for testing
+get_test_capsule_id() {
+    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local capsule_id=""
+    
+    if [[ $capsule_result == *"null"* ]]; then
+        echo_info "No capsule found, creating one first..."
+        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+    else
+        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    fi
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    echo "$capsule_id"
+}
+
 # Helper function to create PersonRef for current user
 create_person_ref() {
     local principal=$(get_current_principal)
@@ -475,7 +496,13 @@ test_capsule_memories_integration() {
       data = opt blob "VGVzdCBtZW1vcnkgZm9yIGludGVncmF0aW9u";
     })'
     
-    local add_result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local add_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     # Then list capsule memories to see if it appears
     local list_result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)

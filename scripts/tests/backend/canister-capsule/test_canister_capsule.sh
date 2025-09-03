@@ -51,6 +51,27 @@ extract_canister_id() {
     echo "$response" | grep -o 'canister_id = opt principal "[^"]*"' | sed 's/canister_id = opt principal "\([^"]*\)"/\1/'
 }
 
+# Helper function to get a capsule ID for testing
+get_test_capsule_id() {
+    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local capsule_id=""
+    
+    if [[ $capsule_result == *"null"* ]]; then
+        echo_info "No capsule found, creating one first..."
+        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+    else
+        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    fi
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    echo "$capsule_id"
+}
+
 # Helper function to extract creation status
 extract_creation_status() {
     local response="$1"
@@ -295,7 +316,13 @@ test_creation_with_existing_capsule_data() {
       data = opt blob "VGVzdCBtZW1vcnkgZm9yIGNyZWF0aW9u";
     })'
     
-    local add_memory_result=$(dfx canister call backend add_memory_to_capsule "$memory_data" 2>/dev/null)
+    local capsule_id=$(get_test_capsule_id)
+    
+    if [[ -z "$capsule_id" ]]; then
+        return 1
+    fi
+    
+    local add_memory_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     # Now try to create personal canister (should export this data)
     local creation_result=$(dfx canister call backend create_personal_canister 2>/dev/null)
