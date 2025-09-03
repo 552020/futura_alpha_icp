@@ -5,6 +5,13 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 // ============================================================================
+// TYPE ALIASES
+// ============================================================================
+
+/// Type alias for capsule identifiers (used throughout the codebase)
+pub type CapsuleId = String;
+
+// ============================================================================
 // MVP ICP ERROR MODEL - Essential error types for ICP operations
 // ============================================================================
 

@@ -10,6 +10,7 @@ mod admin;
 mod auth;
 mod canister_factory;
 mod capsule;
+mod capsule_store;
 mod memory;
 mod metadata;
 mod types;

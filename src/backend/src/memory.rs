@@ -1,5 +1,6 @@
 #[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
+use crate::capsule_store::{CapsuleStore, HashMapCapsuleStore, StableCapsuleStore};
 use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
@@ -133,22 +134,67 @@ where
 }
 
 // ============================================================================
-// LEGACY ACCESS FUNCTIONS (for backward compatibility during MVP transition)
+// NEW TRAIT-BASED ACCESS FUNCTIONS (recommended approach)
 // ============================================================================
 
-// Access functions for centralized storage
-pub fn with_capsules_mut<F, R>(f: F) -> R
+/// Access capsules using trait-based storage (object-safe, supports runtime polymorphism)
+pub fn with_capsule_store<F, R>(f: F) -> R
+where
+    F: FnOnce(&dyn CapsuleStore) -> R,
+{
+    // Use HashMap for now during transition - switch to Stable later
+    let store = HashMapCapsuleStore::new();
+    f(&store)
+}
+
+/// Mutably access capsules using trait-based storage
+pub fn with_capsule_store_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut dyn CapsuleStore) -> R,
+{
+    // Use HashMap for now during transition - switch to Stable later
+    let mut store = HashMapCapsuleStore::new();
+    f(&mut store)
+}
+
+// ============================================================================
+// LEGACY ACCESS FUNCTIONS (backward compatibility during transition)
+// ============================================================================
+
+/// Access capsules using HashMap storage (legacy, for backward compatibility)
+pub fn with_hashmap_capsules<F, R>(f: F) -> R
+where
+    F: FnOnce(&HashMap<String, Capsule>) -> R,
+{
+    CAPSULES.with(|capsules| f(&capsules.borrow()))
+}
+
+/// Mutably access capsules using HashMap storage (legacy, for backward compatibility)
+pub fn with_hashmap_capsules_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut HashMap<String, Capsule>) -> R,
 {
     CAPSULES.with(|capsules| f(&mut capsules.borrow_mut()))
 }
 
+// ============================================================================
+// BACKWARD COMPATIBILITY ALIASES
+// ============================================================================
+
+/// Backward compatibility alias - will be removed after migration
 pub fn with_capsules<F, R>(f: F) -> R
 where
     F: FnOnce(&HashMap<String, Capsule>) -> R,
 {
-    CAPSULES.with(|capsules| f(&capsules.borrow()))
+    with_hashmap_capsules(f)
+}
+
+/// Backward compatibility alias - will be removed after migration
+pub fn with_capsules_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut HashMap<String, Capsule>) -> R,
+{
+    with_hashmap_capsules_mut(f)
 }
 
 pub fn with_admins_mut<F, R>(f: F) -> R
@@ -221,7 +267,7 @@ pub fn migrate_capsules_to_stable() -> Result<u32, String> {
     });
 
     // Insert into stable storage
-    with_stable_capsules_mut(|stable_capsules| {
+    with_capsules_mut(|stable_capsules| {
         for (id, capsule) in capsules_to_migrate {
             if stable_capsules.get(&id).is_none() {
                 stable_capsules.insert(id, capsule);
@@ -235,11 +281,15 @@ pub fn migrate_capsules_to_stable() -> Result<u32, String> {
 
 // Helper to check stable memory health
 pub fn get_stable_memory_stats() -> (u64, u64, u64) {
-    let capsule_count = with_stable_capsules(|capsules| capsules.len());
+    let capsule_count = with_capsules(|capsules| capsules.len());
     let session_count = with_stable_upload_sessions(|sessions| sessions.len());
     let artifact_count = with_stable_memory_artifacts(|artifacts| artifacts.len());
 
-    (capsule_count, session_count, artifact_count)
+    (
+        capsule_count.try_into().unwrap(),
+        session_count,
+        artifact_count,
+    )
 }
 // ============================================================================
 // TESTS FOR STABLE MEMORY INFRASTRUCTURE

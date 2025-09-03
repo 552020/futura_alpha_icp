@@ -1,9 +1,55 @@
-use crate::memory::{with_capsules, with_capsules_mut};
+use crate::capsule_store::CapsuleStore;
+use crate::memory::{with_capsules, with_capsules_mut, with_stable_capsules, with_stable_capsules_mut};
 use crate::types::*;
 
 use candid::Principal;
 use ic_cdk::api::{msg_caller, time};
 use std::collections::HashMap;
+
+// ============================================================================
+// MIGRATION GUIDE: From Direct Storage Access to Trait-Based API
+// ============================================================================
+//
+// OLD PATTERN (direct HashMap access):
+//     with_capsules(|capsules: &HashMap<String, Capsule>| {
+//         capsules.values().find(|c| c.subject == caller).cloned()
+//     });
+//
+// NEW PATTERN (trait-based, object-safe):
+//     with_capsule_store(|store: &dyn CapsuleStore| {
+//         store.find_by_subject(&caller.into())
+//     });
+//
+// Benefits:
+// - Object-safe: Can use `dyn CapsuleStore`
+// - Runtime polymorphism: Switch between HashMap/StableBTreeMap at runtime
+// - Clean API: Methods like find_by_subject() handle common operations
+// - Test-friendly: Easy to mock different storage backends
+//
+// Migration steps:
+// 1. Replace with_capsules -> with_capsule_store
+// 2. Use store methods instead of direct HashMap operations
+// 3. Add helper methods to CapsuleStore trait as needed
+//
+// EXAMPLE MIGRATION:
+//
+// Before:
+// ```rust
+// pub fn find_capsule_by_subject_old(caller: Principal) -> Option<Capsule> {
+//     with_hashmap_capsules(|capsules| {
+//         capsules.values().find(|c| c.subject == PersonRef::Principal(caller)).cloned()
+//     })
+// }
+//
+// After:
+// ```rust
+// pub fn find_capsule_by_subject_new(caller: Principal) -> Option<Capsule> {
+//     with_capsule_store(|store| {
+//         store.find_by_subject(&PersonRef::Principal(caller))
+//     })
+// }
+// ```
+// ============================================================================
 
 impl PersonRef {
     /// Create a PersonRef from the current caller
@@ -202,9 +248,11 @@ pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
     if is_self_capsule {
         let existing_self_capsule = with_capsules(|capsules| {
             capsules
-                .values()
-                .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-                .cloned()
+                .iter()
+                .find(|(_, capsule)| {
+                    capsule.subject == caller && capsule.owners.contains_key(&caller)
+                })
+                .map(|(_, capsule)| capsule.clone())
         });
 
         if let Some(mut capsule) = existing_self_capsule {
@@ -868,7 +916,7 @@ pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOpe
     let caller = PersonRef::from_caller();
 
     // Find the specified capsule
-    let capsule = with_capsules(|capsules| {
+    let capsule = with_stable_capsules(|capsules| {
         capsules.get(&capsule_id).and_then(|capsule| {
             // Check if caller has access to this capsule
             if capsule.owners.contains_key(&caller) || capsule.subject == caller {
@@ -941,7 +989,7 @@ pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOpe
             capsule.touch(); // Update capsule timestamp
 
             // Save updated capsule
-            with_capsules_mut(|capsules| {
+            with_stable_capsules_mut(|capsules| {
                 capsules.insert(capsule.id.clone(), capsule);
             });
 

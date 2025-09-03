@@ -1,4 +1,5 @@
 use crate::canister_factory::types::*;
+use crate::memory::with_capsules;
 use crate::types;
 use candid::Principal;
 
@@ -30,7 +31,7 @@ pub fn export_user_capsule_data(user: Principal) -> Result<ExportData, String> {
     let user_ref = types::PersonRef::Principal(user);
 
     // Find the user's self-capsule (where user is both subject and owner)
-    let capsule = crate::memory::with_capsules(|capsules| {
+    let capsule = with_capsules(|capsules| {
         capsules
             .values()
             .find(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))

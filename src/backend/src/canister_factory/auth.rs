@@ -1,4 +1,5 @@
 use crate::canister_factory::types::*;
+use crate::memory::{with_capsules, with_capsules_mut};
 use candid::Principal;
 
 /// Ensure the caller owns a capsule (has a self-capsule where they are both subject and owner)
@@ -8,7 +9,7 @@ pub fn ensure_owner(caller: Principal) -> Result<(), String> {
     let user_ref = crate::types::PersonRef::Principal(caller);
 
     // Find the user's self-capsule (where user is both subject and owner)
-    let has_self_capsule = crate::memory::with_capsules(|capsules| {
+    let has_self_capsule = with_capsules(|capsules| {
         capsules
             .values()
             .any(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
@@ -74,7 +75,7 @@ pub fn validate_admin_caller() -> Result<Principal, String> {
 pub fn check_user_capsule_ownership(user: Principal) -> bool {
     let user_ref = crate::types::PersonRef::Principal(user);
 
-    crate::memory::with_capsules(|capsules| {
+    with_capsules(|capsules| {
         capsules
             .values()
             .any(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
@@ -86,7 +87,7 @@ pub fn check_user_capsule_ownership(user: Principal) -> bool {
 pub fn get_user_capsule_id(user: Principal) -> Option<String> {
     let user_ref = crate::types::PersonRef::Principal(user);
 
-    crate::memory::with_capsules(|capsules| {
+    with_capsules(|capsules| {
         capsules
             .values()
             .find(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
@@ -196,7 +197,7 @@ mod tests {
         let capsule3 = create_test_capsule("capsule3", other_subject, vec![user3_ref]);
 
         // Store capsules in memory
-        crate::memory::with_capsules_mut(|capsules| {
+        with_capsules_mut(|capsules| {
             capsules.insert("capsule1".to_string(), capsule1);
             capsules.insert("capsule2".to_string(), capsule2);
             capsules.insert("capsule3".to_string(), capsule3);
@@ -216,7 +217,7 @@ mod tests {
 
     // Helper function to clear test data
     fn clear_test_data() {
-        crate::memory::with_capsules_mut(|capsules| {
+        with_capsules_mut(|capsules| {
             capsules.clear();
         });
         crate::memory::with_admins_mut(|admins| {
