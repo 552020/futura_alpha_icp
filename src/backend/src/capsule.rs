@@ -249,44 +249,49 @@ pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
     let is_self_capsule = subject.is_none();
 
     if is_self_capsule {
-        let existing_self_capsule = with_capsules(|capsules| {
-            capsules
-                .iter()
-                .find(|(_, capsule)| {
-                    capsule.subject == caller && capsule.owners.contains_key(&caller)
-                })
-                .map(|(_, capsule)| capsule.clone())
+        // MIGRATED: Check if caller already has a self-capsule
+        let all_capsules = with_capsule_store(|store| {
+            store.paginate(None, u32::MAX, Order::Asc)
         });
 
-        if let Some(mut capsule) = existing_self_capsule {
-            // Update existing self-capsule activity
-            let now = time();
-            capsule.updated_at = now;
-
-            if let Some(owner_state) = capsule.owners.get_mut(&caller) {
-                owner_state.last_activity_at = now;
-            }
-
-            // Store the updated capsule
-            with_capsules_mut(|capsules| {
-                capsules.insert(capsule.id.clone(), capsule.clone());
+        let existing_self_capsule = all_capsules.items
+            .into_iter()
+            .find(|capsule| {
+                capsule.subject == caller && capsule.owners.contains_key(&caller)
             });
 
-            return CapsuleCreationResult {
-                success: true,
-                capsule_id: Some(capsule.id),
-                message: "Welcome back! Your capsule is ready.".to_string(),
-            };
+        if let Some(capsule) = existing_self_capsule {
+            // MIGRATED: Update existing self-capsule activity
+            let capsule_id = capsule.id.clone();
+            let update_result = with_capsule_store_mut(|store| {
+                store.update(&capsule_id, |capsule| {
+                    let now = time();
+                    capsule.updated_at = now;
+
+                    if let Some(owner_state) = capsule.owners.get_mut(&caller) {
+                        owner_state.last_activity_at = now;
+                    }
+                })
+            });
+
+            if update_result.is_ok() {
+                return CapsuleCreationResult {
+                    success: true,
+                    capsule_id: Some(capsule_id),
+                    message: "Welcome back! Your capsule is ready.".to_string(),
+                };
+            }
         }
     }
 
-    // Create new capsule
+    // MIGRATED: Create new capsule
     let actual_subject = subject.unwrap_or_else(|| caller.clone());
     let capsule = Capsule::new(actual_subject, caller);
     let capsule_id = capsule.id.clone();
 
-    with_capsules_mut(|capsules| {
-        capsules.insert(capsule_id.clone(), capsule);
+    // Use upsert to create new capsule (should succeed since we're checking for existing self-capsule above)
+    with_capsule_store_mut(|store| {
+        store.upsert(capsule_id.clone(), capsule);
     });
 
     CapsuleCreationResult {
@@ -399,32 +404,33 @@ pub fn register() -> bool {
     let caller_ref = PersonRef::from_caller();
     let now = time();
 
-    // Check if user already has a self-capsule
-    let existing_self_capsule = with_capsules(|capsules| {
-        capsules
-            .values()
-            .find(|capsule| {
-                capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref)
-            })
-            .cloned()
+    // MIGRATED: Check if user already has a self-capsule
+    let all_capsules = with_capsule_store(|store| {
+        store.paginate(None, u32::MAX, Order::Asc)
     });
 
-    match existing_self_capsule {
-        Some(mut capsule) => {
-            // Update activity timestamp
-            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                owner_state.last_activity_at = now;
-            }
-            capsule.updated_at = now;
+    let existing_self_capsule = all_capsules.items
+        .into_iter()
+        .find(|capsule| {
+            capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref)
+        });
 
-            // Store the updated capsule
-            with_capsules_mut(|capsules| {
-                capsules.insert(capsule.id.clone(), capsule);
+    match existing_self_capsule {
+        Some(capsule) => {
+            // MIGRATED: Update activity timestamp using store.update()
+            let capsule_id = capsule.id.clone();
+            let update_result = with_capsule_store_mut(|store| {
+                store.update(&capsule_id, |capsule| {
+                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                        owner_state.last_activity_at = now;
+                    }
+                    capsule.updated_at = now;
+                })
             });
-            true
+            update_result.is_ok()
         }
         None => {
-            // Create new self-capsule with basic info
+            // MIGRATED: Create new self-capsule with basic info
             match capsules_create(None) {
                 CapsuleCreationResult { success: true, .. } => true,
                 CapsuleCreationResult { success: false, .. } => false,
