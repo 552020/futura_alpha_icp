@@ -6,7 +6,7 @@
 # - Capsule creation (create_capsule)
 # - Capsule registration (register_capsule)  
 # - Capsule retrieval (get_capsule, list_my_capsules)
-# - Additional capsule endpoints (mark_capsule_bound_to_web2, memories_list, list_users)
+# - Additional capsule endpoints (capsules_bind_neon, memories_list, list_users)
 # - Edge cases and error handling
 
 # Load test configuration and utilities
@@ -397,18 +397,18 @@ test_complete_authentication_flow() {
 
 # Test functions for additional capsule endpoints
 
-test_mark_capsule_bound_to_web2() {
-    echo_info "Testing mark capsule bound to web2..."
+test_capsules_bind_neon() {
+    echo_info "Testing capsules bind neon..."
     
-    # Call mark_capsule_bound_to_web2 endpoint
-    local result=$(dfx canister call backend mark_capsule_bound_to_web2 2>/dev/null)
+    # Call capsules_bind_neon endpoint to bind caller's capsule
+    local result=$(dfx canister call backend 'capsules_bind_neon("Capsule", "", true)' 2>/dev/null)
     
     # Should return a boolean (true or false)
     if echo "$result" | grep -q "(true)" || echo "$result" | grep -q "(false)"; then
-        echo_info "Mark capsule bound to web2 successful: $result"
+        echo_info "Bind capsule to neon successful: $result"
         return 0
     else
-        echo_info "Mark capsule bound to web2 failed: $result"
+        echo_info "Bind capsule to neon failed: $result"
         return 1
     fi
 }
@@ -467,7 +467,7 @@ test_capsule_web2_binding_status() {
     echo_info "Testing capsule web2 binding status..."
     
     # First mark capsule as bound to web2
-    local mark_result=$(dfx canister call backend mark_capsule_bound_to_web2 2>/dev/null)
+    local mark_result=$(dfx canister call backend 'capsules_bind_neon("Capsule", "", true)' 2>/dev/null)
     
     # Then get user info to check if bound_to_web2 field is updated
     local user_result=$(dfx canister call backend get_user 2>/dev/null)
@@ -630,7 +630,7 @@ main() {
     
     # Run additional capsule endpoint tests
     echo_info "=== Testing Additional Capsule Endpoints ==="
-    run_test "Mark capsule bound to web2" "test_mark_capsule_bound_to_web2"
+    run_test "Bind capsule to neon" "test_capsules_bind_neon"
     run_test "List capsule memories" "test_memories_list"
     run_test "List users" "test_list_users"
     run_test "Capsule web2 binding status" "test_capsule_web2_binding_status"

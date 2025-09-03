@@ -94,7 +94,7 @@ test_setup_user_and_capsule() {
     fi
     
     # Mark capsule as bound to Web2
-    local bind_result=$(dfx canister call backend mark_capsule_bound_to_web2 2>/dev/null)
+    local bind_result=$(dfx canister call backend 'capsules_bind_neon("Capsule", "", true)' 2>/dev/null)
     if ! is_success "$bind_result"; then
         echo_warn "Capsule binding failed, continuing..."
     fi
