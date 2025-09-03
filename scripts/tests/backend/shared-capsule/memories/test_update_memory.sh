@@ -103,7 +103,7 @@ if echo "$RESULT" | grep -q 'success = true'; then
     
     # Verify the update by getting the memory again
     echo "🔍 Verifying update by retrieving memory..."
-    UPDATED_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID get_memory_from_capsule "(\"$MEMORY_ID\")")
+    UPDATED_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$MEMORY_ID\")")
     
     if echo "$UPDATED_RESULT" | grep -q 'name = "Updated Test Memory"'; then
         echo "✅ Verification PASSED: Memory name updated correctly"

@@ -398,7 +398,7 @@ test_update_memory_verify_changes() {
     fi
     
     # Retrieve the updated memory and verify changes
-    local retrieve_result=$(dfx canister call backend get_memory_from_capsule "(\"$memory_id\")" 2>/dev/null)
+    local retrieve_result=$(dfx canister call backend memories_read "(\"$memory_id\")" 2>/dev/null)
     
     # Check if the memory was retrieved successfully (indicating update worked)
     if echo "$retrieve_result" | grep -q "opt record" || echo "$retrieve_result" | grep -q "record {"; then
@@ -466,7 +466,7 @@ test_delete_memory_verify_removal() {
     fi
     
     # Try to retrieve the deleted memory
-    local retrieve_result=$(dfx canister call backend get_memory_from_capsule "(\"$memory_id\")" 2>/dev/null)
+    local retrieve_result=$(dfx canister call backend memories_read "(\"$memory_id\")" 2>/dev/null)
     
     if echo "$retrieve_result" | grep -q "(null)"; then
         echo_info "Memory deletion verification successful - memory not found after deletion"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test script for get_memory_from_capsule endpoint
+# Test script for memories_read endpoint
 # This script tests retrieving a memory from the caller's capsule
 
 set -e
@@ -9,7 +9,7 @@ set -e
 CANISTER_ID="$(dfx canister id backend)"
 IDENTITY="default"
 
-echo "🧪 Testing get_memory_from_capsule endpoint"
+echo "🧪 Testing memories_read endpoint"
 echo "Canister ID: $CANISTER_ID"
 echo "Identity: $IDENTITY"
 echo ""
@@ -69,9 +69,9 @@ fi
 echo "📋 Using Memory ID: $MEMORY_ID"
 echo ""
 
-# Call get_memory_from_capsule endpoint
-echo "🚀 Calling get_memory_from_capsule..."
-RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID get_memory_from_capsule "(\"$MEMORY_ID\")")
+# Call memories_read endpoint
+echo "🚀 Calling memories_read..."
+RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$MEMORY_ID\")")
 
 echo "📊 Result:"
 echo "$RESULT"
@@ -101,4 +101,4 @@ else
 fi
 
 echo ""
-echo "🎉 get_memory_from_capsule test completed successfully!"
+echo "🎉 memories_read test completed successfully!"

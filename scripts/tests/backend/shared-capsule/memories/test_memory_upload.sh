@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test memory upload functionality
-# Tests memories_create and get_memory_from_capsule endpoints
+# Tests memories_create and memories_read endpoints
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -224,7 +224,7 @@ test_retrieve_uploaded_memory() {
 test_retrieve_nonexistent_memory() {
     # Try to retrieve a memory that doesn't exist
     local fake_id="nonexistent_memory_id_12345"
-    local result=$(dfx canister call backend get_memory_from_capsule "\"$fake_id\"" 2>/dev/null)
+    local result=$(dfx canister call backend memories_read "\"$fake_id\"" 2>/dev/null)
     
     # Should return null for non-existent memory
     if echo "$result" | grep -q "(null)"; then

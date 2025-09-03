@@ -44,7 +44,7 @@ if echo "$RESULT" | grep -q 'success = true'; then
     
     # Verify deletion by trying to get the memory again
     echo "🔍 Verifying deletion by attempting to retrieve memory..."
-    GET_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID get_memory_from_capsule "(\"$MEMORY_ID\")")
+    GET_RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$MEMORY_ID\")")
     
     if echo "$GET_RESULT" | grep -q "null"; then
         echo "✅ Verification PASSED: Memory successfully deleted (returns null)"
