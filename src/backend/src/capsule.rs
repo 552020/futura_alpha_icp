@@ -1,7 +1,7 @@
 use crate::capsule_store::{CapsuleStore, Order};
 use crate::memory::{
-    with_capsule_store, with_capsule_store_mut, with_capsules, with_capsules_mut, with_stable_capsules,
-    with_stable_capsules_mut,
+    with_capsule_store, with_capsule_store_mut, with_capsules, with_capsules_mut,
+    with_stable_capsules, with_stable_capsules_mut,
 };
 use crate::types::*;
 
@@ -250,15 +250,12 @@ pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
 
     if is_self_capsule {
         // MIGRATED: Check if caller already has a self-capsule
-        let all_capsules = with_capsule_store(|store| {
-            store.paginate(None, u32::MAX, Order::Asc)
-        });
+        let all_capsules = with_capsule_store(|store| store.paginate(None, u32::MAX, Order::Asc));
 
-        let existing_self_capsule = all_capsules.items
+        let existing_self_capsule = all_capsules
+            .items
             .into_iter()
-            .find(|capsule| {
-                capsule.subject == caller && capsule.owners.contains_key(&caller)
-            });
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller));
 
         if let Some(capsule) = existing_self_capsule {
             // MIGRATED: Update existing self-capsule activity
@@ -405,15 +402,12 @@ pub fn register() -> bool {
     let now = time();
 
     // MIGRATED: Check if user already has a self-capsule
-    let all_capsules = with_capsule_store(|store| {
-        store.paginate(None, u32::MAX, Order::Asc)
-    });
+    let all_capsules = with_capsule_store(|store| store.paginate(None, u32::MAX, Order::Asc));
 
-    let existing_self_capsule = all_capsules.items
+    let existing_self_capsule = all_capsules
+        .items
         .into_iter()
-        .find(|capsule| {
-            capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref)
-        });
+        .find(|capsule| capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref));
 
     match existing_self_capsule {
         Some(capsule) => {
@@ -448,17 +442,19 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
         ResourceType::Capsule => {
             // MIGRATED: Bind specific capsule if caller owns it
             with_capsule_store_mut(|store| {
-                store.update(&resource_id, |capsule| {
-                    if capsule.owners.contains_key(&caller_ref) {
-                        capsule.bound_to_neon = bind;
-                        capsule.updated_at = time();
+                store
+                    .update(&resource_id, |capsule| {
+                        if capsule.owners.contains_key(&caller_ref) {
+                            capsule.bound_to_neon = bind;
+                            capsule.updated_at = time();
 
-                        // Update owner activity
-                        if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                            owner_state.last_activity_at = time();
+                            // Update owner activity
+                            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                                owner_state.last_activity_at = time();
+                            }
                         }
-                    }
-                }).is_ok()
+                    })
+                    .is_ok()
             })
         }
         ResourceType::Gallery => {
@@ -501,11 +497,21 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                                 if let Some(memory) = capsule.memories.get_mut(&resource_id) {
                                     // Update the bound_to_neon field in the memory's metadata
                                     match &mut memory.metadata {
-                                        MemoryMetadata::Image(meta) => meta.base.bound_to_neon = bind,
-                                        MemoryMetadata::Video(meta) => meta.base.bound_to_neon = bind,
-                                        MemoryMetadata::Audio(meta) => meta.base.bound_to_neon = bind,
-                                        MemoryMetadata::Document(meta) => meta.base.bound_to_neon = bind,
-                                        MemoryMetadata::Note(meta) => meta.base.bound_to_neon = bind,
+                                        MemoryMetadata::Image(meta) => {
+                                            meta.base.bound_to_neon = bind
+                                        }
+                                        MemoryMetadata::Video(meta) => {
+                                            meta.base.bound_to_neon = bind
+                                        }
+                                        MemoryMetadata::Audio(meta) => {
+                                            meta.base.bound_to_neon = bind
+                                        }
+                                        MemoryMetadata::Document(meta) => {
+                                            meta.base.bound_to_neon = bind
+                                        }
+                                        MemoryMetadata::Note(meta) => {
+                                            meta.base.bound_to_neon = bind
+                                        }
                                     }
 
                                     capsule.updated_at = time();
@@ -774,9 +780,11 @@ pub fn galleries_create_with_memories(
 pub fn galleries_list() -> Vec<Gallery> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: List all galleries from caller's self-capsule
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules.items
+            .into_iter()
             .filter(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
             .collect()
@@ -787,9 +795,11 @@ pub fn galleries_list() -> Vec<Gallery> {
 pub fn galleries_read(gallery_id: String) -> Option<Gallery> {
     let caller = PersonRef::from_caller();
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Find gallery in caller's self-capsule
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules.items
+            .into_iter()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .and_then(|capsule| capsule.galleries.get(&gallery_id).cloned())
     })
@@ -799,19 +809,30 @@ pub fn galleries_read(gallery_id: String) -> Option<Gallery> {
 pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStorageStatus) -> bool {
     let caller = PersonRef::from_caller();
 
-    with_capsules_mut(|capsules| {
-        if let Some(capsule) = capsules
-            .values_mut()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+    // MIGRATED: Update gallery storage status in caller's self-capsule
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the gallery
+        if let Some(capsule) = all_capsules.items
+            .into_iter()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller) && capsule.galleries.contains_key(&gallery_id))
         {
-            if let Some(gallery) = capsule.galleries.get_mut(&gallery_id) {
-                gallery.storage_status = new_status;
-                gallery.updated_at = ic_cdk::api::time();
-                capsule.touch(); // Update capsule timestamp
-                return true;
-            }
+            let capsule_id = capsule.id.clone();
+
+            // Update the capsule with the new gallery status
+            let update_result = store.update(&capsule_id, |capsule| {
+                if let Some(gallery) = capsule.galleries.get_mut(&gallery_id) {
+                    gallery.storage_status = new_status;
+                    gallery.updated_at = ic_cdk::api::time();
+                    capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
+                }
+            });
+
+            update_result.is_ok()
+        } else {
+            false
         }
-        false
     })
 }
 
@@ -822,41 +843,51 @@ pub fn galleries_update(
 ) -> UpdateGalleryResponse {
     let caller = PersonRef::from_caller();
 
-    // Find caller's self-capsule and get a mutable reference
+    // MIGRATED: Find and update gallery in caller's self-capsule
     let mut capsule_found = false;
     let mut updated_gallery: Option<Gallery> = None;
 
-    with_capsules_mut(|capsules| {
-        if let Some(capsule) = capsules
-            .values_mut()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the gallery
+        if let Some(capsule) = all_capsules.items
+            .into_iter()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller) && capsule.galleries.contains_key(&gallery_id))
         {
             capsule_found = true;
+            let capsule_id = capsule.id.clone();
 
-            // Check if gallery exists
-            if let Some(gallery) = capsule.galleries.get(&gallery_id) {
-                // Update gallery fields
-                let mut gallery_clone = gallery.clone();
-                if let Some(title) = update_data.title.clone() {
-                    gallery_clone.title = title;
-                }
-                if let Some(description) = update_data.description.clone() {
-                    gallery_clone.description = Some(description);
-                }
-                if let Some(is_public) = update_data.is_public {
-                    gallery_clone.is_public = is_public;
-                }
-                if let Some(memory_entries) = update_data.memory_entries.clone() {
-                    gallery_clone.memory_entries = memory_entries;
-                }
+            // Update the capsule with the modified gallery
+            let update_result = store.update(&capsule_id, |capsule| {
+                if let Some(gallery) = capsule.galleries.get(&gallery_id) {
+                    // Update gallery fields
+                    let mut gallery_clone = gallery.clone();
+                    if let Some(title) = update_data.title.clone() {
+                        gallery_clone.title = title;
+                    }
+                    if let Some(description) = update_data.description.clone() {
+                        gallery_clone.description = Some(description);
+                    }
+                    if let Some(is_public) = update_data.is_public {
+                        gallery_clone.is_public = is_public;
+                    }
+                    if let Some(memory_entries) = update_data.memory_entries.clone() {
+                        gallery_clone.memory_entries = memory_entries;
+                    }
 
-                gallery_clone.updated_at = ic_cdk::api::time();
+                    gallery_clone.updated_at = ic_cdk::api::time();
 
-                // Store updated gallery
-                capsule.galleries.insert(gallery_id, gallery_clone.clone());
-                capsule.touch(); // Update capsule timestamp
+                    // Store updated gallery
+                    capsule.galleries.insert(gallery_id, gallery_clone.clone());
+                    capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
 
-                updated_gallery = Some(gallery_clone);
+                    updated_gallery = Some(gallery_clone);
+                }
+            });
+
+            if !update_result.is_ok() {
+                capsule_found = false;
             }
         }
     });
@@ -887,22 +918,32 @@ pub fn galleries_update(
 pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
     let caller = PersonRef::from_caller();
 
-    // Find caller's self-capsule and perform deletion
+    // MIGRATED: Find and delete gallery from caller's self-capsule
     let mut capsule_found = false;
     let mut gallery_found = false;
 
-    with_capsules_mut(|capsules| {
-        if let Some(capsule) = capsules
-            .values_mut()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the gallery
+        if let Some(capsule) = all_capsules.items
+            .into_iter()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller) && capsule.galleries.contains_key(&gallery_id))
         {
             capsule_found = true;
+            let capsule_id = capsule.id.clone();
 
-            // Check if gallery exists and remove it
-            if capsule.galleries.contains_key(&gallery_id) {
-                capsule.galleries.remove(&gallery_id);
-                capsule.touch(); // Update capsule timestamp
-                gallery_found = true;
+            // Update the capsule to remove the gallery
+            let update_result = store.update(&capsule_id, |capsule| {
+                if capsule.galleries.contains_key(&gallery_id) {
+                    capsule.galleries.remove(&gallery_id);
+                    capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
+                    gallery_found = true;
+                }
+            });
+
+            if !update_result.is_ok() {
+                capsule_found = false;
             }
         }
     });
