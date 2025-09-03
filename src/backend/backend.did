@@ -412,7 +412,7 @@ service : () -> {
   get_creation_status : () -> (opt CreationStatusResponse) query;
   get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
   get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
-  get_memory_from_capsule : (text) -> (opt Memory) query;
+  memories_read : (text) -> (opt Memory) query;
   // Check presence for multiple memories with pagination
   get_memory_list_presence_icp : (vec text, opt text, nat32) -> (
       ICPResult_3,

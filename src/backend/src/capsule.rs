@@ -1028,14 +1028,17 @@ pub fn add_memory_to_capsule(
     }
 }
 
-/// Get a memory from the caller's capsule
-pub fn get_memory_from_capsule(memory_id: String) -> Option<Memory> {
+/// Read a memory by its ID (searches across all capsules the caller has access to)
+pub fn memories_read(memory_id: String) -> Option<Memory> {
     let caller = PersonRef::from_caller();
 
     with_capsules(|capsules| {
         capsules
             .values()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+            .find(|capsule| {
+                // Check if caller has access to this capsule
+                capsule.owners.contains_key(&caller) || capsule.subject == caller
+            })
             .and_then(|capsule| capsule.memories.get(&memory_id).cloned())
     })
 }

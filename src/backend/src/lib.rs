@@ -184,8 +184,8 @@ pub async fn memories_create(
 }
 
 #[ic_cdk::query]
-pub fn get_memory_from_capsule(memory_id: String) -> Option<types::Memory> {
-    capsule::get_memory_from_capsule(memory_id)
+pub fn memories_read(memory_id: String) -> Option<types::Memory> {
+    capsule::memories_read(memory_id)
 }
 
 #[ic_cdk::update]
