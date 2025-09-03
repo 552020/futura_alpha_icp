@@ -371,7 +371,7 @@ mod stable_memory_tests {
             galleries: HashMap::new(),
             created_at: 1234567890,
             updated_at: 1234567890,
-            bound_to_web2: false,
+            bound_to_neon: false,
         };
 
         // Test insert

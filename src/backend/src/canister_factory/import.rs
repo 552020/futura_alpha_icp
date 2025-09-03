@@ -588,6 +588,7 @@ fn create_memory_from_assembled_data(
                     date_of_memory: Some(now.to_string()),
                     people_in_memory: None,
                     format: Some("binary".to_string()),
+                    bound_to_neon: false,
                 },
             }),
         }

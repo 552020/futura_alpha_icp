@@ -263,7 +263,7 @@ mod tests {
             galleries: std::collections::HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
-            bound_to_web2: false,
+            bound_to_neon: false,
         }
     }
 
@@ -288,6 +288,7 @@ mod tests {
                     date_of_memory: Some("2023-01-01".to_string()),
                     people_in_memory: None,
                     format: Some("text".to_string()),
+                    bound_to_neon: false,
                 },
                 tags: Some(vec!["test".to_string()]),
             }),

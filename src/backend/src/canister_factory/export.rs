@@ -548,7 +548,7 @@ mod tests {
             galleries: HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
-            bound_to_web2: false,
+            bound_to_neon: false,
         }
     }
 
@@ -568,6 +568,7 @@ mod tests {
             date_of_memory: Some("2024-01-01".to_string()),
             people_in_memory: Some(vec!["test_person".to_string()]),
             format: Some("test_format".to_string()),
+            bound_to_neon: false,
         };
 
         let metadata = match memory_type {
