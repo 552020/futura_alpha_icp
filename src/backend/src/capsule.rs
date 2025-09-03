@@ -715,8 +715,11 @@ pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStor
     })
 }
 
-/// Update a gallery in caller's capsule
-pub fn update_gallery(gallery_id: String, update_data: GalleryUpdateData) -> UpdateGalleryResponse {
+/// Update a gallery in caller's capsule (replaces update_gallery)
+pub fn galleries_update(
+    gallery_id: String,
+    update_data: GalleryUpdateData,
+) -> UpdateGalleryResponse {
     let caller = PersonRef::from_caller();
 
     // Find caller's self-capsule and get a mutable reference
@@ -780,8 +783,8 @@ pub fn update_gallery(gallery_id: String, update_data: GalleryUpdateData) -> Upd
     }
 }
 
-/// Delete a gallery from caller's capsule
-pub fn delete_gallery(gallery_id: String) -> DeleteGalleryResponse {
+/// Delete a gallery from caller's capsule (replaces delete_gallery)
+pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
     let caller = PersonRef::from_caller();
 
     // Find caller's self-capsule and perform deletion

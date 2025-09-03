@@ -162,16 +162,16 @@ pub fn galleries_read(gallery_id: String) -> Option<types::Gallery> {
 }
 
 #[ic_cdk::update]
-pub async fn update_gallery(
+pub async fn galleries_update(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
 ) -> types::UpdateGalleryResponse {
-    capsule::update_gallery(gallery_id, update_data)
+    capsule::galleries_update(gallery_id, update_data)
 }
 
 #[ic_cdk::update]
-pub async fn delete_gallery(gallery_id: String) -> types::DeleteGalleryResponse {
-    capsule::delete_gallery(gallery_id)
+pub async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
+    capsule::galleries_delete(gallery_id)
 }
 
 // Memory management endpoints

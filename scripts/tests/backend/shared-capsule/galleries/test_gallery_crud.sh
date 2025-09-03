@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test gallery CRUD operations
-# Tests update_gallery, delete_gallery, get_my_galleries, and get_user_galleries endpoints
+# Tests galleries_update, galleries_delete, get_my_galleries, and get_user_galleries endpoints
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -158,7 +158,7 @@ test_update_gallery_title() {
     
     # Update gallery title
     local update_data='(record { title = opt "Updated Gallery Title"; description = null; is_public = null; memory_entries = null; })'
-    local result=$(dfx canister call backend update_gallery "(\"$gallery_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Gallery title update successful for ID: $gallery_id"
@@ -187,7 +187,7 @@ test_update_gallery_description() {
     
     # Update gallery description
     local update_data='(record { title = null; description = opt "Updated description for testing"; is_public = null; memory_entries = null; })'
-    local result=$(dfx canister call backend update_gallery "(\"$gallery_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Gallery description update successful for ID: $gallery_id"
@@ -216,7 +216,7 @@ test_update_gallery_visibility() {
     
     # Update gallery visibility to private
     local update_data='(record { title = null; description = null; is_public = opt false; memory_entries = null; })'
-    local result=$(dfx canister call backend update_gallery "(\"$gallery_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Gallery visibility update successful for ID: $gallery_id"
@@ -270,7 +270,7 @@ test_update_gallery_memory_entries() {
 EOF
 )
     
-    local result=$(dfx canister call backend update_gallery "(\"$gallery_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Gallery memory entries update successful for ID: $gallery_id"
@@ -285,7 +285,7 @@ test_update_nonexistent_gallery() {
     # Try to update a gallery that doesn't exist
     local fake_id="nonexistent_gallery_12345"
     local update_data='(record { title = opt "Should Fail"; description = null; is_public = null; memory_entries = null; })'
-    local result=$(dfx canister call backend update_gallery "(\"$fake_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_update "(\"$fake_id\", $update_data)" 2>/dev/null)
     
     # Should fail with appropriate error
     if is_failure "$result"; then
@@ -297,11 +297,11 @@ test_update_nonexistent_gallery() {
     fi
 }
 
-# Test functions for delete_gallery
+# Test functions for galleries_delete
 
 test_delete_existing_gallery() {
     # Create a test gallery first
-    local memory_id=$(upload_test_memory "Content for deletion test" "delete_gallery_memory")
+    local memory_id=$(upload_test_memory "Content for deletion test" "galleries_delete_memory")
     
     if [ -z "$memory_id" ]; then
         echo_info "Failed to upload test memory for gallery deletion"
@@ -316,7 +316,7 @@ test_delete_existing_gallery() {
     fi
     
     # Delete the gallery
-    local result=$(dfx canister call backend delete_gallery "(\"$gallery_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_delete "(\"$gallery_id\")" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Gallery deletion successful for ID: $gallery_id"
@@ -330,7 +330,7 @@ test_delete_existing_gallery() {
 test_delete_nonexistent_gallery() {
     # Try to delete a gallery that doesn't exist
     local fake_id="nonexistent_gallery_54321"
-    local result=$(dfx canister call backend delete_gallery "(\"$fake_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_delete "(\"$fake_id\")" 2>/dev/null)
     
     # Should fail with appropriate error
     if is_failure "$result"; then
@@ -342,7 +342,7 @@ test_delete_nonexistent_gallery() {
     fi
 }
 
-test_delete_gallery_verify_removal() {
+test_galleries_delete_verify_removal() {
     # Create a test gallery first
     local memory_id=$(upload_test_memory "Content for deletion verification" "delete_verify_memory")
     
@@ -359,7 +359,7 @@ test_delete_gallery_verify_removal() {
     fi
     
     # Delete the gallery
-    local delete_result=$(dfx canister call backend delete_gallery "(\"$gallery_id\")" 2>/dev/null)
+    local delete_result=$(dfx canister call backend galleries_delete "(\"$gallery_id\")" 2>/dev/null)
     
     if ! is_success "$delete_result"; then
         echo_info "Failed to delete gallery for verification test"
@@ -489,7 +489,7 @@ test_gallery_crud_consistency() {
     
     # Update gallery
     local update_data='(record { title = opt "CRUD Test Updated"; description = null; is_public = null; memory_entries = null; })'
-    local update_result=$(dfx canister call backend update_gallery "(\"$gallery_id\", $update_data)" 2>/dev/null)
+    local update_result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
     
     if ! is_success "$update_result"; then
         echo_info "Failed to update gallery in CRUD consistency test"
@@ -505,7 +505,7 @@ test_gallery_crud_consistency() {
     fi
     
     # Delete gallery
-    local delete_result=$(dfx canister call backend delete_gallery "(\"$gallery_id\")" 2>/dev/null)
+    local delete_result=$(dfx canister call backend galleries_delete "(\"$gallery_id\")" 2>/dev/null)
     
     if ! is_success "$delete_result"; then
         echo_info "Failed to delete gallery in CRUD consistency test"
@@ -552,18 +552,18 @@ main() {
         echo_warn "User registration returned: $register_result"
     fi
     
-    # Run update_gallery tests
-    echo_info "=== Testing update_gallery endpoint ==="
+    # Run galleries_update tests
+    echo_info "=== Testing galleries_update endpoint ==="
     run_test "Update gallery title" "test_update_gallery_title"
     run_test "Update gallery description" "test_update_gallery_description"
     run_test "Update gallery visibility" "test_update_gallery_visibility"
     run_test "Update gallery memory entries" "test_update_gallery_memory_entries"
     run_test "Update non-existent gallery" "test_update_nonexistent_gallery"
     
-    echo_info "=== Testing delete_gallery endpoint ==="
+    echo_info "=== Testing galleries_delete endpoint ==="
     run_test "Delete existing gallery" "test_delete_existing_gallery"
     run_test "Delete non-existent gallery" "test_delete_nonexistent_gallery"
-    run_test "Delete gallery and verify removal" "test_delete_gallery_verify_removal"
+    run_test "Delete gallery and verify removal" "test_galleries_delete_verify_removal"
     
     echo_info "=== Testing get_my_galleries query ==="
     run_test "Get my galleries (empty or populated)" "test_get_my_galleries_empty"
