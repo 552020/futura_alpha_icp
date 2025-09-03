@@ -381,7 +381,6 @@ type VideoMetadata = record {
 };
 service : () -> {
   add_admin : (principal) -> (bool);
-  memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   // Begin chunked upload session for large files
   begin_asset_upload : (text, MemoryType, text, nat32, nat64) -> (ICPResult);
   // Cancel upload and cleanup resources
@@ -440,6 +439,7 @@ service : () -> {
   list_users : () -> (vec CapsuleHeader) query;
   mark_bound : () -> (bool);
   mark_capsule_bound_to_web2 : () -> (bool);
+  memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
