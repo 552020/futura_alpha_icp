@@ -2,7 +2,7 @@
 // use ic_cdk::api::data_certificate; // Disabled for now
 use candid::Principal;
 use ic_cdk::{api::certified_data_set, *};
-use ic_http_certification::utils::skip_certification_certified_data;
+
 // use ic_http_certification::{utils::add_skip_certification_header, HttpResponse}; // Disabled for now
 
 // Import modules
@@ -64,12 +64,6 @@ pub fn verify_nonce(nonce: String) -> Option<Principal> {
     memory::get_nonce_proof(nonce)
 }
 
-#[ic_cdk::query]
-pub fn list_users() -> Vec<types::CapsuleHeader> {
-    // Redirect to capsule listing
-    capsules_list()
-}
-
 // Admin management endpoints
 #[ic_cdk::update]
 pub fn add_admin(principal: Principal) -> bool {
@@ -90,8 +84,6 @@ pub fn list_admins() -> Vec<Principal> {
 pub fn list_superadmins() -> Vec<Principal> {
     admin::list_superadmins()
 }
-
-
 
 // Flexible resource binding function for Neon database
 #[ic_cdk::update]
@@ -222,11 +214,6 @@ pub async fn create_personal_canister() -> canister_factory::PersonalCanisterCre
             message: format!("Personal canister creation failed: {}", error),
         },
     }
-}
-
-#[ic_cdk::query]
-pub fn get_api_version() -> String {
-    canister_factory::get_api_version()
 }
 
 #[ic_cdk::query]
@@ -361,11 +348,6 @@ pub fn set_migration_enabled(enabled: bool) -> Result<(), String> {
 #[ic_cdk::query]
 pub fn get_migration_stats() -> Result<canister_factory::PersonalCanisterCreationStats, String> {
     get_personal_canister_creation_stats()
-}
-
-#[init]
-fn init() {
-    certified_data_set(&skip_certification_certified_data());
 }
 
 // pub use memories::*; // Disabled for now

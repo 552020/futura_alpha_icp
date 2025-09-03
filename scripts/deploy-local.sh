@@ -21,15 +21,26 @@ fi
 # Check if required tools are installed
 MISSING_TOOLS=()
 
-if ! command -v generate-did >/dev/null 2>&1; then
+# Check if required tools are installed (check both PATH and ~/.cargo/bin)
+MISSING_TOOLS=()
+
+# Helper function to check if tool exists in PATH or ~/.cargo/bin
+check_tool() {
+    local tool_name=$1
+    if command -v "$tool_name" >/dev/null 2>&1 || command -v "$HOME/.cargo/bin/$tool_name" >/dev/null 2>&1; then
+        return 0  # Tool found
+    else
+        return 1  # Tool not found
+    fi
+}
+
+if ! check_tool "generate-did"; then
     MISSING_TOOLS+=("generate-did")
 fi
 
-if ! command -v ic-cdk-optimizer >/dev/null 2>&1; then
-    MISSING_TOOLS+=("ic-cdk-optimizer")
-fi
 
-if ! command -v candid-extractor >/dev/null 2>&1; then
+
+if ! check_tool "candid-extractor"; then
     MISSING_TOOLS+=("candid-extractor")
 fi
 
@@ -37,7 +48,6 @@ if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
     echo -e "${RED}❌ Missing required tools: ${MISSING_TOOLS[*]}${NC}"
     echo -e "${YELLOW}Please install them using:${NC}"
     echo -e "${CYAN}   cargo install generate-did${NC}"
-    echo -e "${CYAN}   cargo install ic-cdk-optimizer --locked${NC}"
     echo -e "${CYAN}   cargo install candid-extractor --locked${NC}"
     echo -e "${YELLOW}Then run this script again.${NC}"
     exit 1
