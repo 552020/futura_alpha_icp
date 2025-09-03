@@ -102,12 +102,6 @@ pub fn list_superadmins() -> Vec<Principal> {
     admin::list_superadmins()
 }
 
-// Capsule registration (replaces user registration)
-#[ic_cdk::update]
-pub fn register_capsule() -> types::CapsuleRegistrationResult {
-    capsule::register_capsule()
-}
-
 // Mark capsule as bound to Web2 (replaces mark_bound)
 #[ic_cdk::update]
 pub fn mark_capsule_bound_to_web2() -> bool {
@@ -116,13 +110,16 @@ pub fn mark_capsule_bound_to_web2() -> bool {
 
 // Capsule management endpoints
 #[ic_cdk::update]
-pub fn create_capsule(subject: types::PersonRef) -> types::CapsuleCreationResult {
-    capsule::create_capsule(subject)
+pub fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
+    capsule::capsules_create(subject)
 }
 
 #[ic_cdk::query]
-pub fn capsules_read(capsule_id: String) -> Option<types::Capsule> {
-    capsule::capsules_read(capsule_id)
+pub fn capsules_read(capsule_id: Option<String>) -> Option<types::Capsule> {
+    match capsule_id {
+        Some(id) => capsule::capsules_read(id),
+        None => capsule::capsule_read_self(),
+    }
 }
 
 #[ic_cdk::query]

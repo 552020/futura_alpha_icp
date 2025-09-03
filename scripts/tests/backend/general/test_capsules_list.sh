@@ -31,9 +31,9 @@ has_expected_fields() {
     local response="$1"
     # Check for common Candid field hashes that indicate a valid capsule
     # These are the hash values from the actual response
-    echo "$response" | grep -q "23_515 = " && \
-    echo "$response" | grep -q "696_779_180 = " && \
-    echo "$response" | grep -q "1_116_327_043 = "
+    echo "$response" | grep -q "id = " && \
+    echo "$response" | grep -q "subject = " && \
+    echo "$response" | grep -q "owner_count = "
 }
 
 # Helper function to extract capsule count from response

@@ -189,10 +189,48 @@ impl Capsule {
 
 // Note: CAPSULES storage moved to memory.rs for centralized storage
 
-/// Create a new capsule
-pub fn create_capsule(subject: PersonRef) -> CapsuleCreationResult {
+/// Create a new capsule with optional subject
+/// If subject is None, creates a self-capsule (subject = caller)
+/// If subject is provided, creates a capsule for that subject
+pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
     let caller = PersonRef::from_caller();
-    let capsule = Capsule::new(subject, caller);
+
+    // Check if caller already has a self-capsule when creating self-capsule
+    let is_self_capsule = subject.is_none();
+
+    if is_self_capsule {
+        let existing_self_capsule = with_capsules(|capsules| {
+            capsules
+                .values()
+                .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+                .cloned()
+        });
+
+        if let Some(mut capsule) = existing_self_capsule {
+            // Update existing self-capsule activity
+            let now = time();
+            capsule.updated_at = now;
+
+            if let Some(owner_state) = capsule.owners.get_mut(&caller) {
+                owner_state.last_activity_at = now;
+            }
+
+            // Store the updated capsule
+            with_capsules_mut(|capsules| {
+                capsules.insert(capsule.id.clone(), capsule.clone());
+            });
+
+            return CapsuleCreationResult {
+                success: true,
+                capsule_id: Some(capsule.id),
+                message: "Welcome back! Your capsule is ready.".to_string(),
+            };
+        }
+    }
+
+    // Create new capsule
+    let actual_subject = subject.unwrap_or_else(|| caller.clone());
+    let capsule = Capsule::new(actual_subject, caller);
     let capsule_id = capsule.id.clone();
 
     with_capsules_mut(|capsules| {
@@ -202,7 +240,11 @@ pub fn create_capsule(subject: PersonRef) -> CapsuleCreationResult {
     CapsuleCreationResult {
         success: true,
         capsule_id: Some(capsule_id),
-        message: "Capsule created".to_string(),
+        message: if is_self_capsule {
+            "Self-capsule created successfully!".to_string()
+        } else {
+            "Capsule created".to_string()
+        },
     }
 }
 
@@ -218,6 +260,18 @@ pub fn capsules_read(capsule_id: String) -> Option<Capsule> {
     })
 }
 
+/// Get caller's self-capsule (where caller is the subject)
+pub fn capsule_read_self() -> Option<Capsule> {
+    let caller = PersonRef::from_caller();
+
+    with_capsules(|capsules| {
+        capsules
+            .values()
+            .find(|capsule| capsule.subject == caller)
+            .cloned()
+    })
+}
+
 /// List capsules owned or controlled by caller
 pub fn capsules_list() -> Vec<CapsuleHeader> {
     let caller = PersonRef::from_caller();
@@ -229,71 +283,6 @@ pub fn capsules_list() -> Vec<CapsuleHeader> {
             .map(|capsule| capsule.to_header())
             .collect()
     })
-}
-
-/// Register capsule for current user (idempotent self-registration)
-/// Creates a capsule where the caller is both subject and owner
-pub fn register_capsule() -> CapsuleRegistrationResult {
-    let caller_ref = PersonRef::from_caller();
-
-    // Check if caller already has a self-capsule (subject == owner == caller)
-    let existing_self_capsule = with_capsules(|capsules| {
-        capsules
-            .values()
-            .find(|capsule| {
-                capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref)
-            })
-            .cloned()
-    });
-
-    match existing_self_capsule {
-        Some(mut capsule) => {
-            // Update owner activity and capsule timestamp
-            let now = time();
-            capsule.updated_at = now;
-
-            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                owner_state.last_activity_at = now;
-            }
-
-            // Store the updated capsule
-            with_capsules_mut(|capsules| {
-                capsules.insert(capsule.id.clone(), capsule.clone());
-            });
-
-            CapsuleRegistrationResult {
-                success: true,
-                capsule_id: Some(capsule.id),
-                is_new: false,
-                message: "Welcome back! Your capsule is ready.".to_string(),
-            }
-        }
-        None => {
-            // Create new self-capsule (subject = caller, owner = caller automatically)
-            match create_capsule(caller_ref.clone()) {
-                CapsuleCreationResult {
-                    success: true,
-                    capsule_id,
-                    ..
-                } => CapsuleRegistrationResult {
-                    success: true,
-                    capsule_id,
-                    is_new: true,
-                    message: "Capsule created successfully!".to_string(),
-                },
-                CapsuleCreationResult {
-                    success: false,
-                    message,
-                    ..
-                } => CapsuleRegistrationResult {
-                    success: false,
-                    capsule_id: None,
-                    is_new: false,
-                    message: format!("Failed to create capsule: {}", message),
-                },
-            }
-        }
-    }
 }
 
 /// Simple user registration for II integration (idempotent)
@@ -328,7 +317,7 @@ pub fn register() -> bool {
         }
         None => {
             // Create new self-capsule with basic info
-            match create_capsule(caller_ref.clone()) {
+            match capsules_create(None) {
                 CapsuleCreationResult { success: true, .. } => true,
                 CapsuleCreationResult { success: false, .. } => false,
             }
@@ -422,7 +411,7 @@ pub fn store_gallery_forever(gallery_data: GalleryData) -> StoreGalleryResponse 
         Some(capsule) => Some(capsule),
         None => {
             // No capsule found - create one automatically for first-time users
-            match create_capsule(caller.clone()) {
+            match capsules_create(None) {
                 CapsuleCreationResult { success: true, .. } => {
                     // Now get the newly created capsule
                     with_capsules(|capsules| {
@@ -529,7 +518,7 @@ pub fn store_gallery_forever_with_memories(
         Some(capsule) => Some(capsule),
         None => {
             // No capsule found - create one automatically for first-time users
-            match create_capsule(caller.clone()) {
+            match capsules_create(None) {
                 CapsuleCreationResult { success: true, .. } => {
                     // Now get the newly created capsule
                     with_capsules(|capsules| {

@@ -389,8 +389,9 @@ service : () -> {
   begin_asset_upload : (text, MemoryType, text, nat32, nat64) -> (ICPResult);
   // Cancel upload and cleanup resources
   cancel_upload : (text) -> (ICPResult_1);
+  capsules_create : (opt PersonRef) -> (CapsuleCreationResult);
   capsules_list : () -> (vec CapsuleHeader) query;
-  capsules_read : (text) -> (opt Capsule) query;
+  capsules_read : (opt text) -> (opt Capsule) query;
   // Clean up expired upload sessions (admin function)
   cleanup_expired_sessions : () -> (nat32);
   // Clean up orphaned chunks (admin function)

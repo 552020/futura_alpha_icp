@@ -34,9 +34,9 @@ has_expected_capsule_fields() {
     local response="$1"
     # Check for common Candid field hashes that indicate a valid capsule
     # These are the hash values from the actual response
-    echo "$response" | grep -q "23_515 = " && \
-    echo "$response" | grep -q "696_779_180 = " && \
-    echo "$response" | grep -q "1_779_848_746 = "
+    echo "$response" | grep -q "id = " && \
+    echo "$response" | grep -q "subject = " && \
+    echo "$response" | grep -q "owners = "
 }
 
 # Helper function to increment test counters
@@ -76,11 +76,36 @@ test_setup_user_and_capsule() {
     echo_info "Setup complete"
 }
 
-# Test 1: Basic capsules_read call with invalid ID
+# Test 1: Basic capsules_read call with no ID (should return self-capsule)
+test_capsules_read_self() {
+    echo_info "Testing capsules_read functionality with no ID (self-capsule)..."
+    
+    local response=$(dfx canister call backend capsules_read 2>/dev/null)
+    echo_info "Response: '$response'"
+    
+    if [ $? -eq 0 ]; then
+        if has_capsule_data "$response"; then
+            echo_pass "capsules_read call successful with no ID (returns self-capsule)"
+            return 0
+        elif is_none_response "$response"; then
+            echo_pass "capsules_read call successful with no ID (returns null - no self-capsule)"
+            return 0
+        else
+            echo_fail "capsules_read should return capsule data or null for self-capsule"
+            echo_info "Expected capsule data or null, got: '$response'"
+            return 1
+        fi
+    else
+        echo_fail "capsules_read call failed"
+        return 1
+    fi
+}
+
+# Test 2: Basic capsules_read call with invalid ID
 test_basic_capsules_read_invalid() {
     echo_info "Testing basic capsules_read functionality with invalid ID..."
     
-    local response=$(dfx canister call backend capsules_read '("test_invalid_id")' 2>/dev/null)
+    local response=$(dfx canister call backend capsules_read '(opt "test_invalid_id")' 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -98,11 +123,11 @@ test_basic_capsules_read_invalid() {
     fi
 }
 
-# Test 2: Test capsules_read with empty string
+# Test 3: Test capsules_read with empty string
 test_capsules_read_empty_string() {
     echo_info "Testing capsules_read with empty string..."
     
-    local response=$(dfx canister call backend capsules_read '("")' 2>/dev/null)
+    local response=$(dfx canister call backend capsules_read '(opt "")' 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -120,7 +145,7 @@ test_capsules_read_empty_string() {
     fi
 }
 
-# Test 3: Test capsules_read with valid capsule ID (if user has capsules)
+# Test 4: Test capsules_read with valid capsule ID (if user has capsules)
 test_capsules_read_valid_id() {
     echo_info "Testing capsules_read with valid capsule ID..."
     
@@ -144,7 +169,7 @@ test_capsules_read_valid_id() {
         
         if [ -n "$capsule_id" ]; then
             echo_info "Testing with existing capsule ID: $capsule_id"
-            local response=$(dfx canister call backend capsules_read '("'"$capsule_id"'")' 2>/dev/null)
+            local response=$(dfx canister call backend capsules_read '(opt "'"$capsule_id"'")' 2>/dev/null)
             echo_info "Response: '$response'"
             
             if [ $? -eq 0 ] && has_capsule_data "$response"; then
@@ -162,7 +187,7 @@ test_capsules_read_valid_id() {
     fi
 }
 
-# Test 4: Test with authenticated user
+# Test 5: Test with authenticated user
 test_authenticated_user() {
     echo_info "Testing capsules_read with authenticated user..."
     
@@ -170,7 +195,7 @@ test_authenticated_user() {
     local current_principal=$(dfx identity get-principal)
     echo_info "Current principal: $current_principal"
     
-    local response=$(dfx canister call backend capsules_read "test_id" 2>/dev/null)
+    local response=$(dfx canister call backend capsules_read '(opt "test_id")' 2>/dev/null)
     
     if [ $? -eq 0 ]; then
         echo_pass "capsules_read works with authenticated user"
@@ -181,7 +206,7 @@ test_authenticated_user() {
     fi
 }
 
-# Test 5: Test response structure for valid capsule
+# Test 6: Test response structure for valid capsule
 test_response_structure() {
     echo_info "Testing response structure..."
     
@@ -190,7 +215,7 @@ test_response_structure() {
     
     if echo "$capsules_response" | grep -q "vec {}"; then
         echo_info "User has no capsules, testing structure with invalid ID"
-        local response=$(dfx canister call backend capsules_read "no_capsules_exist" 2>/dev/null)
+        local response=$(dfx canister call backend capsules_read '(opt "no_capsules_exist")' 2>/dev/null)
         
         if is_none_response "$response"; then
             echo_pass "Response structure is correct for non-existent capsule (null)"
@@ -204,7 +229,7 @@ test_response_structure() {
         local capsule_id=$(echo "$capsules_response" | grep -o '"[^"]*"' | head -1 | tr -d '"')
         
         if [ -n "$capsule_id" ]; then
-            local response=$(dfx canister call backend capsules_read '("'"$capsule_id"'")' 2>/dev/null)
+            local response=$(dfx canister call backend capsules_read '(opt "'"$capsule_id"'")' 2>/dev/null)
             echo_info "Response: '$response'"
             
             if has_expected_capsule_fields "$response"; then
@@ -231,6 +256,7 @@ main() {
     test_setup_user_and_capsule
     
     # Run tests
+    run_test "capsules_read with no ID (self-capsule)" test_capsules_read_self
     run_test "Basic capsules_read call with invalid ID" test_basic_capsules_read_invalid
     run_test "capsules_read with empty string" test_capsules_read_empty_string
     run_test "capsules_read with valid capsule ID" test_capsules_read_valid_id
