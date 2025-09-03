@@ -444,22 +444,12 @@ pub fn upsert_metadata(
     metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
 }
 
-/// Check if a single memory's metadata exists on ICP
+/// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
 #[ic_cdk::query]
-pub fn get_memory_presence_icp(
-    memory_id: String,
-) -> types::ICPResult<types::MemoryPresenceResponse> {
-    metadata::get_memory_presence_icp(memory_id)
-}
-
-/// Check presence for multiple memories with pagination
-#[ic_cdk::query]
-pub fn get_memory_list_presence_icp(
+pub fn memories_ping(
     memory_ids: Vec<String>,
-    cursor: Option<String>,
-    limit: u32,
-) -> types::ICPResult<types::MemoryListPresenceResponse> {
-    metadata::get_memory_list_presence_icp(memory_ids, cursor, limit)
+) -> types::ICPResult<Vec<types::MemoryPresenceResult>> {
+    metadata::memories_ping(memory_ids)
 }
 
 // ============================================================================

@@ -184,26 +184,21 @@ type ICPResult_2 = record {
   success : bool;
 };
 type ICPResult_3 = record {
-  data : opt MemoryListPresenceResponse;
+  data : opt vec MemoryPresenceResult;
   error : opt ICPErrorCode;
   success : bool;
 };
 type ICPResult_4 = record {
-  data : opt MemoryPresenceResponse;
-  error : opt ICPErrorCode;
-  success : bool;
-};
-type ICPResult_5 = record {
   data : opt ChunkResponse;
   error : opt ICPErrorCode;
   success : bool;
 };
-type ICPResult_6 = record {
+type ICPResult_5 = record {
   data : opt BatchMemorySyncResponse;
   error : opt ICPErrorCode;
   success : bool;
 };
-type ICPResult_7 = record {
+type ICPResult_6 = record {
   data : opt MetadataResponse;
   error : opt ICPErrorCode;
   success : bool;
@@ -240,13 +235,6 @@ type MemoryInfo = record {
   created_at : nat64;
   uploaded_at : nat64;
 };
-type MemoryListPresenceResponse = record {
-  cursor : opt text;
-  results : vec MemoryPresenceResult;
-  error : opt ICPErrorCode;
-  success : bool;
-  has_more : bool;
-};
 type MemoryListResponse = record {
   memories : vec Memory;
   message : text;
@@ -273,12 +261,6 @@ type MemoryOperationResponse = record {
   memory_id : opt text;
   message : text;
   success : bool;
-};
-type MemoryPresenceResponse = record {
-  metadata_present : bool;
-  error : opt ICPErrorCode;
-  success : bool;
-  asset_present : bool;
 };
 type MemoryPresenceResult = record {
   metadata_present : bool;
@@ -382,7 +364,7 @@ type VideoMetadata = record {
   base : MemoryMetadataBase;
   width : opt nat32;
 };
-service : () -> {
+service : {
   add_admin : (principal) -> (bool);
   // Begin chunked upload session for large files
   begin_asset_upload : (text, MemoryType, text, nat32, nat64) -> (ICPResult);
@@ -410,17 +392,10 @@ service : () -> {
   galleries_list : () -> (vec Gallery) query;
   galleries_read : (text) -> (opt Gallery) query;
   galleries_update : (text, GalleryUpdateData) -> (UpdateGalleryResponse);
-  get_api_version : () -> (text) query;
   get_creation_states_by_status : (CreationStatus) -> (Result_1) query;
   get_creation_status : () -> (opt CreationStatusResponse) query;
   get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
   get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
-  // Check presence for multiple memories with pagination
-  get_memory_list_presence_icp : (vec text, opt text, nat32) -> (
-      ICPResult_3,
-    ) query;
-  // Check if a single memory's metadata exists on ICP
-  get_memory_presence_icp : (text) -> (ICPResult_4) query;
   get_migration_states_by_status : (CreationStatus) -> (Result_1) query;
   get_migration_stats : () -> (Result_2) query;
   get_migration_status : () -> (opt CreationStatusResponse) query;
@@ -438,27 +413,28 @@ service : () -> {
   list_all_creation_states : () -> (Result_1) query;
   list_all_migration_states : () -> (Result_1) query;
   list_superadmins : () -> (vec principal) query;
-  list_users : () -> (vec CapsuleHeader) query;
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
+  // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
+  memories_ping : (vec text) -> (ICPResult_3) query;
   memories_read : (text) -> (opt Memory) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
   // Upload individual file chunk
-  put_chunk : (text, nat32, blob) -> (ICPResult_5);
+  put_chunk : (text, nat32, blob) -> (ICPResult_4);
   register : () -> (bool);
   register_with_nonce : (text) -> (bool);
   remove_admin : (principal) -> (bool);
   set_migration_enabled : (bool) -> (Result_4);
   set_personal_canister_creation_enabled : (bool) -> (Result_4);
   // Batch sync multiple memories for a gallery to ICP
-  sync_gallery_memories : (text, vec MemorySyncRequest) -> (ICPResult_6);
+  sync_gallery_memories : (text, vec MemorySyncRequest) -> (ICPResult_5);
   update_gallery_storage_status : (text, GalleryStorageStatus) -> (bool);
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
-      ICPResult_7,
+      ICPResult_6,
     );
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;

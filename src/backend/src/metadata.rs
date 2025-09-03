@@ -88,56 +88,10 @@ pub fn upsert_metadata(
     ))
 }
 
-/// Check if a single memory's metadata exists on ICP
-pub fn get_memory_presence_icp(memory_id: String) -> ICPResult<MemoryPresenceResponse> {
-    let (metadata_present, asset_present) = with_stable_memory_artifacts(|artifacts| {
-        let metadata_exists = artifacts
-            .iter()
-            .any(|(key, _)| key.contains(&memory_id) && key.contains("metadata"));
-        let asset_exists = artifacts
-            .iter()
-            .any(|(key, _)| key.contains(&memory_id) && key.contains("asset"));
-
-        (metadata_exists, asset_exists)
-    });
-
-    ICPResult::ok(MemoryPresenceResponse::ok(metadata_present, asset_present))
-}
-
-/// Check presence for multiple memories with pagination
-pub fn get_memory_list_presence_icp(
-    memory_ids: Vec<String>,
-    cursor: Option<String>,
-    limit: u32,
-) -> ICPResult<MemoryListPresenceResponse> {
-    // Validate limit
-    const MAX_LIMIT: u32 = 100;
-    const DEFAULT_LIMIT: u32 = 20;
-
-    let effective_limit = if limit == 0 {
-        DEFAULT_LIMIT
-    } else if limit > MAX_LIMIT {
-        MAX_LIMIT
-    } else {
-        limit
-    };
-
-    // Handle pagination
-    let start_index = cursor
-        .as_ref()
-        .and_then(|c| c.parse::<usize>().ok())
-        .unwrap_or(0);
-
-    let end_index = std::cmp::min(start_index + effective_limit as usize, memory_ids.len());
-
-    if start_index >= memory_ids.len() {
-        return ICPResult::ok(MemoryListPresenceResponse::ok(vec![], None, false));
-    }
-
-    let page_memory_ids = &memory_ids[start_index..end_index];
-
-    // Check presence for each memory in the page
-    let results: Vec<MemoryPresenceResult> = page_memory_ids
+/// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
+pub fn memories_ping(memory_ids: Vec<String>) -> ICPResult<Vec<MemoryPresenceResult>> {
+    // Check presence for each memory
+    let results: Vec<MemoryPresenceResult> = memory_ids
         .iter()
         .map(|memory_id| {
             let (metadata_present, asset_present) = with_stable_memory_artifacts(|artifacts| {
@@ -159,19 +113,7 @@ pub fn get_memory_list_presence_icp(
         })
         .collect();
 
-    // Determine if there are more results
-    let has_more = end_index < memory_ids.len();
-    let next_cursor = if has_more {
-        Some(end_index.to_string())
-    } else {
-        None
-    };
-
-    ICPResult::ok(MemoryListPresenceResponse::ok(
-        results,
-        next_cursor,
-        has_more,
-    ))
+    ICPResult::ok(results)
 }
 
 // ============================================================================
@@ -275,34 +217,31 @@ mod tests {
     }
 
     #[test]
-    fn test_get_memory_presence_icp_not_found() {
+    fn test_memories_ping_not_found() {
         let memory_id = "nonexistent_memory".to_string();
-        let result = get_memory_presence_icp(memory_id);
+        let result = memories_ping(vec![memory_id]);
 
         assert!(result.is_ok());
         if let Some(response) = result.data {
-            assert!(response.success);
-            assert!(!response.metadata_present);
-            assert!(!response.asset_present);
+            assert_eq!(response.len(), 1);
+            assert!(!response[0].metadata_present);
+            assert!(!response[0].asset_present);
         }
     }
 
     #[test]
-    fn test_get_memory_list_presence_icp_empty() {
+    fn test_memories_ping_empty() {
         let memory_ids = vec![];
-        let result = get_memory_list_presence_icp(memory_ids, None, 20);
+        let result = memories_ping(memory_ids);
 
         assert!(result.is_ok());
         if let Some(response) = result.data {
-            assert!(response.success);
-            assert!(response.results.is_empty());
-            assert!(!response.has_more);
-            assert!(response.cursor.is_none());
+            assert_eq!(response.len(), 0);
         }
     }
 
     #[test]
-    fn test_get_memory_list_presence_icp_pagination() {
+    fn test_memories_ping_multiple() {
         let memory_ids = vec![
             "mem1".to_string(),
             "mem2".to_string(),
@@ -311,37 +250,29 @@ mod tests {
             "mem5".to_string(),
         ];
 
-        // Test first page
-        let result = get_memory_list_presence_icp(memory_ids.clone(), None, 2);
+        let result = memories_ping(memory_ids);
         assert!(result.is_ok());
         if let Some(response) = result.data {
-            assert!(response.success);
-            assert_eq!(response.results.len(), 2);
-            assert!(response.has_more);
-            assert!(response.cursor.is_some());
-        }
-
-        // Test with cursor
-        let result = get_memory_list_presence_icp(memory_ids, Some("2".to_string()), 2);
-        assert!(result.is_ok());
-        if let Some(response) = result.data {
-            assert!(response.success);
-            assert_eq!(response.results.len(), 2);
-            assert!(response.has_more);
+            assert_eq!(response.len(), 5);
+            // All memories should not be present (nonexistent)
+            for memory_presence in response {
+                assert!(!memory_presence.metadata_present);
+                assert!(!memory_presence.asset_present);
+            }
         }
     }
 
     #[test]
-    fn test_limit_validation() {
+    fn test_memories_ping_single() {
         let memory_ids = vec!["mem1".to_string()];
 
-        // Test limit too high
-        let result = get_memory_list_presence_icp(memory_ids.clone(), None, 200);
+        let result = memories_ping(memory_ids);
         assert!(result.is_ok());
-
-        // Test zero limit (should use default)
-        let result = get_memory_list_presence_icp(memory_ids, None, 0);
-        assert!(result.is_ok());
+        if let Some(response) = result.data {
+            assert_eq!(response.len(), 1);
+            assert!(!response[0].metadata_present);
+            assert!(!response[0].asset_present);
+        }
     }
 }
 #[test]
@@ -373,24 +304,13 @@ fn test_integration_upsert_and_query() {
     );
     assert!(upsert_result.is_ok());
 
-    // 2. Query single memory presence
-    let presence_result = get_memory_presence_icp(memory_id.clone());
+    // 2. Query memory presence
+    let presence_result = memories_ping(vec![memory_id.clone()]);
     assert!(presence_result.is_ok());
     if let Some(response) = presence_result.data {
-        assert!(response.success);
-        assert!(response.metadata_present);
-        assert!(!response.asset_present); // Asset not stored yet
-    }
-
-    // 3. Query multiple memories presence
-    let list_result = get_memory_list_presence_icp(vec![memory_id.clone()], None, 10);
-    assert!(list_result.is_ok());
-    if let Some(response) = list_result.data {
-        assert!(response.success);
-        assert_eq!(response.results.len(), 1);
-        assert_eq!(response.results[0].memory_id, memory_id);
-        assert!(response.results[0].metadata_present);
-        assert!(!response.results[0].asset_present);
+        assert_eq!(response.len(), 1);
+        assert!(response[0].metadata_present);
+        assert!(!response[0].asset_present); // Asset not stored yet
     }
 
     // 4. Test idempotency - same operation should succeed without error
