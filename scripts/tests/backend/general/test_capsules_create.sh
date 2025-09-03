@@ -17,13 +17,13 @@ FAILED_TESTS=0
 # Helper function to check if response contains capsule creation success
 has_creation_success() {
     local response="$1"
-    echo "$response" | grep -q "3_092_129_219 = true"
+    echo "$response" | grep -q "success = true"
 }
 
 # Helper function to check if response contains capsule ID
 has_capsule_id() {
     local response="$1"
-    echo "$response" | grep -q "948_848_493 = opt"
+    echo "$response" | grep -q "capsule_id = opt"
 }
 
 # Helper function to check if response contains expected message
@@ -91,7 +91,7 @@ test_capsules_create_with_subject() {
     echo_info "Testing capsules_create with specific subject..."
     
     # Create a PersonRef for testing (using caller as subject for simplicity)
-    local response=$(dfx canister call backend capsules_create '(opt record { Principal = principal "2vxsx-fae" })' 2>/dev/null)
+    local response=$(dfx canister call backend capsules_create '(opt variant { Principal = principal "2vxsx-fae" })' 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
