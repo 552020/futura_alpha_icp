@@ -50,11 +50,11 @@ main() {
     echo ""
     
     # Run all memory test files
-    run_test_file "$SCRIPT_DIR/test_add_memory.sh" "Add Memory Test"
-    run_test_file "$SCRIPT_DIR/test_get_memory.sh" "Get Memory Test"
-    run_test_file "$SCRIPT_DIR/test_update_memory.sh" "Update Memory Test"
-    run_test_file "$SCRIPT_DIR/test_delete_memory.sh" "Delete Memory Test"
-    run_test_file "$SCRIPT_DIR/test_list_memories.sh" "List Memories Test"
+    run_test_file "$SCRIPT_DIR/test_memories_create.sh" "Add Memory Test"
+    run_test_file "$SCRIPT_DIR/test_memories_read.sh" "Get Memory Test"
+    run_test_file "$SCRIPT_DIR/test_memories_update.sh" "Update Memory Test"
+    run_test_file "$SCRIPT_DIR/test_memories_delete.sh" "Delete Memory Test"
+    run_test_file "$SCRIPT_DIR/test_memories_list.sh" "List Memories Test"
     run_test_file "$SCRIPT_DIR/test_memory_upload.sh" "Memory Upload Test"
     run_test_file "$SCRIPT_DIR/test_memory_crud.sh" "Memory CRUD Test"
     

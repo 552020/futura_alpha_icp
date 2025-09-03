@@ -197,8 +197,8 @@ pub async fn memories_update(
 }
 
 #[ic_cdk::update]
-pub async fn delete_memory_from_capsule(memory_id: String) -> types::MemoryOperationResponse {
-    capsule::delete_memory_from_capsule(memory_id)
+pub async fn memories_delete(memory_id: String) -> types::MemoryOperationResponse {
+    capsule::memories_delete(memory_id)
 }
 
 #[ic_cdk::query]

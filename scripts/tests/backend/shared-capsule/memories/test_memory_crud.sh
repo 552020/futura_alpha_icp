@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test memory CRUD operations
-# Tests memories_update, delete_memory_from_capsule, and memories_list endpoints
+# Tests memories_update, memories_delete, and memories_list endpoints
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -410,7 +410,7 @@ test_update_memory_verify_changes() {
     fi
 }
 
-# Test functions for delete_memory_from_capsule
+# Test functions for memories_delete
 
 test_delete_existing_memory() {
     # Upload a test memory first
@@ -422,7 +422,7 @@ test_delete_existing_memory() {
     fi
     
     # Delete the memory
-    local result=$(dfx canister call backend delete_memory_from_capsule "(\"$memory_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_delete "(\"$memory_id\")" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Memory deletion successful for ID: $memory_id"
@@ -436,7 +436,7 @@ test_delete_existing_memory() {
 test_delete_nonexistent_memory() {
     # Try to delete a memory that doesn't exist
     local fake_id="nonexistent_memory_id_54321"
-    local result=$(dfx canister call backend delete_memory_from_capsule "(\"$fake_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_delete "(\"$fake_id\")" 2>/dev/null)
     
     # Should fail with appropriate error
     if is_failure "$result"; then
@@ -458,7 +458,7 @@ test_delete_memory_verify_removal() {
     fi
     
     # Delete the memory
-    local delete_result=$(dfx canister call backend delete_memory_from_capsule "(\"$memory_id\")" 2>/dev/null)
+    local delete_result=$(dfx canister call backend memories_delete "(\"$memory_id\")" 2>/dev/null)
     
     if ! is_success "$delete_result"; then
         echo_info "Failed to delete memory for verification test"
@@ -479,7 +479,7 @@ test_delete_memory_verify_removal() {
 
 test_delete_memory_with_empty_id() {
     # Try to delete with empty memory ID
-    local result=$(dfx canister call backend delete_memory_from_capsule '("")' 2>/dev/null)
+    local result=$(dfx canister call backend memories_delete '("")' 2>/dev/null)
     
     # Should fail with appropriate error
     if is_failure "$result"; then
@@ -591,7 +591,7 @@ test_list_memories_consistency() {
     local count_before=$(echo "$list_before" | grep -o "record {" | wc -l)
     
     # Delete the memory
-    local delete_result=$(dfx canister call backend delete_memory_from_capsule "(\"$memory_id\")" 2>/dev/null)
+    local delete_result=$(dfx canister call backend memories_delete "(\"$memory_id\")" 2>/dev/null)
     
     if ! is_success "$delete_result"; then
         echo_info "Failed to delete memory for consistency test"
@@ -652,7 +652,7 @@ main() {
     run_test "Update memory with empty data" "test_update_memory_with_empty_data"
     run_test "Update memory and verify changes" "test_update_memory_verify_changes"
     
-    echo_info "=== Testing delete_memory_from_capsule endpoint ==="
+    echo_info "=== Testing memories_delete endpoint ==="
     run_test "Delete existing memory" "test_delete_existing_memory"
     run_test "Delete non-existent memory" "test_delete_nonexistent_memory"
     run_test "Delete memory and verify removal" "test_delete_memory_verify_removal"

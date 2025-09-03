@@ -398,7 +398,6 @@ service : () -> {
   // Finalize upload after all chunks received
   commit_asset : (text, text) -> (ICPResult_2);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
-  delete_memory_from_capsule : (text) -> (MemoryOperationResponse);
   galleries_create : (GalleryData) -> (StoreGalleryResponse);
   galleries_create_with_memories : (GalleryData, bool) -> (
       StoreGalleryResponse,
@@ -439,6 +438,7 @@ service : () -> {
   mark_bound : () -> (bool);
   mark_capsule_bound_to_web2 : () -> (bool);
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
+  memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   memories_read : (text) -> (opt Memory) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);

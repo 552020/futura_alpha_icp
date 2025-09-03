@@ -6,7 +6,7 @@
 set -e
 
 # Source test utilities
-source "$(dirname "$0")/../test_utils.sh"
+source "$(dirname "$0")/../../test_utils.sh"
 
 # Configuration
 CANISTER_ID="backend"
@@ -90,12 +90,68 @@ test_memories_list_empty_string() {
 
 
 
-# Test 5: Test memories_list response structure
+# Test 5: Test memories_list with memory counting and ID extraction
+test_memories_list_with_counting() {
+    echo_debug "Testing memories_list with memory counting and ID extraction..."
+    
+    # Get a valid capsule ID first
+    local capsule_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "(null)" 2>/dev/null)
+    local capsule_id=""
+    
+    if [[ $capsule_result == *"null"* ]]; then
+        echo_debug "No capsule found, creating one first..."
+        local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_create "(null)" 2>/dev/null)
+        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+    else
+        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    fi
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "Failed to get capsule ID for testing"
+        return 1
+    fi
+    
+    echo_debug "Testing with capsule ID: $capsule_id"
+    
+    # Call memories_list with the capsule ID
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\")" 2>/dev/null)
+    
+    if [[ $result == *"success = true"* ]]; then
+        echo_success "✅ memories_list with counting succeeded"
+        echo_debug "Result: $result"
+        
+        # Count memories (like the old test_list_memories.sh did)
+        local memory_count=$(echo "$result" | grep -o 'id = "[^"]*"' | wc -l)
+        echo_debug "Number of memories found: $memory_count"
+        
+        # Check if we have the test memory from other tests
+        if [ -f /tmp/test_memory_id.txt ]; then
+            local test_memory_id=$(cat /tmp/test_memory_id.txt)
+            if echo "$result" | grep -q "$test_memory_id"; then
+                echo_success "✅ Test memory found in list"
+            else
+                echo_debug "Test memory not found in list (may have been deleted)"
+            fi
+        fi
+        
+        # Show memory IDs if any exist
+        if [ "$memory_count" -gt 0 ]; then
+            echo_debug "Memory IDs:"
+            echo "$result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/'
+        fi
+    else
+        echo_error "❌ memories_list with counting failed"
+        echo_debug "Result: $result"
+        return 1
+    fi
+}
+
+# Test 6: Test memories_list response structure
 test_memories_list_response_structure() {
     echo_debug "Testing memories_list response structure..."
     
     # Get a valid capsule ID first
-    local capsule_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "()" 2>/dev/null)
+    local capsule_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "(null)" 2>/dev/null)
     local capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | cut -d'"' -f2)
     
     if [[ -z "$capsule_id" ]]; then
@@ -125,6 +181,7 @@ main() {
     run_test "Valid capsule ID" test_memories_list_valid_capsule
     run_test "Invalid capsule ID" test_memories_list_invalid_capsule
     run_test "Empty string" test_memories_list_empty_string
+    run_test "Memory counting and ID extraction" test_memories_list_with_counting
     run_test "Response structure" test_memories_list_response_structure
     
     echo_header "🎉 All memories_list tests completed successfully!"

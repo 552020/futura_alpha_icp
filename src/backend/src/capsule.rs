@@ -1107,29 +1107,28 @@ pub fn memories_update(memory_id: String, updates: MemoryUpdateData) -> MemoryOp
     }
 }
 
-
-
-/// Delete a memory from the caller's capsule
-pub fn delete_memory_from_capsule(memory_id: String) -> MemoryOperationResponse {
+/// Delete a memory by its ID (searches across all capsules the caller has access to)
+pub fn memories_delete(memory_id: String) -> MemoryOperationResponse {
     let caller = PersonRef::from_caller();
-
-    // Find caller's self-capsule and perform deletion
-    let mut capsule_found = false;
-    let mut memory_found = false;
     let memory_id_clone = memory_id.clone();
 
-    with_capsules_mut(|capsules| {
-        if let Some(capsule) = capsules
-            .values_mut()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-        {
-            capsule_found = true;
+    // Search across all capsules the caller has access to
+    let mut memory_found = false;
+    let mut capsule_found = false;
 
-            // Check if memory exists and remove it
-            if capsule.memories.contains_key(&memory_id) {
-                capsule.memories.remove(&memory_id);
-                capsule.touch(); // Update capsule timestamp
-                memory_found = true;
+    with_capsules_mut(|capsules| {
+        for capsule in capsules.values_mut() {
+            // Check if caller has access to this capsule
+            if capsule.has_write_access(&caller) {
+                capsule_found = true;
+
+                // Check if memory exists in this capsule and remove it
+                if capsule.memories.contains_key(&memory_id) {
+                    capsule.memories.remove(&memory_id);
+                    capsule.touch(); // Update capsule timestamp
+                    memory_found = true;
+                    break; // Found and deleted the memory, no need to search further
+                }
             }
         }
     });
@@ -1138,7 +1137,7 @@ pub fn delete_memory_from_capsule(memory_id: String) -> MemoryOperationResponse 
         return MemoryOperationResponse {
             success: false,
             memory_id: None,
-            message: "No capsule found for caller".to_string(),
+            message: "No accessible capsule found for caller".to_string(),
         };
     }
 
@@ -1146,7 +1145,7 @@ pub fn delete_memory_from_capsule(memory_id: String) -> MemoryOperationResponse 
         return MemoryOperationResponse {
             success: false,
             memory_id: None,
-            message: "Memory not found".to_string(),
+            message: "Memory not found in any accessible capsule".to_string(),
         };
     }
 

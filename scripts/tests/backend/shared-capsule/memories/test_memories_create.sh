@@ -6,7 +6,7 @@
 set -e
 
 # Source test utilities
-source "$(dirname "$0")/../test_utils.sh"
+source "$(dirname "$0")/../../test_utils.sh"
 
 # Configuration
 CANISTER_ID="backend"
@@ -53,6 +53,13 @@ test_memories_create_valid() {
     if [[ $result == *"success = true"* ]]; then
         echo_success "✅ memories_create with valid data succeeded"
         echo_debug "Result: $result"
+        
+        # Extract and save memory ID for other tests (like the old test_add_memory.sh did)
+        local memory_id=$(echo "$result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+        if [[ -n "$memory_id" ]]; then
+            echo "$memory_id" > /tmp/test_memory_id.txt
+            echo_debug "Saved memory ID to /tmp/test_memory_id.txt for other tests: $memory_id"
+        fi
     else
         echo_error "❌ memories_create with valid data failed"
         echo_debug "Result: $result"
