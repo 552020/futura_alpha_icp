@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Test memory upload functionality
-# Tests memories_create and memories_read endpoints
+# Advanced memory testing functionality
+# Tests comprehensive memory operations: content handling, storage, validation, persistence
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,7 +9,7 @@ source "scripts/tests/backend/test_config.sh"
 source "scripts/tests/backend/test_utils.sh"
 
 # Test configuration
-TEST_NAME="Memory Upload Tests"
+TEST_NAME="Advanced Memory Tests"
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
