@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Test script for update_memory_in_capsule endpoint
+# Test script for memories_update endpoint
 # This script tests updating a memory in the caller's capsule
 
 set -e
@@ -9,7 +9,7 @@ set -e
 CANISTER_ID="$(dfx canister id backend)"
 IDENTITY="default"
 
-echo "🧪 Testing update_memory_in_capsule endpoint"
+echo "🧪 Testing memories_update endpoint"
 echo "Canister ID: $CANISTER_ID"
 echo "Identity: $IDENTITY"
 echo ""
@@ -89,9 +89,9 @@ TEST_UPDATE_DATA='(record {
 echo "✅ Test update data created"
 echo ""
 
-# Call update_memory_in_capsule endpoint
-echo "🚀 Calling update_memory_in_capsule..."
-RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID update_memory_in_capsule "(\"$MEMORY_ID\", $TEST_UPDATE_DATA)")
+    # Call memories_update endpoint
+    echo "🚀 Calling memories_update..."
+    RESULT=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"$MEMORY_ID\", $TEST_UPDATE_DATA)")
 
 echo "📊 Result:"
 echo "$RESULT"
@@ -123,4 +123,4 @@ else
 fi
 
 echo ""
-echo "🎉 update_memory_in_capsule test completed successfully!"
+echo "🎉 memories_update test completed successfully!"

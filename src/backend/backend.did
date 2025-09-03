@@ -441,6 +441,7 @@ service : () -> {
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   memories_read : (text) -> (opt Memory) query;
+  memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
   // Upload individual file chunk
@@ -453,9 +454,6 @@ service : () -> {
   // Batch sync multiple memories for a gallery to ICP
   sync_gallery_memories : (text, vec MemorySyncRequest) -> (ICPResult_6);
   update_gallery_storage_status : (text, GalleryStorageStatus) -> (bool);
-  update_memory_in_capsule : (text, MemoryUpdateData) -> (
-      MemoryOperationResponse,
-    );
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
       ICPResult_7,

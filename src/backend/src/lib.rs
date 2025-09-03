@@ -189,11 +189,11 @@ pub fn memories_read(memory_id: String) -> Option<types::Memory> {
 }
 
 #[ic_cdk::update]
-pub async fn update_memory_in_capsule(
+pub async fn memories_update(
     memory_id: String,
     updates: types::MemoryUpdateData,
 ) -> types::MemoryOperationResponse {
-    capsule::update_memory_in_capsule(memory_id, updates)
+    capsule::memories_update(memory_id, updates)
 }
 
 #[ic_cdk::update]

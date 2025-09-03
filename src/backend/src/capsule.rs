@@ -1043,46 +1043,43 @@ pub fn memories_read(memory_id: String) -> Option<Memory> {
     })
 }
 
-/// Update a memory in the caller's capsule
-pub fn update_memory_in_capsule(
-    memory_id: String,
-    updates: MemoryUpdateData,
-) -> MemoryOperationResponse {
+/// Update a memory by its ID (searches across all capsules the caller has access to)
+pub fn memories_update(memory_id: String, updates: MemoryUpdateData) -> MemoryOperationResponse {
     let caller = PersonRef::from_caller();
-
-    // Find caller's self-capsule and perform update
-    let mut capsule_found = false;
-    let mut memory_found = false;
     let memory_id_clone = memory_id.clone();
 
+    // Find the capsule containing the memory and perform update
+    let mut capsule_found = false;
+    let mut memory_found = false;
+
     with_capsules_mut(|capsules| {
-        if let Some(capsule) = capsules
-            .values_mut()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-        {
-            capsule_found = true;
+        for capsule in capsules.values_mut() {
+            // Check if caller has access to this capsule
+            if capsule.owners.contains_key(&caller) || capsule.subject == caller {
+                // Check if memory exists in this capsule
+                if let Some(memory) = capsule.memories.get(&memory_id) {
+                    capsule_found = true;
+                    memory_found = true;
 
-            // Check if memory exists
-            if let Some(memory) = capsule.memories.get(&memory_id) {
-                memory_found = true;
+                    // Update memory fields
+                    let mut updated_memory = memory.clone();
+                    if let Some(name) = updates.name.clone() {
+                        updated_memory.info.name = name;
+                    }
+                    if let Some(metadata) = updates.metadata.clone() {
+                        updated_memory.metadata = metadata;
+                    }
+                    if let Some(access) = updates.access.clone() {
+                        updated_memory.access = access;
+                    }
 
-                // Update memory fields
-                let mut updated_memory = memory.clone();
-                if let Some(name) = updates.name.clone() {
-                    updated_memory.info.name = name;
+                    updated_memory.info.updated_at = ic_cdk::api::time();
+
+                    // Store updated memory
+                    capsule.memories.insert(memory_id, updated_memory);
+                    capsule.touch(); // Update capsule timestamp
+                    break; // Found and updated, no need to continue searching
                 }
-                if let Some(metadata) = updates.metadata.clone() {
-                    updated_memory.metadata = metadata;
-                }
-                if let Some(access) = updates.access.clone() {
-                    updated_memory.access = access;
-                }
-
-                updated_memory.info.updated_at = ic_cdk::api::time();
-
-                // Store updated memory
-                capsule.memories.insert(memory_id, updated_memory);
-                capsule.touch(); // Update capsule timestamp
             }
         }
     });
@@ -1091,7 +1088,7 @@ pub fn update_memory_in_capsule(
         return MemoryOperationResponse {
             success: false,
             memory_id: None,
-            message: "No capsule found for caller".to_string(),
+            message: "No accessible capsule found for caller".to_string(),
         };
     }
 
@@ -1099,7 +1096,7 @@ pub fn update_memory_in_capsule(
         return MemoryOperationResponse {
             success: false,
             memory_id: None,
-            message: "Memory not found".to_string(),
+            message: "Memory not found in any accessible capsule".to_string(),
         };
     }
 
@@ -1109,6 +1106,8 @@ pub fn update_memory_in_capsule(
         message: "Memory updated successfully".to_string(),
     }
 }
+
+
 
 /// Delete a memory from the caller's capsule
 pub fn delete_memory_from_capsule(memory_id: String) -> MemoryOperationResponse {

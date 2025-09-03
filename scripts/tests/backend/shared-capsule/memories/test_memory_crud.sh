@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Test memory CRUD operations
-# Tests update_memory_in_capsule, delete_memory_from_capsule, and memories_list endpoints
+# Tests memories_update, delete_memory_from_capsule, and memories_list endpoints
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -228,7 +228,7 @@ EOF
     esac
 }
 
-# Test functions for update_memory_in_capsule
+# Test functions for memories_update
 
 test_update_memory_info_only() {
     # Upload a test memory first
@@ -241,7 +241,7 @@ test_update_memory_info_only() {
     
     # Update only the memory info
     local update_data=$(create_memory_update_data "info_only")
-    local result=$(dfx canister call backend update_memory_in_capsule "(\"$memory_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Memory info update successful for ID: $memory_id"
@@ -263,7 +263,7 @@ test_update_memory_access_only() {
     
     # Update only the memory access
     local update_data=$(create_memory_update_data "access_only")
-    local result=$(dfx canister call backend update_memory_in_capsule "(\"$memory_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Memory access update successful for ID: $memory_id"
@@ -285,7 +285,7 @@ test_update_memory_data_only() {
     
     # Update only the memory data
     local update_data=$(create_memory_update_data "data_only")
-    local result=$(dfx canister call backend update_memory_in_capsule "(\"$memory_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Memory data update successful for ID: $memory_id"
@@ -307,7 +307,7 @@ test_update_memory_metadata_only() {
     
     # Update only the memory metadata
     local update_data=$(create_memory_update_data "metadata_only")
-    local result=$(dfx canister call backend update_memory_in_capsule "(\"$memory_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Memory metadata update successful for ID: $memory_id"
@@ -329,7 +329,7 @@ test_update_memory_complete() {
     
     # Update all memory fields
     local update_data=$(create_memory_update_data "complete")
-    local result=$(dfx canister call backend update_memory_in_capsule "(\"$memory_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Complete memory update successful for ID: $memory_id"
@@ -344,7 +344,7 @@ test_update_nonexistent_memory() {
     # Try to update a memory that doesn't exist
     local fake_id="nonexistent_memory_id_12345"
     local update_data=$(create_memory_update_data "info_only")
-    local result=$(dfx canister call backend update_memory_in_capsule "(\"$fake_id\", $update_data)" 2>/dev/null)
+    local result=$(dfx canister call backend memories_update "(\"$fake_id\", $update_data)" 2>/dev/null)
     
     # Should fail with appropriate error
     if is_failure "$result"; then
@@ -367,7 +367,7 @@ test_update_memory_with_empty_data() {
     
     # Try to update with all null fields
     local empty_update='(record { info = null; access = null; metadata = null; data = null; })'
-    local result=$(dfx canister call backend update_memory_in_capsule "(\"$memory_id\", $empty_update)" 2>/dev/null)
+    local result=$(dfx canister call backend memories_update "(\"$memory_id\", $empty_update)" 2>/dev/null)
     
     # Should either succeed (no-op) or fail gracefully
     if is_success "$result" || is_failure "$result"; then
@@ -390,7 +390,7 @@ test_update_memory_verify_changes() {
     
     # Update the memory
     local update_data=$(create_memory_update_data "info_only")
-    local update_result=$(dfx canister call backend update_memory_in_capsule "(\"$memory_id\", $update_data)" 2>/dev/null)
+    local update_result=$(dfx canister call backend memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
     if ! is_success "$update_result"; then
         echo_info "Failed to update memory for verification test"
@@ -641,8 +641,8 @@ main() {
         echo_warn "User registration returned: $register_result"
     fi
     
-    # Run update_memory_in_capsule tests
-    echo_info "=== Testing update_memory_in_capsule endpoint ==="
+    # Run memories_update tests
+    echo_info "=== Testing memories_update endpoint ==="
     run_test "Update memory info only" "test_update_memory_info_only"
     run_test "Update memory access only" "test_update_memory_access_only"
     run_test "Update memory data only" "test_update_memory_data_only"
