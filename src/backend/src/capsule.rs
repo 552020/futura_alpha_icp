@@ -574,8 +574,10 @@ pub fn export_capsules_for_upgrade() -> Vec<(String, Capsule)> {
 
 /// Import capsules from upgrade persistence
 pub fn import_capsules_from_upgrade(capsule_data: Vec<(String, Capsule)>) {
-    with_capsules_mut(|capsules| {
-        *capsules = capsule_data.into_iter().collect();
+    with_capsule_store_mut(|store| {
+        for (id, capsule) in capsule_data {
+            store.upsert(id, capsule);
+        }
     })
 }
 

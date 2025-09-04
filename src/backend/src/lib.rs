@@ -524,7 +524,121 @@ async fn galleries_create_with_memories(
     gallery_data: types::GalleryData,
     sync_memories: bool,
 ) -> types::StoreGalleryResponse {
-    capsule::galleries_create_with_memories(gallery_data, sync_memories)
+    use crate::capsule_store::{Order, PersonRef};
+    use crate::types::{Gallery, GalleryStorageStatus, StoreGalleryResponse};
+    use ic_cdk::api::time;
+
+    let caller = PersonRef::from_caller();
+
+    // Use the gallery ID provided by Web2 (don't generate new ID)
+    let gallery_id = gallery_data.gallery.id.clone();
+
+    // Ensure caller has a capsule - create one if it doesn't exist
+    let capsule = match with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .into_iter()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+    }) {
+        Some(capsule) => Some(capsule),
+        None => {
+            // No capsule found - create one automatically for first-time users
+            match capsules_create(None) {
+                types::CapsuleCreationResult { success: true, .. } => {
+                    // Now get the newly created capsule
+                    with_capsule_store(|store| {
+                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+                        all_capsules.items.into_iter().find(|capsule| {
+                            capsule.subject == caller && capsule.owners.contains_key(&caller)
+                        })
+                    })
+                }
+                types::CapsuleCreationResult {
+                    success: false,
+                    message,
+                    ..
+                } => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: format!("Failed to create capsule: {message}"),
+                        storage_status: GalleryStorageStatus::Failed,
+                    };
+                }
+            }
+        }
+    };
+
+    match capsule {
+        Some(mut capsule) => {
+            // Check if gallery already exists with this UUID (idempotency)
+            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
+                return StoreGalleryResponse {
+                    success: true,
+                    gallery_id: Some(gallery_id.clone()),
+                    icp_gallery_id: Some(gallery_id),
+                    message: "Gallery already exists with this UUID".to_string(),
+                    storage_status: GalleryStorageStatus::ICPOnly,
+                };
+            }
+
+            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
+            let mut gallery = gallery_data.gallery;
+            gallery.owner_principal = match caller {
+                PersonRef::Principal(p) => p,
+                PersonRef::Opaque(_) => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: "Only principals can store galleries".to_string(),
+                        storage_status: GalleryStorageStatus::Failed,
+                    }
+                }
+            };
+            gallery.created_at = time();
+            gallery.updated_at = time();
+
+            // Set storage status based on whether memories will be synced
+            let storage_status = if sync_memories {
+                GalleryStorageStatus::Both // Will be updated after memory sync
+            } else {
+                GalleryStorageStatus::ICPOnly
+            };
+            gallery.storage_status = storage_status.clone();
+
+            // Store gallery in capsule
+            capsule.galleries.insert(gallery_id.clone(), gallery);
+            capsule.updated_at = time(); // Update capsule timestamp
+
+            // Save updated capsule
+            with_capsule_store_mut(|store| {
+                store.upsert(capsule.id.clone(), capsule);
+            });
+            let message = if sync_memories {
+                "Gallery stored successfully in capsule (memory sync pending)".to_string()
+            } else {
+                "Gallery stored successfully in capsule".to_string()
+            };
+
+            StoreGalleryResponse {
+                success: true,
+                gallery_id: Some(gallery_id.clone()),
+                icp_gallery_id: Some(gallery_id),
+                message,
+                storage_status,
+            }
+        }
+        None => StoreGalleryResponse {
+            success: false,
+            gallery_id: None,
+            icp_gallery_id: None,
+            message: "No capsule found for caller".to_string(),
+            storage_status: GalleryStorageStatus::Failed,
+        },
+    }
 }
 
 #[ic_cdk::update]
@@ -765,8 +879,8 @@ async fn memories_create(
 ) -> types::MemoryOperationResponse {
     use crate::capsule_store::PersonRef;
     use crate::types::{
-        Memory, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase, MemoryOperationResponse,
-        MemoryType, ImageMetadata,
+        ImageMetadata, Memory, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase,
+        MemoryOperationResponse, MemoryType,
     };
     use ic_cdk::api::time;
 
@@ -1231,7 +1345,14 @@ fn pre_upgrade() {
     // No explicit action needed for stable memory - ic-stable-structures handles this
 
     // For backward compatibility, also serialize thread_local data using the old approach
-    let capsule_data = capsule::export_capsules_for_upgrade();
+    let capsule_data = with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .into_iter()
+            .map(|capsule| (capsule.id.clone(), capsule))
+            .collect::<Vec<(String, types::Capsule)>>()
+    });
     let admin_data = admin::export_admins_for_upgrade();
 
     #[cfg(feature = "migration")]
@@ -1266,7 +1387,11 @@ fn post_upgrade() {
             Vec<Principal>,
             canister_factory::PersonalCanisterCreationStateData,
         )>() {
-            capsule::import_capsules_from_upgrade(capsule_data);
+            with_capsule_store_mut(|store| {
+                for (id, capsule) in capsule_data {
+                    store.upsert(id, capsule);
+                }
+            });
             admin::import_admins_from_upgrade(admin_data);
             canister_factory::import_migration_state_from_upgrade(migration_data);
         }
@@ -1278,7 +1403,11 @@ fn post_upgrade() {
         if let Ok((capsule_data, admin_data)) =
             ic_cdk::storage::stable_restore::<(Vec<(String, types::Capsule)>, Vec<Principal>)>()
         {
-            capsule::import_capsules_from_upgrade(capsule_data);
+            with_capsule_store_mut(|store| {
+                for (id, capsule) in capsule_data {
+                    store.upsert(id, capsule);
+                }
+            });
             admin::import_admins_from_upgrade(admin_data);
         }
     }
