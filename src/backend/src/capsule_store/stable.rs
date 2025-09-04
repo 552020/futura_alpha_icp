@@ -175,7 +175,11 @@ impl StableStore {
     /// Debug lens: (capsules_len, subject_idx_len, owner_idx_len)
     /// Useful for diagnosing index inconsistencies
     pub fn debug_lens(&self) -> (u64, u64, u64) {
-        (self.capsules.len(), self.subject_index.len(), self.owner_index.len())
+        (
+            self.capsules.len(),
+            self.subject_index.len(),
+            self.owner_index.len(),
+        )
     }
 }
 
@@ -394,7 +398,6 @@ impl CapsuleStore for StableStore {
         // This is more efficient and reliable than iteration
         self.capsules.len()
     }
-
 }
 
 /// Storable implementation for Capsule
@@ -560,7 +563,8 @@ mod tests {
         let mut capsule2 = create_test_capsule(id.to_string());
 
         // Change subject in capsule2 to test index cleanup (different principal)
-        capsule2.subject = crate::types::PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap());
+        capsule2.subject =
+            crate::types::PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap());
 
         // First upsert
         store.upsert(id.to_string(), capsule1.clone());
@@ -615,5 +619,76 @@ mod tests {
 
         // Second store should still be clean (no cross-contamination)
         assert_eq!(store2.count(), 0);
+    }
+
+    /// 🔧 GUARDRAIL TEST: Index consistency validation
+    /// Comprehensive test to validate subject and owner index consistency
+    #[test]
+    fn test_index_consistency_validation() {
+        let mut store = StableStore::new_test();
+
+        // Create test data with unique subjects to avoid index conflicts
+        let cap1 = create_test_capsule("cap1".to_string());
+        let cap2 = create_test_capsule("cap2".to_string());
+        let cap3 = create_test_capsule("cap3".to_string());
+
+        // Modify subjects to be unique
+        let cap1 = Capsule {
+            subject: PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap()),
+            ..cap1
+        };
+        let cap2 = Capsule {
+            subject: PersonRef::Principal(Principal::from_text("2vxsx-fab").unwrap()),
+            ..cap2
+        };
+        let cap3 = Capsule {
+            subject: PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap()),
+            ..cap3
+        };
+
+        let caps = vec![cap1, cap2, cap3];
+
+        // Insert all capsules
+        for cap in &caps {
+            store.upsert(cap.id.clone(), cap.clone());
+        }
+
+        // Validate subject index consistency
+        for cap in &caps {
+            let found = store.find_by_subject(&cap.subject).unwrap();
+            assert_eq!(found.id, cap.id, "Subject index should return correct capsule");
+        }
+
+        // Validate owner index consistency
+        for cap in &caps {
+            let owner_capsules = store.list_by_owner(&cap.subject);
+            assert!(owner_capsules.contains(&cap.id), "Owner index should contain capsule");
+        }
+
+        // Test index cleanup on update (change subject)
+        let old_subject = caps[0].subject.clone();
+        let new_subject = PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap());
+
+        store.update(&caps[0].id, |c| {
+            c.subject = new_subject.clone();
+        }).unwrap();
+
+        // Old subject should no longer find this capsule
+        let old_found = store.find_by_subject(&old_subject);
+        assert!(old_found.is_none() || old_found.unwrap().id != caps[0].id,
+                "Old subject should not return updated capsule");
+
+        // New subject should find this capsule
+        let new_found = store.find_by_subject(&new_subject).unwrap();
+        assert_eq!(new_found.id, caps[0].id, "New subject should return updated capsule");
+
+        // Validate final state
+        let final_count = store.count();
+        assert_eq!(final_count, 3, "Should have exactly 3 capsules");
+
+        let debug_lens = store.debug_lens();
+        assert_eq!(debug_lens.0, 3, "Primary store should have 3 capsules");
+        assert_eq!(debug_lens.1, 3, "Subject index should have 3 entries");
+        assert_eq!(debug_lens.2, 3, "Owner index should have 3 entries");
     }
 }
