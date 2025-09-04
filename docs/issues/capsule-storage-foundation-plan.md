@@ -47,7 +47,7 @@ This plan establishes a stable, minimal foundation for capsule storage that prev
 
 - ✅ Phase 1: Repository Interface (COMPLETE)
 - ✅ Phase 2: Secondary Indexes (COMPLETE)
-- ⚠️ Phase 3: Endpoint Migration (~8.6% complete, NOT 32.3%)
+- 🟡 Phase 3: Endpoint Migration (~50% complete)
 - ✅ Phase 4: Production Switch (COMPLETED - stable storage active)
 - ❌ Phase 5: Cleanup (NOT DONE - dead code present)
 
@@ -512,15 +512,16 @@ capsule_store/
 
 **Current Reality:**
 
-- [x] CapsuleStore trait & dual backends working (5/58 endpoints migrated - 8.6%)
+- [x] CapsuleStore trait & dual backends working (~30/58 endpoints migrated - ~50%)
 - [x] Property tests pass for index consistency (IMPLEMENTED - revealed edge cases)
 - [x] Fuzzing tests reveal no corruption scenarios (IMPLEMENTED - found Principal/ID edge cases)
 - [x] CI scan detection implemented and running (found 6 remaining issues in test/legacy code)
+- [x] Direct with_capsule_store usage in lib.rs endpoints (eliminated intermediate layer)
 
 **Still Needed:**
 
 - [ ] Switch production from HashMap to Stable storage
-- [ ] Migrate remaining 53/58 lib.rs endpoints
+- [ ] Migrate remaining ~25/58 lib.rs endpoints
 - [ ] Remove legacy `capsule::` function calls
 - [ ] Clean up dead code in memory.rs
 - [ ] 100% of endpoints use `store.update`/`remove` pattern
@@ -585,7 +586,7 @@ This plan now provides:
 
 ### **Phase 3 Reality Check: Where We Actually Are**
 
-**Current Position**: We are in **Phase 3.2 (Endpoint Migration)** with **~8.6% completion**
+**Current Position**: We are in **Phase 3.4 (Lib.rs Direct Migration)** with **~50% completion**
 
 **What We've Discovered**:
 
