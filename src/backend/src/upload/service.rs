@@ -31,7 +31,7 @@ impl<'a> UploadService<'a> {
         meta: MemoryMeta,
     ) -> Result<MemoryId, Error> {
         if bytes.len() > INLINE_MAX {
-            return Err(Error::PayloadTooLarge);
+            return Err(Error::ResourceExhausted);
         }
 
         // Check per-capsule inline budget
@@ -48,7 +48,7 @@ impl<'a> UploadService<'a> {
             .unwrap_or(0);
 
         if current_inline_size + bytes.len() > CAPSULE_INLINE_BUDGET {
-            return Err(Error::CapsuleInlineBudgetExceeded);
+            return Err(Error::ResourceExhausted);
         }
 
         // Verify caller has write access
@@ -59,7 +59,7 @@ impl<'a> UploadService<'a> {
                 return Err(Error::Unauthorized);
             }
         } else {
-            return Err(Error::CapsuleNotFound);
+            return Err(Error::NotFound);
         }
 
         let memory = Memory::inline(bytes, meta);
@@ -89,7 +89,7 @@ impl<'a> UploadService<'a> {
                 return Err(Error::Unauthorized);
             }
         } else {
-            return Err(Error::CapsuleNotFound);
+            return Err(Error::NotFound);
         }
 
         let session_id = SessionId::new();
@@ -122,7 +122,7 @@ impl<'a> UploadService<'a> {
         let session = self
             .sessions
             .get(session_id)?
-            .ok_or(Error::SessionNotFound)?;
+            .ok_or(Error::NotFound)?;
 
         let caller = ic_cdk::api::msg_caller();
         if session.caller != caller {
@@ -131,12 +131,12 @@ impl<'a> UploadService<'a> {
 
         // Verify chunk index is within expected range
         if chunk_idx >= session.chunk_count {
-            return Err(Error::InvalidChunkIndex);
+            return Err(Error::InvalidArgument("chunk_index".to_string()));
         }
 
         // Verify chunk size (except possibly last chunk)
         if bytes.len() > CHUNK_SIZE {
-            return Err(Error::ChunkTooLarge);
+            return Err(Error::ResourceExhausted);
         }
 
         // Store chunk
@@ -154,7 +154,7 @@ impl<'a> UploadService<'a> {
         let mut session = self
             .sessions
             .get(&session_id)?
-            .ok_or(Error::SessionNotFound)?;
+            .ok_or(Error::NotFound)?;
 
         // Verify caller matches
         let caller = ic_cdk::api::msg_caller();

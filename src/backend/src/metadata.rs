@@ -1,7 +1,7 @@
 use crate::memory::{with_stable_memory_artifacts, with_stable_memory_artifacts_mut};
 use crate::types::{
-    ArtifactType, ICPErrorCode, ICPResult, MemoryArtifact, MemoryPresenceResult, MemoryType, MetadataResponse,
-    SimpleMemoryMetadata,
+    ArtifactType, Error, MemoryArtifact, MemoryPresenceResult, MemoryType, MetadataResponse,
+    Result, SimpleMemoryMetadata,
 };
 
 #[cfg(test)]
@@ -20,15 +20,15 @@ pub fn upsert_metadata(
     memory_type: MemoryType,
     metadata: SimpleMemoryMetadata,
     idempotency_key: String,
-) -> ICPResult<MetadataResponse> {
+) -> Result<MetadataResponse> {
     // Check authorization first
     if let Err(auth_error) = crate::auth::verify_caller_authorized() {
-        return ICPResult::err(auth_error);
+        return Err(auth_error);
     }
 
     // Validate memory type
     if !is_valid_memory_type(&memory_type) {
-        return ICPResult::err(ICPErrorCode::Internal("Invalid memory type".to_string()));
+        return Err(Error::Internal("Invalid memory type".to_string()));
     }
 
     // Create artifact key for stable storage
@@ -47,7 +47,7 @@ pub fn upsert_metadata(
         if let Some(existing_metadata) = &existing_artifact.metadata {
             if existing_metadata.contains(&idempotency_key) {
                 // Same operation, return success without re-writing
-                return ICPResult::ok(MetadataResponse::ok(
+                return Ok(MetadataResponse::ok(
                     memory_id,
                     "Metadata already exists with same idempotency key".to_string(),
                 ));
@@ -58,11 +58,7 @@ pub fn upsert_metadata(
     // Serialize metadata to JSON
     let metadata_json = match serde_json::to_string(&metadata) {
         Ok(json) => json,
-        Err(_) => {
-            return ICPResult::err(ICPErrorCode::Internal(
-                "Failed to serialize metadata".to_string(),
-            ))
-        }
+        Err(_) => return Err(Error::Internal("Failed to serialize metadata".to_string())),
     };
 
     // Create memory artifact
@@ -81,14 +77,14 @@ pub fn upsert_metadata(
         artifacts.insert(artifact_key, artifact);
     });
 
-    ICPResult::ok(MetadataResponse::ok(
+    Ok(MetadataResponse::ok(
         memory_id,
         "Metadata stored successfully".to_string(),
     ))
 }
 
 /// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-pub fn memories_ping(memory_ids: Vec<String>) -> ICPResult<Vec<MemoryPresenceResult>> {
+pub fn memories_ping(memory_ids: Vec<String>) -> Result<Vec<MemoryPresenceResult>> {
     // Check presence for each memory
     let results: Vec<MemoryPresenceResult> = memory_ids
         .iter()
@@ -112,7 +108,7 @@ pub fn memories_ping(memory_ids: Vec<String>) -> ICPResult<Vec<MemoryPresenceRes
         })
         .collect();
 
-    ICPResult::ok(results)
+    Ok(results)
 }
 
 // ============================================================================

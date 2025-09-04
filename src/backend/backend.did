@@ -16,16 +16,6 @@ type AudioMetadata = record {
   bitrate : opt nat32;
   format : opt text;
 };
-type BatchMemorySyncResponse = record {
-  total_memories : nat32;
-  failed_memories : nat32;
-  gallery_id : text;
-  results : vec MemorySyncResult;
-  error : opt ICPErrorCode;
-  message : text;
-  success : bool;
-  successful_memories : nat32;
-};
 type BlobRef = record {
   locator : text;
   hash : opt blob;
@@ -70,21 +60,6 @@ type CapsuleInfo = record {
   connection_count : nat32;
   is_self_capsule : bool;
   is_controller : bool;
-};
-type ChunkResponse = record {
-  chunk_index : nat32;
-  error : opt ICPErrorCode;
-  message : text;
-  bytes_received : nat32;
-  success : bool;
-};
-type CommitResponse = record {
-  total_bytes : nat64;
-  memory_id : text;
-  error : opt ICPErrorCode;
-  message : text;
-  final_hash : text;
-  success : bool;
 };
 type Connection = record {
   status : ConnectionStatus;
@@ -161,7 +136,7 @@ type GalleryUpdateData = record {
   memory_entries : opt vec GalleryMemoryEntry;
   description : opt text;
 };
-type ICPErrorCode = variant {
+type Error = variant {
   Internal : text;
   CapsuleInlineBudgetExceeded;
   ChunkNotFound;
@@ -179,48 +154,28 @@ type ICPErrorCode = variant {
   BlobNotFound;
 };
 type ICPResult = record {
-  data : opt UploadSessionResponse;
-  error : opt ICPErrorCode;
+  data : opt null;
+  error : opt Error;
   success : bool;
 };
 type ICPResult_1 = record {
-  data : opt null;
-  error : opt ICPErrorCode;
+  data : opt nat64;
+  error : opt Error;
   success : bool;
 };
 type ICPResult_2 = record {
-  data : opt CommitResponse;
-  error : opt ICPErrorCode;
+  data : opt text;
+  error : opt Error;
   success : bool;
 };
 type ICPResult_3 = record {
-  data : opt nat64;
-  error : opt ICPErrorCode;
+  data : opt vec MemoryPresenceResult;
+  error : opt Error;
   success : bool;
 };
 type ICPResult_4 = record {
-  data : opt text;
-  error : opt ICPErrorCode;
-  success : bool;
-};
-type ICPResult_5 = record {
-  data : opt vec MemoryPresenceResult;
-  error : opt ICPErrorCode;
-  success : bool;
-};
-type ICPResult_6 = record {
-  data : opt ChunkResponse;
-  error : opt ICPErrorCode;
-  success : bool;
-};
-type ICPResult_7 = record {
-  data : opt BatchMemorySyncResponse;
-  error : opt ICPErrorCode;
-  success : bool;
-};
-type ICPResult_8 = record {
   data : opt MetadataResponse;
-  error : opt ICPErrorCode;
+  error : opt Error;
   success : bool;
 };
 type ImageMetadata = record {
@@ -292,22 +247,6 @@ type MemoryPresenceResult = record {
   memory_id : text;
   asset_present : bool;
 };
-type MemorySyncRequest = record {
-  asset_size : nat64;
-  memory_type : MemoryType;
-  metadata : SimpleMemoryMetadata;
-  expected_asset_hash : text;
-  memory_id : text;
-  asset_url : text;
-};
-type MemorySyncResult = record {
-  memory_id : text;
-  error : opt ICPErrorCode;
-  message : text;
-  metadata_stored : bool;
-  success : bool;
-  asset_stored : bool;
-};
 type MemoryType = variant { Note; Image; Document; Audio; Video };
 type MemoryUpdateData = record {
   access : opt MemoryAccess;
@@ -316,7 +255,7 @@ type MemoryUpdateData = record {
 };
 type MetadataResponse = record {
   memory_id : opt text;
-  error : opt ICPErrorCode;
+  error : opt Error;
   message : text;
   success : bool;
 };
@@ -365,23 +304,6 @@ type UpdateGalleryResponse = record {
   success : bool;
   gallery : opt Gallery;
 };
-type UploadSession = record {
-  session_id : text;
-  chunks_received : vec bool;
-  memory_type : MemoryType;
-  created_at : nat64;
-  memory_id : text;
-  expected_hash : text;
-  total_size : nat64;
-  chunk_count : nat32;
-  bytes_received : nat64;
-};
-type UploadSessionResponse = record {
-  error : opt ICPErrorCode;
-  session : opt UploadSession;
-  message : text;
-  success : bool;
-};
 type VideoMetadata = record {
   height : opt nat32;
   duration : opt nat32;
@@ -427,20 +349,20 @@ service : {
   list_all_migration_states : () -> (Result_1) query;
   list_superadmins : () -> (vec principal) query;
   // Abort upload session and cleanup
-  memories_abort : (nat64) -> (ICPResult_1);
+  memories_abort : (nat64) -> (ICPResult);
   // Begin chunked upload for large files
-  memories_begin_upload : (text, MemoryMeta, nat32) -> (ICPResult_3);
+  memories_begin_upload : (text, MemoryMeta, nat32) -> (ICPResult_1);
   // Commit chunks to create final memory
-  memories_commit : (nat64, blob, nat64) -> (ICPResult_4);
+  memories_commit : (nat64, blob, nat64) -> (ICPResult_2);
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   // Create memory with inline data (≤32KB only)
-  memories_create_inline : (text, blob, MemoryMeta) -> (ICPResult_4);
+  memories_create_inline : (text, blob, MemoryMeta) -> (ICPResult_2);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (ICPResult_5) query;
+  memories_ping : (vec text) -> (ICPResult_3) query;
   // Upload a chunk for an active session
-  memories_put_chunk : (nat64, nat32, blob) -> (ICPResult_1);
+  memories_put_chunk : (nat64, nat32, blob) -> (ICPResult);
   memories_read : (text) -> (opt Memory) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
@@ -453,7 +375,7 @@ service : {
   update_gallery_storage_status : (text, GalleryStorageStatus) -> (bool);
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
-      ICPResult_8,
+      ICPResult_4,
     );
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;

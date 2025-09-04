@@ -95,7 +95,7 @@ impl SessionStore {
             let exists = STABLE_CHUNK_DATA.with(|chunks| chunks.borrow().contains_key(&chunk_key));
 
             if !exists {
-                return Err(Error::ChunkNotFound);
+                return Err(Error::NotFound);
             }
         }
         Ok(())

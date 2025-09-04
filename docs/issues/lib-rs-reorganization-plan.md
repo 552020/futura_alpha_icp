@@ -1,6 +1,15 @@
 # Issue: Radical Refactoring of lib.rs - Thin Façade + Domain Modules
 
-## 🚨 **Status: PLANNING - Awaiting Senior Developer Review**
+## 🚨 **Status: IN PROGRESS – Upload integrated; foundation aligned**
+
+Note: Updated after the recent reorganization and upload workflow work:
+
+- ✅ Upload workflow implemented as a dedicated domain (`src/backend/src/upload/{service,sessions,blob_store,types,tests}.rs`)
+- ✅ `lib.rs` exposes new upload endpoints as thin wrappers delegating to `UploadService`
+- ✅ `memory_manager.rs` added; all stable MemoryId allocations centralized
+- ✅ Old upload endpoints removed; `backend.did` updated to the new API
+- ✅ Build is clean (0 warnings); tests green
+- 🔜 Apply the same thin façade pattern to capsules, galleries, memories, admin, maintenance
 
 ## 📋 **Issue Description**
 
@@ -44,17 +53,19 @@ The current `lib.rs` file contains 65+ functions organized in a scattered manner
 ```
 src/backend/src/
 ├── lib.rs                    # Thin façade only (1-line wrappers)
-├── auth.rs                   # Authentication & user management
-├── admin.rs                  # Administrative functions
-├── capsules.rs               # Capsule CRUD operations
-├── galleries.rs              # Gallery management
-├── memories.rs               # Memory CRUD + metadata + presence
-├── upload.rs                 # File upload sessions & chunks
-├── assets.rs                 # Asset finalization & garbage collection
-├── stats.rs                  # Statistics & presence checking
-├── personal_canister.rs      # Personal canister creation & migration
-├── maintenance.rs            # System lifecycle & upgrades
-└── types.rs                  # All public types & error handling
+├── auth.rs                   # Authentication & user management (existing)
+├── admin.rs                  # Administrative functions (existing)
+├── capsule.rs                # Capsule domain (existing; façade extraction pending)
+├── capsule_store/            # Storage seam (Hash | Stable) ✅ aligned
+├── upload/                   # Upload domain (service/sessions/blob_store/types/tests) ✅ done
+├── memory_manager.rs         # Centralized MemoryId management ✅ done
+├── galleries.rs              # Gallery management (planned)
+├── memories.rs               # Memory CRUD + metadata + presence (planned)
+├── assets.rs                 # Asset finalization & garbage collection (planned)
+├── stats.rs                  # Statistics & presence checking (planned)
+├── personal_canister.rs      # Personal canister creation & migration (planned)
+├── maintenance.rs            # System lifecycle & upgrades (planned)
+└── types.rs                  # All public types & error handling (existing)
 ```
 
 #### **lib.rs Transformation Example:**
@@ -97,6 +108,10 @@ pub fn admin_only<T>(f: impl FnOnce() -> T) -> Result<T, Error> { /* wrapper */ 
 - **One `Error` enum** in `types.rs`
 - **Public endpoints return** `Result<T, Error>` (Candid-friendly)
 - **Map internal errors** to these variants only in modules
+
+Current status:
+
+- Upload endpoints already return `Result<T>` with a unified `ICPErrorCode`. As other domains migrate behind the façade, standardize to `Result<T, Error>` at the module boundary and convert to `Result<T>` at the façade for Candid friendliness.
 
 #### **4. Feature Gating for Safety**
 
@@ -149,8 +164,18 @@ diff -u candid/backend.canonical.did target/current.did
 
 #### **Group 7: File Upload & Asset Management** 📤
 
-**Modules**: `upload.rs` + `assets.rs` (split as suggested by senior)
-**Functions**: `begin_asset_upload`, `put_chunk`, `commit_asset`, `cancel_upload`, `cleanup_expired_sessions`, `cleanup_orphaned_chunks`, `get_upload_session_stats`
+**Modules**: `upload/` (implemented) + `assets.rs` (planned)
+**Implemented endpoints (new API)**:
+
+- `memories_create_inline(capsule_id, file_data, metadata) -> MemoryId`
+- `memories_begin_upload(capsule_id, metadata, expected_chunks) -> SessionId`
+- `memories_put_chunk(session_id, chunk_idx, bytes) -> ()`
+- `memories_commit(session_id, expected_sha256, total_len) -> MemoryId`
+- `memories_abort(session_id) -> ()`
+
+Notes:
+
+- Old upload API (`begin_asset_upload`, `put_chunk`, `commit_asset`, `cancel_upload`, cleanup endpoints, stats) has been removed from the façade and the Candid interface; the new API is live.
 
 #### **Group 8: Personal Canister Management** 🏭
 
@@ -175,8 +200,7 @@ diff -u candid/backend.canonical.did target/current.did
 **Functions to Group:**
 
 - `upsert_metadata(memory_id: String, memory_type: MemoryType, metadata: SimpleMemoryMetadata, idempotency_key: String) -> ICPResult<MetadataResponse>`
-- `get_memory_presence_icp(memory_id: String) -> ICPResult<MemoryPresenceResponse>`
-- `get_memory_list_presence_icp(memory_ids: Vec<String>, cursor: Option<String>, limit: u32) -> ICPResult<MemoryListPresenceResponse>`
+- `memories_ping(memory_ids: Vec<String>) -> ICPResult<Vec<MemoryPresenceResult>>` // replaces single+batch presence
 
 **Section Header:**
 
@@ -190,21 +214,19 @@ diff -u candid/backend.canonical.did target/current.did
 
 **Purpose**: Chunked file uploads and asset management
 
-**Functions to Group:**
+**Implemented endpoints (new API):**
 
-- `begin_asset_upload(memory_id: String, memory_type: MemoryType, expected_hash: String, chunk_count: u32, total_size: u64) -> ICPResult<UploadSessionResponse>`
-- `put_chunk(session_id: String, chunk_index: u32, chunk_data: Vec<u8>) -> ICPResult<ChunkResponse>`
-- `commit_asset(session_id: String, final_hash: String) -> ICPResult<CommitResponse>`
-- `cancel_upload(session_id: String) -> ICPResult<()>`
-- `cleanup_expired_sessions() -> u32`
-- `cleanup_orphaned_chunks() -> u32`
-- `get_upload_session_stats() -> (u32, u32, u64)`
+- `memories_create_inline(capsule_id: CapsuleId, file_data: Vec<u8>, metadata: MemoryMeta) -> ICPResult<MemoryId>`
+- `memories_begin_upload(capsule_id: CapsuleId, metadata: MemoryMeta, expected_chunks: u32) -> ICPResult<nat64>`
+- `memories_put_chunk(session_id: nat64, chunk_idx: nat32, bytes: blob) -> ICPResult<()>`
+- `memories_commit(session_id: nat64, expected_sha256: blob, total_len: nat64) -> ICPResult<MemoryId>`
+- `memories_abort(session_id: nat64) -> ICPResult<()>`
 
 **Section Header:**
 
 ```rust
 // ============================================================================
-// FILE UPLOAD & ASSET MANAGEMENT
+// FILE UPLOAD & ASSET MANAGEMENT (NEW API LIVE)
 // ============================================================================
 ```
 
@@ -611,8 +633,8 @@ macro_rules! ic_query {
 
 ## 🔗 **Related Files**
 
-- `src/backend/src/lib.rs` - Main file to be reorganized
-- `src/backend/backend.did` - Candid interface (will be regenerated)
+- `src/backend/src/lib.rs` - Façade; upload routes delegate to the upload domain; other domains pending
+- `src/backend/backend.did` - Candid interface (updated for new upload API)
 - `docs/issues/rename-backend-endpoints-todo.md` - Overall refactoring plan
 - Various test files that may need updates after reorganization
 

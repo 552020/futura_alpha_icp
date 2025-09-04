@@ -66,12 +66,12 @@ impl BlobStore {
         if actual_hash != expected_hash {
             // Cleanup on failure
             self.delete_blob(&blob_id)?;
-            return Err(Error::ChecksumMismatch);
+            return Err(Error::InvalidArgument("checksum".to_string()));
         }
         if total_written != expected_len {
             // Cleanup on failure
             self.delete_blob(&blob_id)?;
-            return Err(Error::SizeMismatch);
+            return Err(Error::InvalidArgument("size".to_string()));
         }
 
         // Store blob metadata
@@ -92,7 +92,7 @@ impl BlobStore {
     pub fn read_blob(&self, blob_id: &BlobId) -> Result<Vec<u8>, Error> {
         let meta = STABLE_BLOB_META
             .with(|metas| metas.borrow().get(&blob_id.0))
-            .ok_or(Error::BlobNotFound)?;
+            .ok_or(Error::NotFound)?;
 
         let mut result = Vec::with_capacity(meta.size as usize);
         let mut page_idx = 0u32;

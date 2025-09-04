@@ -14,8 +14,7 @@ pub type CapsuleId = String;
 /// Type alias for memory identifiers
 pub type MemoryId = String;
 
-/// Type alias for unified error handling
-pub type Error = ICPErrorCode;
+/// Type alias for unified error handling - see Error enum below
 
 /// Simplified metadata for memory creation
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -29,99 +28,65 @@ pub struct MemoryMeta {
 // MVP ICP ERROR MODEL - Essential error types for ICP operations
 // ============================================================================
 
-// Essential error codes for ICP operations only
+// Core error types for all ICP operations
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum ICPErrorCode {
+pub enum Error {
+    // Core reusable variants
     Unauthorized,
-    AlreadyExists,
     NotFound,
-    InvalidHash,
-    Internal(String),
-    // Upload workflow specific errors
-    PayloadTooLarge,
-    CapsuleInlineBudgetExceeded,
-    SessionNotFound,
-    ChunkNotFound,
-    InvalidChunkIndex,
-    ChunkTooLarge,
-    ChecksumMismatch,
-    SizeMismatch,
-    BlobNotFound,
-    CapsuleNotFound,
+    InvalidArgument(String), // validation/config/parse errors
+    Conflict(String),        // already exists, concurrent update
+    ResourceExhausted,       // quotas/size/cycles
+    Internal(String),        // redact in prod logs
 }
 
-// Lightweight result wrapper for new ICP endpoints
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct ICPResult<T> {
-    pub success: bool,
-    pub data: Option<T>,
-    pub error: Option<ICPErrorCode>,
-}
+// Canonical Rust Result type
+pub type Result<T> = std::result::Result<T, Error>;
 
-impl<T> ICPResult<T> {
-    pub fn ok(data: T) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-        }
-    }
+// Result<T> removed - using canonical Result<T> = std::result::Result<T, Error>
 
-    pub fn err(error: ICPErrorCode) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(error),
-        }
-    }
-
-    pub fn is_ok(&self) -> bool {
-        self.success && self.error.is_none()
-    }
-
-    pub fn is_err(&self) -> bool {
-        !self.success || self.error.is_some()
-    }
-}
-
-impl ICPErrorCode {
+impl Error {
     pub fn to_string(&self) -> String {
         match self {
-            ICPErrorCode::Unauthorized => "Unauthorized access".to_string(),
-            ICPErrorCode::AlreadyExists => "Resource already exists".to_string(),
-            ICPErrorCode::NotFound => "Resource not found".to_string(),
-            ICPErrorCode::InvalidHash => "Invalid content hash".to_string(),
-            ICPErrorCode::Internal(msg) => format!("Internal error: {msg}"),
-            // Upload workflow error messages
-            ICPErrorCode::PayloadTooLarge => {
-                "Payload exceeds size limit for inline storage".to_string()
-            }
-            ICPErrorCode::CapsuleInlineBudgetExceeded => {
-                "Capsule inline storage budget exceeded".to_string()
-            }
-            ICPErrorCode::SessionNotFound => "Upload session not found".to_string(),
-            ICPErrorCode::ChunkNotFound => "Upload chunk not found".to_string(),
-            ICPErrorCode::InvalidChunkIndex => "Invalid chunk index".to_string(),
-            ICPErrorCode::ChunkTooLarge => "Chunk size exceeds limit".to_string(),
-            ICPErrorCode::ChecksumMismatch => "Data integrity check failed".to_string(),
-            ICPErrorCode::SizeMismatch => "Data size mismatch".to_string(),
-            ICPErrorCode::BlobNotFound => "Blob not found in storage".to_string(),
-            ICPErrorCode::CapsuleNotFound => "Capsule not found".to_string(),
+            Error::Unauthorized => "unauthorized access".to_string(),
+            Error::NotFound => "resource not found".to_string(),
+            Error::InvalidArgument(msg) => format!("invalid argument: {}", msg.to_lowercase()),
+            Error::Conflict(msg) => format!("conflict: {}", msg.to_lowercase()),
+            Error::ResourceExhausted => "resource exhausted".to_string(),
+            Error::Internal(msg) => format!("internal error: {}", msg.to_lowercase()),
+        }
+    }
+
+    pub fn code(&self) -> u16 {
+        match self {
+            Error::Unauthorized => 401,
+            Error::NotFound => 404,
+            Error::InvalidArgument(_) => 422,
+            Error::Conflict(_) => 409,
+            Error::ResourceExhausted => 429,
+            Error::Internal(_) => 500,
         }
     }
 }
 
 // Helper functions to convert between error patterns
 impl MemoryResponse {
-    pub fn from_icp_result<T>(result: ICPResult<T>) -> Self {
-        Self {
-            success: result.success,
-            data: None, // MemoryResponse doesn't carry typed data
-            error: result.error.map(|e| e.to_string()),
+    pub fn from_result<T>(result: Result<T>) -> Self {
+        match result {
+            Ok(_) => Self {
+                success: true,
+                data: None, // MemoryResponse doesn't carry typed data
+                error: None,
+            },
+            Err(error) => Self {
+                success: false,
+                data: None,
+                error: Some(error.to_string()),
+            },
         }
     }
 
-    pub fn from_icp_error(error: ICPErrorCode) -> Self {
+    pub fn from_error(error: Error) -> Self {
         Self {
             success: false,
             data: None,
@@ -140,7 +105,7 @@ impl MemoryPresenceResponse {
         }
     }
 
-    pub fn err(error: ICPErrorCode) -> Self {
+    pub fn err(error: Error) -> Self {
         Self {
             success: false,
             metadata_present: false,
@@ -160,7 +125,7 @@ impl MetadataResponse {
         }
     }
 
-    pub fn err(error: ICPErrorCode, message: String) -> Self {
+    pub fn err(error: Error, message: String) -> Self {
         Self {
             success: false,
             memory_id: None,
@@ -180,7 +145,7 @@ impl UploadSessionResponse {
         }
     }
 
-    pub fn err(error: ICPErrorCode, message: String) -> Self {
+    pub fn err(error: Error, message: String) -> Self {
         Self {
             success: false,
             session: None,
@@ -201,7 +166,7 @@ impl ChunkResponse {
         }
     }
 
-    pub fn err(error: ICPErrorCode, chunk_index: u32, message: String) -> Self {
+    pub fn err(error: Error, chunk_index: u32, message: String) -> Self {
         Self {
             success: false,
             chunk_index,
@@ -224,7 +189,7 @@ impl CommitResponse {
         }
     }
 
-    pub fn err(error: ICPErrorCode, memory_id: String, message: String) -> Self {
+    pub fn err(error: Error, memory_id: String, message: String) -> Self {
         Self {
             success: false,
             memory_id,
@@ -247,7 +212,7 @@ impl MemoryListPresenceResponse {
         }
     }
 
-    pub fn err(error: ICPErrorCode) -> Self {
+    pub fn err(error: Error) -> Self {
         Self {
             success: false,
             results: vec![],
@@ -302,7 +267,7 @@ pub struct MemoryPresenceResponse {
     pub success: bool,
     pub metadata_present: bool,
     pub asset_present: bool,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -310,7 +275,7 @@ pub struct MetadataResponse {
     pub success: bool,
     pub memory_id: Option<String>,
     pub message: String,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
@@ -340,7 +305,7 @@ pub struct UploadSessionResponse {
     pub success: bool,
     pub session: Option<UploadSession>,
     pub message: String,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -349,7 +314,7 @@ pub struct ChunkResponse {
     pub chunk_index: u32,
     pub bytes_received: u32,
     pub message: String,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -358,7 +323,7 @@ pub struct MemoryListPresenceResponse {
     pub results: Vec<MemoryPresenceResult>,
     pub cursor: Option<String>,
     pub has_more: bool,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -388,7 +353,7 @@ pub struct CommitResponse {
     pub final_hash: String,
     pub total_bytes: u64,
     pub message: String,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 // Memory sync request for batch operations
@@ -410,7 +375,7 @@ pub struct MemorySyncResult {
     pub metadata_stored: bool,
     pub asset_stored: bool,
     pub message: String,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 // Response for batch memory sync operation
@@ -423,7 +388,7 @@ pub struct BatchMemorySyncResponse {
     pub failed_memories: u32,
     pub results: Vec<MemorySyncResult>,
     pub message: String,
-    pub error: Option<ICPErrorCode>,
+    pub error: Option<Error>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -1173,49 +1138,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_icp_error_code_to_string() {
+    fn test_error_to_string() {
+        assert_eq!(Error::Unauthorized.to_string(), "unauthorized access");
         assert_eq!(
-            ICPErrorCode::Unauthorized.to_string(),
-            "Unauthorized access"
+            Error::Conflict("test".to_string()).to_string(),
+            "conflict: test"
+        );
+        assert_eq!(Error::NotFound.to_string(), "resource not found");
+        assert_eq!(
+            Error::InvalidArgument("test".to_string()).to_string(),
+            "invalid argument: test"
         );
         assert_eq!(
-            ICPErrorCode::AlreadyExists.to_string(),
-            "Resource already exists"
-        );
-        assert_eq!(ICPErrorCode::NotFound.to_string(), "Resource not found");
-        assert_eq!(
-            ICPErrorCode::InvalidHash.to_string(),
-            "Invalid content hash"
-        );
-        assert_eq!(
-            ICPErrorCode::Internal("test error".to_string()).to_string(),
-            "Internal error: test error"
+            Error::Internal("test error".to_string()).to_string(),
+            "internal error: test error"
         );
     }
 
     #[test]
-    fn test_icp_result_ok() {
-        let result = ICPResult::ok("test data".to_string());
+    fn test_result_ok() {
+        let result: Result<String> = Ok("test data".to_string());
         assert!(result.is_ok());
         assert!(!result.is_err());
-        assert_eq!(result.data, Some("test data".to_string()));
-        assert_eq!(result.error, None);
+        assert_eq!(result.unwrap(), "test data".to_string());
     }
 
     #[test]
-    fn test_icp_result_err() {
-        let result: ICPResult<String> = ICPResult::err(ICPErrorCode::NotFound);
+    fn test_result_err() {
+        let result: Result<String> = Err(Error::NotFound);
         assert!(!result.is_ok());
         assert!(result.is_err());
-        assert_eq!(result.data, None);
-        assert_eq!(result.error, Some(ICPErrorCode::NotFound));
+        assert_eq!(result.unwrap_err(), Error::NotFound);
     }
 
     #[test]
-    fn test_memory_response_from_icp_error() {
-        let response = MemoryResponse::from_icp_error(ICPErrorCode::Unauthorized);
+    fn test_memory_response_from_error() {
+        let response = MemoryResponse::from_error(Error::Unauthorized);
         assert!(!response.success);
-        assert_eq!(response.error, Some("Unauthorized access".to_string()));
+        assert_eq!(response.error, Some("unauthorized access".to_string()));
     }
 
     #[test]
@@ -1226,11 +1186,11 @@ mod tests {
         assert!(!ok_response.asset_present);
         assert_eq!(ok_response.error, None);
 
-        let err_response = MemoryPresenceResponse::err(ICPErrorCode::NotFound);
+        let err_response = MemoryPresenceResponse::err(Error::NotFound);
         assert!(!err_response.success);
         assert!(!err_response.metadata_present);
         assert!(!err_response.asset_present);
-        assert_eq!(err_response.error, Some(ICPErrorCode::NotFound));
+        assert_eq!(err_response.error, Some(Error::NotFound));
     }
 
     #[test]
@@ -1242,13 +1202,16 @@ mod tests {
         assert_eq!(ok_response.error, None);
 
         let err_response = MetadataResponse::err(
-            ICPErrorCode::InvalidHash,
+            Error::InvalidArgument("invalid hash".to_string()),
             "Hash validation failed".to_string(),
         );
         assert!(!err_response.success);
         assert_eq!(err_response.memory_id, None);
         assert_eq!(err_response.message, "Hash validation failed");
-        assert_eq!(err_response.error, Some(ICPErrorCode::InvalidHash));
+        assert_eq!(
+            err_response.error,
+            Some(Error::InvalidArgument("invalid hash".to_string()))
+        );
     }
 
     #[test]
@@ -1272,11 +1235,11 @@ mod tests {
         assert_eq!(ok_response.error, None);
 
         let err_response =
-            UploadSessionResponse::err(ICPErrorCode::Unauthorized, "Access denied".to_string());
+            UploadSessionResponse::err(Error::Unauthorized, "Access denied".to_string());
         assert!(!err_response.success);
         assert_eq!(err_response.session, None);
         assert_eq!(err_response.message, "Access denied");
-        assert_eq!(err_response.error, Some(ICPErrorCode::Unauthorized));
+        assert_eq!(err_response.error, Some(Error::Unauthorized));
     }
 
     #[test]
@@ -1289,7 +1252,7 @@ mod tests {
         assert_eq!(ok_response.error, None);
 
         let err_response = ChunkResponse::err(
-            ICPErrorCode::InvalidHash,
+            Error::InvalidArgument("invalid hash".to_string()),
             1,
             "Invalid chunk hash".to_string(),
         );
@@ -1297,7 +1260,10 @@ mod tests {
         assert_eq!(err_response.chunk_index, 1);
         assert_eq!(err_response.bytes_received, 0);
         assert_eq!(err_response.message, "Invalid chunk hash");
-        assert_eq!(err_response.error, Some(ICPErrorCode::InvalidHash));
+        assert_eq!(
+            err_response.error,
+            Some(Error::InvalidArgument("invalid hash".to_string()))
+        );
     }
 
     #[test]
@@ -1316,7 +1282,7 @@ mod tests {
         assert_eq!(ok_response.error, None);
 
         let err_response = CommitResponse::err(
-            ICPErrorCode::InvalidHash,
+            Error::InvalidArgument("invalid hash".to_string()),
             "memory_789".to_string(),
             "Hash mismatch".to_string(),
         );
@@ -1325,7 +1291,10 @@ mod tests {
         assert_eq!(err_response.final_hash, "");
         assert_eq!(err_response.total_bytes, 0);
         assert_eq!(err_response.message, "Hash mismatch");
-        assert_eq!(err_response.error, Some(ICPErrorCode::InvalidHash));
+        assert_eq!(
+            err_response.error,
+            Some(Error::InvalidArgument("invalid hash".to_string()))
+        );
     }
 }
 
@@ -1333,22 +1302,22 @@ mod tests {
 // ERROR CONVERSIONS - Bridge between storage layer and ICP layer
 // ============================================================================
 
-// Convert UpdateError from capsule_store to ICPErrorCode for API responses
-impl From<crate::capsule_store::UpdateError> for ICPErrorCode {
+// Convert UpdateError from capsule_store to Error for API responses
+impl From<crate::capsule_store::UpdateError> for Error {
     fn from(err: crate::capsule_store::UpdateError) -> Self {
         match err {
-            crate::capsule_store::UpdateError::NotFound => ICPErrorCode::NotFound,
-            crate::capsule_store::UpdateError::Validation(msg) => ICPErrorCode::Internal(msg),
+            crate::capsule_store::UpdateError::NotFound => Error::NotFound,
+            crate::capsule_store::UpdateError::Validation(msg) => Error::Internal(msg),
             crate::capsule_store::UpdateError::Concurrency => {
-                ICPErrorCode::Internal("Concurrency conflict".to_string())
+                Error::Internal("Concurrency conflict".to_string())
             }
         }
     }
 }
 
-// Convert AlreadyExists from capsule_store to ICPErrorCode
-impl From<crate::capsule_store::AlreadyExists> for ICPErrorCode {
+// Convert AlreadyExists from capsule_store to Error
+impl From<crate::capsule_store::AlreadyExists> for Error {
     fn from(_err: crate::capsule_store::AlreadyExists) -> Self {
-        ICPErrorCode::AlreadyExists
+        Error::Conflict("resource already exists".to_string())
     }
 }

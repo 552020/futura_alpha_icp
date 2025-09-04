@@ -1,5 +1,5 @@
 use crate::memory::with_stable_upload_sessions;
-use crate::types::ICPErrorCode;
+use crate::types::Error;
 use candid::Principal;
 
 #[cfg(not(test))]
@@ -10,12 +10,12 @@ use ic_cdk::api;
 // ============================================================================
 
 /// Check if caller is authorized for write operations
-pub fn verify_caller_authorized() -> Result<Principal, ICPErrorCode> {
+pub fn verify_caller_authorized() -> Result<Principal, Error> {
     let caller = get_caller();
 
     // Anonymous principal is not allowed for write operations
     if caller == Principal::anonymous() {
-        return Err(ICPErrorCode::Unauthorized);
+        return Err(Error::Unauthorized);
     }
 
     Ok(caller)
@@ -23,7 +23,7 @@ pub fn verify_caller_authorized() -> Result<Principal, ICPErrorCode> {
 
 /// Check concurrent upload limit for user (max 3 per user)
 #[allow(dead_code)]
-pub fn check_upload_rate_limit(caller: &Principal) -> Result<(), ICPErrorCode> {
+pub fn check_upload_rate_limit(caller: &Principal) -> Result<(), Error> {
     const MAX_CONCURRENT_UPLOADS: usize = 3;
 
     let active_sessions = with_stable_upload_sessions(|sessions| {
@@ -38,7 +38,7 @@ pub fn check_upload_rate_limit(caller: &Principal) -> Result<(), ICPErrorCode> {
     });
 
     if active_sessions >= MAX_CONCURRENT_UPLOADS {
-        return Err(ICPErrorCode::Internal(format!(
+        return Err(Error::Internal(format!(
             "Rate limit exceeded: {active_sessions} concurrent uploads (max {MAX_CONCURRENT_UPLOADS})"
         )));
     }

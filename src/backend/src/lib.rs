@@ -453,13 +453,13 @@ fn upsert_metadata(
     memory_type: types::MemoryType,
     metadata: types::SimpleMemoryMetadata,
     idempotency_key: String,
-) -> types::ICPResult<types::MetadataResponse> {
+) -> types::Result<types::MetadataResponse> {
     metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
 }
 
 /// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
 #[ic_cdk::query]
-fn memories_ping(memory_ids: Vec<String>) -> types::ICPResult<Vec<types::MemoryPresenceResult>> {
+fn memories_ping(memory_ids: Vec<String>) -> types::Result<Vec<types::MemoryPresenceResult>> {
     metadata::memories_ping(memory_ids)
 }
 
@@ -483,13 +483,13 @@ async fn memories_create_inline(
     capsule_id: types::CapsuleId,
     file_data: Vec<u8>,
     metadata: types::MemoryMeta,
-) -> types::ICPResult<types::MemoryId> {
+) -> types::Result<types::MemoryId> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);
         match upload_service.create_inline(&capsule_id, file_data, metadata) {
-            Ok(memory_id) => types::ICPResult::ok(memory_id),
-            Err(err) => types::ICPResult::err(err),
+            Ok(memory_id) => Ok(memory_id),
+            Err(err) => Err(err),
         }
     })
 }
@@ -500,31 +500,27 @@ async fn memories_begin_upload(
     capsule_id: types::CapsuleId,
     metadata: types::MemoryMeta,
     expected_chunks: u32,
-) -> types::ICPResult<u64> {
+) -> types::Result<u64> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);
         match upload_service.begin_upload(capsule_id, metadata, expected_chunks) {
-            Ok(session_id) => types::ICPResult::ok(session_id.0),
-            Err(err) => types::ICPResult::err(err),
+            Ok(session_id) => Ok(session_id.0),
+            Err(err) => Err(err),
         }
     })
 }
 
 /// Upload a chunk for an active session
 #[ic_cdk::update]
-async fn memories_put_chunk(
-    session_id: u64,
-    chunk_idx: u32,
-    bytes: Vec<u8>,
-) -> types::ICPResult<()> {
+async fn memories_put_chunk(session_id: u64, chunk_idx: u32, bytes: Vec<u8>) -> types::Result<()> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);
         let session_id = upload::types::SessionId(session_id);
         match upload_service.put_chunk(&session_id, chunk_idx, bytes) {
-            Ok(()) => types::ICPResult::ok(()),
-            Err(err) => types::ICPResult::err(err),
+            Ok(()) => Ok(()),
+            Err(err) => Err(err),
         }
     })
 }
@@ -535,33 +531,33 @@ async fn memories_commit(
     session_id: u64,
     expected_sha256: Vec<u8>,
     total_len: u64,
-) -> types::ICPResult<types::MemoryId> {
+) -> types::Result<types::MemoryId> {
     // Use real UploadService with actual store integration
     let hash: [u8; 32] = match expected_sha256.try_into() {
         Ok(h) => h,
-        Err(_) => return types::ICPResult::err(types::ICPErrorCode::InvalidHash),
+        Err(_) => return Err(types::Error::InvalidArgument("invalid hash".to_string())),
     };
 
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);
         let session_id = upload::types::SessionId(session_id);
         match upload_service.commit(session_id, hash, total_len) {
-            Ok(memory_id) => types::ICPResult::ok(memory_id),
-            Err(err) => types::ICPResult::err(err),
+            Ok(memory_id) => Ok(memory_id),
+            Err(err) => Err(err),
         }
     })
 }
 
 /// Abort upload session and cleanup
 #[ic_cdk::update]
-async fn memories_abort(session_id: u64) -> types::ICPResult<()> {
+async fn memories_abort(session_id: u64) -> types::Result<()> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);
         let session_id = upload::types::SessionId(session_id);
         match upload_service.abort(session_id) {
-            Ok(()) => types::ICPResult::ok(()),
-            Err(err) => types::ICPResult::err(err),
+            Ok(()) => Ok(()),
+            Err(err) => Err(err),
         }
     })
 }
