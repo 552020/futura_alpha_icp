@@ -17,25 +17,31 @@ pub mod types;
 pub mod upload;
 // memories.rs removed - functionality moved to capsule-based architecture
 
+// ============================================================================
+// CORE SYSTEM & UTILITY FUNCTIONS (2 functions)
+// ============================================================================
+
 #[ic_cdk::query]
 fn greet(name: String) -> String {
     format!("Hello, {name}!")
 }
 
 #[ic_cdk::query]
-pub fn whoami() -> Principal {
+fn whoami() -> Principal {
     ic_cdk::api::msg_caller()
 }
 
-// II integration endpoints (simple registration for II auth flow)
+// ============================================================================
+// AUTHENTICATION & USER MANAGEMENT (6 functions)
+// ============================================================================
 #[ic_cdk::update]
-pub fn register() -> bool {
+fn register() -> bool {
     capsule::register()
 }
 
 // Register user and prove nonce in one call (optimized for II auth flow)
 #[ic_cdk::update]
-pub fn register_with_nonce(nonce: String) -> bool {
+fn register_with_nonce(nonce: String) -> bool {
     let caller = ic_cdk::api::msg_caller();
     let timestamp = ic_cdk::api::time();
 
@@ -50,7 +56,7 @@ pub fn register_with_nonce(nonce: String) -> bool {
 
 // Nonce proof for II authentication (kept for backward compatibility)
 #[ic_cdk::update]
-pub fn prove_nonce(nonce: String) -> bool {
+fn prove_nonce(nonce: String) -> bool {
     // Store the nonce proof with the caller's principal and timestamp
     let caller = ic_cdk::api::msg_caller();
     let timestamp = ic_cdk::api::time();
@@ -60,50 +66,50 @@ pub fn prove_nonce(nonce: String) -> bool {
 }
 
 #[ic_cdk::query]
-pub fn verify_nonce(nonce: String) -> Option<Principal> {
+fn verify_nonce(nonce: String) -> Option<Principal> {
     // Verify and return the principal who proved this nonce
     memory::get_nonce_proof(nonce)
 }
 
-// Admin management endpoints
+// ============================================================================
+// ADMINISTRATIVE FUNCTIONS (4 functions)
+// ============================================================================
 #[ic_cdk::update]
-pub fn add_admin(principal: Principal) -> bool {
+fn add_admin(principal: Principal) -> bool {
     admin::add_admin(principal)
 }
 
 #[ic_cdk::update]
-pub fn remove_admin(principal: Principal) -> bool {
+fn remove_admin(principal: Principal) -> bool {
     admin::remove_admin(principal)
 }
 
 #[ic_cdk::query]
-pub fn list_admins() -> Vec<Principal> {
+fn list_admins() -> Vec<Principal> {
     admin::list_admins()
 }
 
 #[ic_cdk::query]
-pub fn list_superadmins() -> Vec<Principal> {
+fn list_superadmins() -> Vec<Principal> {
     admin::list_superadmins()
 }
 
-// Flexible resource binding function for Neon database
+// ============================================================================
+// CAPSULE MANAGEMENT (5 functions)
+// ============================================================================
 #[ic_cdk::update]
-pub fn capsules_bind_neon(
-    resource_type: types::ResourceType,
-    resource_id: String,
-    bind: bool,
-) -> bool {
+fn capsules_bind_neon(resource_type: types::ResourceType, resource_id: String, bind: bool) -> bool {
     capsule::capsules_bind_neon(resource_type, resource_id, bind)
 }
 
 // Capsule management endpoints
 #[ic_cdk::update]
-pub fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
+fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
     capsule::capsules_create(subject)
 }
 
 #[ic_cdk::query]
-pub fn capsules_read_full(capsule_id: Option<String>) -> Option<types::Capsule> {
+fn capsules_read_full(capsule_id: Option<String>) -> Option<types::Capsule> {
     match capsule_id {
         Some(id) => capsule::capsules_read(id),
         None => capsule::capsule_read_self(),
@@ -111,7 +117,7 @@ pub fn capsules_read_full(capsule_id: Option<String>) -> Option<types::Capsule> 
 }
 
 #[ic_cdk::query]
-pub fn capsules_read_basic(capsule_id: Option<String>) -> Option<types::CapsuleInfo> {
+fn capsules_read_basic(capsule_id: Option<String>) -> Option<types::CapsuleInfo> {
     match capsule_id {
         Some(id) => capsule::capsules_read_basic(id),
         None => capsule::capsule_read_self_basic(),
@@ -119,18 +125,20 @@ pub fn capsules_read_basic(capsule_id: Option<String>) -> Option<types::CapsuleI
 }
 
 #[ic_cdk::query]
-pub fn capsules_list() -> Vec<types::CapsuleHeader> {
+fn capsules_list() -> Vec<types::CapsuleHeader> {
     capsule::capsules_list()
 }
 
-// Gallery storage endpoints
+// ============================================================================
+// GALLERY MANAGEMENT (7 functions)
+// ============================================================================
 #[ic_cdk::update]
-pub async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
+async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
     capsule::galleries_create(gallery_data)
 }
 
 #[ic_cdk::update]
-pub async fn galleries_create_with_memories(
+async fn galleries_create_with_memories(
     gallery_data: types::GalleryData,
     sync_memories: bool,
 ) -> types::StoreGalleryResponse {
@@ -138,7 +146,7 @@ pub async fn galleries_create_with_memories(
 }
 
 #[ic_cdk::update]
-pub fn update_gallery_storage_status(
+fn update_gallery_storage_status(
     gallery_id: String,
     new_status: types::GalleryStorageStatus,
 ) -> bool {
@@ -146,17 +154,17 @@ pub fn update_gallery_storage_status(
 }
 
 #[ic_cdk::query]
-pub fn galleries_list() -> Vec<types::Gallery> {
+fn galleries_list() -> Vec<types::Gallery> {
     capsule::galleries_list()
 }
 
 #[ic_cdk::query]
-pub fn galleries_read(gallery_id: String) -> Option<types::Gallery> {
+fn galleries_read(gallery_id: String) -> Option<types::Gallery> {
     capsule::galleries_read(gallery_id)
 }
 
 #[ic_cdk::update]
-pub async fn galleries_update(
+async fn galleries_update(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
 ) -> types::UpdateGalleryResponse {
@@ -164,13 +172,15 @@ pub async fn galleries_update(
 }
 
 #[ic_cdk::update]
-pub async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
+async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
     capsule::galleries_delete(gallery_id)
 }
 
-// Memory management endpoints
+// ============================================================================
+// MEMORY MANAGEMENT (5 functions)
+// ============================================================================
 #[ic_cdk::update]
-pub async fn memories_create(
+async fn memories_create(
     capsule_id: String,
     memory_data: types::MemoryData,
 ) -> types::MemoryOperationResponse {
@@ -178,12 +188,12 @@ pub async fn memories_create(
 }
 
 #[ic_cdk::query]
-pub fn memories_read(memory_id: String) -> Option<types::Memory> {
+fn memories_read(memory_id: String) -> Option<types::Memory> {
     capsule::memories_read(memory_id)
 }
 
 #[ic_cdk::update]
-pub async fn memories_update(
+async fn memories_update(
     memory_id: String,
     updates: types::MemoryUpdateData,
 ) -> types::MemoryOperationResponse {
@@ -191,22 +201,24 @@ pub async fn memories_update(
 }
 
 #[ic_cdk::update]
-pub async fn memories_delete(memory_id: String) -> types::MemoryOperationResponse {
+async fn memories_delete(memory_id: String) -> types::MemoryOperationResponse {
     capsule::memories_delete(memory_id)
 }
 
 #[ic_cdk::query]
-pub fn memories_list(capsule_id: String) -> types::MemoryListResponse {
+fn memories_list(capsule_id: String) -> types::MemoryListResponse {
     capsule::memories_list(capsule_id)
 }
 
 // Note: User principal management is handled through capsule registration
 // The existing register() function handles user principal management
 
-// Migration endpoints (only available with migration feature)
+// ============================================================================
+// PERSONAL CANISTER MANAGEMENT (22 functions)
+// ============================================================================
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-pub async fn create_personal_canister() -> canister_factory::PersonalCanisterCreationResponse {
+async fn create_personal_canister() -> canister_factory::PersonalCanisterCreationResponse {
     match canister_factory::create_personal_canister().await {
         Ok(response) => response,
         Err(error) => canister_factory::PersonalCanisterCreationResponse {
@@ -218,35 +230,35 @@ pub async fn create_personal_canister() -> canister_factory::PersonalCanisterCre
 }
 
 #[ic_cdk::query]
-pub fn get_creation_status() -> Option<canister_factory::CreationStatusResponse> {
+fn get_creation_status() -> Option<canister_factory::CreationStatusResponse> {
     canister_factory::get_creation_status()
 }
 
 #[ic_cdk::query]
-pub fn get_personal_canister_id(user: Principal) -> Option<Principal> {
+fn get_personal_canister_id(user: Principal) -> Option<Principal> {
     canister_factory::get_personal_canister_id(user)
 }
 
 #[ic_cdk::query]
-pub fn get_my_personal_canister_id() -> Option<Principal> {
+fn get_my_personal_canister_id() -> Option<Principal> {
     canister_factory::get_my_personal_canister_id()
 }
 
 #[ic_cdk::query]
-pub fn get_detailed_creation_status() -> Option<canister_factory::DetailedCreationStatus> {
+fn get_detailed_creation_status() -> Option<canister_factory::DetailedCreationStatus> {
     canister_factory::get_detailed_creation_status()
 }
 
 // Admin personal canister creation functions
 #[ic_cdk::query]
-pub fn get_user_creation_status(
+fn get_user_creation_status(
     user: Principal,
 ) -> Result<Option<canister_factory::DetailedCreationStatus>, String> {
     canister_factory::get_user_creation_status(user)
 }
 
 #[ic_cdk::query]
-pub fn get_user_migration_status(
+fn get_user_migration_status(
     user: Principal,
 ) -> Result<Option<canister_factory::DetailedCreationStatus>, String> {
     get_user_creation_status(user)
@@ -254,21 +266,21 @@ pub fn get_user_migration_status(
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn list_all_creation_states(
+fn list_all_creation_states(
 ) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     canister_factory::list_all_creation_states()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn list_all_migration_states(
+fn list_all_migration_states(
 ) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     list_all_creation_states()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn get_creation_states_by_status(
+fn get_creation_states_by_status(
     status: canister_factory::CreationStatus,
 ) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     canister_factory::get_creation_states_by_status(status)
@@ -276,7 +288,7 @@ pub fn get_creation_states_by_status(
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn get_migration_states_by_status(
+fn get_migration_states_by_status(
     status: canister_factory::CreationStatus,
 ) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
     get_creation_states_by_status(status)
@@ -284,70 +296,70 @@ pub fn get_migration_states_by_status(
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-pub fn clear_creation_state(user: Principal) -> Result<bool, String> {
+fn clear_creation_state(user: Principal) -> Result<bool, String> {
     canister_factory::clear_creation_state(user)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-pub fn clear_migration_state(user: Principal) -> Result<bool, String> {
+fn clear_migration_state(user: Principal) -> Result<bool, String> {
     clear_creation_state(user)
 }
 
 // Admin controls for migration (only available with migration feature)
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-pub fn set_personal_canister_creation_enabled(enabled: bool) -> Result<(), String> {
+fn set_personal_canister_creation_enabled(enabled: bool) -> Result<(), String> {
     canister_factory::set_personal_canister_creation_enabled(enabled)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn get_personal_canister_creation_stats(
+fn get_personal_canister_creation_stats(
 ) -> Result<canister_factory::PersonalCanisterCreationStats, String> {
     canister_factory::get_personal_canister_creation_stats()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn is_personal_canister_creation_enabled() -> bool {
+fn is_personal_canister_creation_enabled() -> bool {
     canister_factory::is_personal_canister_creation_enabled()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn is_migration_enabled() -> bool {
+fn is_migration_enabled() -> bool {
     is_personal_canister_creation_enabled()
 }
 
 // Legacy function names for backward compatibility
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-pub async fn migrate_capsule() -> canister_factory::PersonalCanisterCreationResponse {
+async fn migrate_capsule() -> canister_factory::PersonalCanisterCreationResponse {
     create_personal_canister().await
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-pub fn get_migration_status() -> Option<canister_factory::CreationStatusResponse> {
+fn get_migration_status() -> Option<canister_factory::CreationStatusResponse> {
     get_creation_status()
 }
 
 #[cfg(feature = "migration")]
 #[ic_cdk::query]
-pub fn get_detailed_migration_status() -> Option<canister_factory::DetailedCreationStatus> {
+fn get_detailed_migration_status() -> Option<canister_factory::DetailedCreationStatus> {
     get_detailed_creation_status()
 }
 
 #[cfg(feature = "migration")]
 #[ic_cdk::update]
-pub fn set_migration_enabled(enabled: bool) -> Result<(), String> {
+fn set_migration_enabled(enabled: bool) -> Result<(), String> {
     set_personal_canister_creation_enabled(enabled)
 }
 
 #[cfg(feature = "migration")]
 #[ic_cdk::query]
-pub fn get_migration_stats() -> Result<canister_factory::PersonalCanisterCreationStats, String> {
+fn get_migration_stats() -> Result<canister_factory::PersonalCanisterCreationStats, String> {
     get_personal_canister_creation_stats()
 }
 
@@ -355,7 +367,7 @@ pub fn get_migration_stats() -> Result<canister_factory::PersonalCanisterCreatio
 
 // HTTP request handler for serving memories (disabled for now)
 // #[ic_cdk::query]
-// pub fn http_request(request: HttpRequest) -> HttpResponse<'static> {
+// fn http_request(request: HttpRequest) -> HttpResponse<'static> {
 //     use crate::memory::{create_memory_response, create_not_found_response, load_memory};
 //
 //     let mut response = match load_memory(&request.url) {
@@ -431,12 +443,12 @@ fn post_upgrade() {
 }
 
 // ============================================================================
-// MEMORY METADATA OPERATIONS - ICP Canister Endpoints
+// MEMORY METADATA & PRESENCE (2 functions)
 // ============================================================================
 
 /// Store memory metadata on ICP with idempotency support
 #[ic_cdk::update]
-pub fn upsert_metadata(
+fn upsert_metadata(
     memory_id: String,
     memory_type: types::MemoryType,
     metadata: types::SimpleMemoryMetadata,
@@ -447,9 +459,7 @@ pub fn upsert_metadata(
 
 /// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
 #[ic_cdk::query]
-pub fn memories_ping(
-    memory_ids: Vec<String>,
-) -> types::ICPResult<Vec<types::MemoryPresenceResult>> {
+fn memories_ping(memory_ids: Vec<String>) -> types::ICPResult<Vec<types::MemoryPresenceResult>> {
     metadata::memories_ping(memory_ids)
 }
 
@@ -464,12 +474,12 @@ pub fn memories_ping(
 // - memories_abort (cancel uploads)
 
 // ============================================================================
-// NEW UPLOAD WORKFLOW - Hybrid Architecture
+// FILE UPLOAD & ASSET MANAGEMENT (5 functions)
 // ============================================================================
 
 /// Create memory with inline data (≤32KB only)
 #[ic_cdk::update]
-pub async fn memories_create_inline(
+async fn memories_create_inline(
     capsule_id: types::CapsuleId,
     file_data: Vec<u8>,
     metadata: types::MemoryMeta,
@@ -486,7 +496,7 @@ pub async fn memories_create_inline(
 
 /// Begin chunked upload for large files
 #[ic_cdk::update]
-pub async fn memories_begin_upload(
+async fn memories_begin_upload(
     capsule_id: types::CapsuleId,
     metadata: types::MemoryMeta,
     expected_chunks: u32,
@@ -503,7 +513,7 @@ pub async fn memories_begin_upload(
 
 /// Upload a chunk for an active session
 #[ic_cdk::update]
-pub async fn memories_put_chunk(
+async fn memories_put_chunk(
     session_id: u64,
     chunk_idx: u32,
     bytes: Vec<u8>,
@@ -521,7 +531,7 @@ pub async fn memories_put_chunk(
 
 /// Commit chunks to create final memory
 #[ic_cdk::update]
-pub async fn memories_commit(
+async fn memories_commit(
     session_id: u64,
     expected_sha256: Vec<u8>,
     total_len: u64,
@@ -544,7 +554,7 @@ pub async fn memories_commit(
 
 /// Abort upload session and cleanup
 #[ic_cdk::update]
-pub async fn memories_abort(session_id: u64) -> types::ICPResult<()> {
+async fn memories_abort(session_id: u64) -> types::ICPResult<()> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);
