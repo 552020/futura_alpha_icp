@@ -753,11 +753,11 @@ pub fn galleries_create_with_memories(
 
             // Store gallery in capsule
             capsule.galleries.insert(gallery_id.clone(), gallery);
-            capsule.touch(); // Update capsule timestamp
+            capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
 
-            // Save updated capsule
-            with_capsules_mut(|capsules| {
-                capsules.insert(capsule.id.clone(), capsule);
+            // MIGRATED: Save updated capsule
+            with_capsule_store_mut(|store| {
+                store.upsert(capsule.id.clone(), capsule);
             });
             let message = if sync_memories {
                 "Gallery stored successfully in capsule (memory sync pending)".to_string()
@@ -1096,12 +1096,12 @@ pub fn add_memory_to_capsule(
 ) -> MemoryOperationResponse {
     let caller = PersonRef::from_caller();
 
-    // Find caller's self-capsule
-    let capsule = with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Find caller's self-capsule
+    let capsule = with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules.items
+            .into_iter()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .cloned()
     });
 
     match capsule {
@@ -1162,11 +1162,11 @@ pub fn add_memory_to_capsule(
 
             // Store memory in capsule
             capsule.memories.insert(memory_id.clone(), memory);
-            capsule.touch(); // Update capsule timestamp
+            capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
 
-            // Save updated capsule
-            with_capsules_mut(|capsules| {
-                capsules.insert(capsule.id.clone(), capsule);
+            // MIGRATED: Save updated capsule
+            with_capsule_store_mut(|store| {
+                store.upsert(capsule.id.clone(), capsule);
             });
 
             MemoryOperationResponse {
