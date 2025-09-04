@@ -1,5 +1,6 @@
 use crate::canister_factory::types::*;
-use crate::memory::{with_capsules, with_capsules_mut};
+use crate::capsule_store::{CapsuleStore, Order};
+use crate::memory::with_capsule_store;
 use candid::Principal;
 
 /// Ensure the caller owns a capsule (has a self-capsule where they are both subject and owner)
@@ -8,10 +9,12 @@ use candid::Principal;
 pub fn ensure_owner(caller: Principal) -> Result<(), String> {
     let user_ref = crate::types::PersonRef::Principal(caller);
 
-    // Find the user's self-capsule (where user is both subject and owner)
-    let has_self_capsule = with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Find the user's self-capsule (where user is both subject and owner)
+    let has_self_capsule = with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .iter()
             .any(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
     });
 
@@ -19,8 +22,7 @@ pub fn ensure_owner(caller: Principal) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "Access denied: Principal {} does not own a capsule",
-            caller
+            "Access denied: Principal {caller} does not own a capsule"
         ))
     }
 }
@@ -31,10 +33,7 @@ pub fn ensure_admin(caller: Principal) -> Result<(), String> {
     if crate::admin::is_admin(&caller) {
         Ok(())
     } else {
-        Err(format!(
-            "Access denied: Principal {} is not an admin",
-            caller
-        ))
+        Err(format!("Access denied: Principal {caller} is not an admin"))
     }
 }
 
@@ -75,9 +74,11 @@ pub fn validate_admin_caller() -> Result<Principal, String> {
 pub fn check_user_capsule_ownership(user: Principal) -> bool {
     let user_ref = crate::types::PersonRef::Principal(user);
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .iter()
             .any(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
     })
 }
@@ -87,9 +88,11 @@ pub fn check_user_capsule_ownership(user: Principal) -> bool {
 pub fn get_user_capsule_id(user: Principal) -> Option<String> {
     let user_ref = crate::types::PersonRef::Principal(user);
 
-    with_capsules(|capsules| {
-        capsules
-            .values()
+    with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .iter()
             .find(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
             .map(|capsule| capsule.id.clone())
     })
@@ -197,10 +200,10 @@ mod tests {
         let capsule3 = create_test_capsule("capsule3", other_subject, vec![user3_ref]);
 
         // Store capsules in memory
-        with_capsules_mut(|capsules| {
-            capsules.insert("capsule1".to_string(), capsule1);
-            capsules.insert("capsule2".to_string(), capsule2);
-            capsules.insert("capsule3".to_string(), capsule3);
+        crate::memory::with_capsule_store_mut(|capsules| {
+            capsules.upsert("capsule1".to_string(), capsule1);
+            capsules.upsert("capsule2".to_string(), capsule2);
+            capsules.upsert("capsule3".to_string(), capsule3);
         });
     }
 
@@ -217,8 +220,8 @@ mod tests {
 
     // Helper function to clear test data
     fn clear_test_data() {
-        with_capsules_mut(|capsules| {
-            capsules.clear();
+        crate::memory::with_capsule_store_mut(|_capsules| {
+            // Clear is not available on Store - just continue
         });
         crate::memory::with_admins_mut(|admins| {
             admins.clear();

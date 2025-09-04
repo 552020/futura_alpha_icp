@@ -1,7 +1,6 @@
 use crate::memory::{with_stable_memory_artifacts, with_stable_memory_artifacts_mut};
 use crate::types::{
-    ArtifactType, ICPErrorCode, ICPResult, MemoryArtifact, MemoryListPresenceResponse,
-    MemoryPresenceResponse, MemoryPresenceResult, MemoryType, MetadataResponse,
+    ArtifactType, ICPErrorCode, ICPResult, MemoryArtifact, MemoryPresenceResult, MemoryType, MetadataResponse,
     SimpleMemoryMetadata,
 };
 
@@ -36,7 +35,7 @@ pub fn upsert_metadata(
     let artifact_key = format!(
         "{}:{}:{}",
         memory_id,
-        format!("{:?}", memory_type).to_lowercase(),
+        format!("{memory_type:?}").to_lowercase(),
         "metadata"
     );
 
@@ -74,7 +73,7 @@ pub fn upsert_metadata(
         content_hash: compute_content_hash(&metadata_json),
         size: metadata_json.len() as u64,
         stored_at: get_current_time(),
-        metadata: Some(format!("{}:{}", idempotency_key, metadata_json)),
+        metadata: Some(format!("{idempotency_key}:{metadata_json}")),
     };
 
     // Store in stable memory

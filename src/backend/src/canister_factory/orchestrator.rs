@@ -115,11 +115,11 @@ async fn execute_creation_state_machine(
         Ok(data) => data,
         Err(e) => {
             creation_state.status = CreationStatus::Failed;
-            creation_state.error_message = Some(format!("Export failed: {}", e));
+            creation_state.error_message = Some(format!("Export failed: {e}"));
             return Ok(PersonalCanisterCreationResponse {
                 success: false,
                 canister_id: None,
-                message: format!("Failed to export capsule data: {}", e),
+                message: format!("Failed to export capsule data: {e}"),
             });
         }
     };
@@ -127,11 +127,11 @@ async fn execute_creation_state_machine(
     // Validate exported data
     if let Err(e) = validate_export_data(&export_data) {
         creation_state.status = CreationStatus::Failed;
-        creation_state.error_message = Some(format!("Export validation failed: {}", e));
+        creation_state.error_message = Some(format!("Export validation failed: {e}"));
         return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: None,
-            message: format!("Export data validation failed: {}", e),
+            message: format!("Export data validation failed: {e}"),
         });
     }
 
@@ -154,11 +154,11 @@ async fn execute_creation_state_machine(
         }
         Err(e) => {
             creation_state.status = CreationStatus::Failed;
-            creation_state.error_message = Some(format!("Canister creation failed: {}", e));
+            creation_state.error_message = Some(format!("Canister creation failed: {e}"));
             return Ok(PersonalCanisterCreationResponse {
                 success: false,
                 canister_id: None,
-                message: format!("Failed to create personal canister: {}", e),
+                message: format!("Failed to create personal canister: {e}"),
             });
         }
     };
@@ -173,7 +173,7 @@ async fn execute_creation_state_machine(
     // Install WASM module
     if let Err(e) = complete_wasm_installation(canister_id, user, &export_data).await {
         creation_state.status = CreationStatus::Failed;
-        creation_state.error_message = Some(format!("WASM installation failed: {}", e));
+        creation_state.error_message = Some(format!("WASM installation failed: {e}"));
 
         // Cleanup failed canister
         if let Err(cleanup_err) = cleanup_failed_canister_creation(canister_id, user).await {
@@ -183,7 +183,7 @@ async fn execute_creation_state_machine(
         return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
-            message: format!("Failed to install WASM: {}", e),
+            message: format!("Failed to install WASM: {e}"),
         });
     }
 
@@ -199,7 +199,7 @@ async fn execute_creation_state_machine(
     // In production, this would use the chunked import API
     if let Err(e) = simulate_data_import(canister_id, &export_data).await {
         creation_state.status = CreationStatus::Failed;
-        creation_state.error_message = Some(format!("Data import failed: {}", e));
+        creation_state.error_message = Some(format!("Data import failed: {e}"));
 
         // Cleanup failed canister
         if let Err(cleanup_err) = cleanup_failed_canister_creation(canister_id, user).await {
@@ -209,7 +209,7 @@ async fn execute_creation_state_machine(
         return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
-            message: format!("Failed to import data: {}", e),
+            message: format!("Failed to import data: {e}"),
         });
     }
 
@@ -223,12 +223,12 @@ async fn execute_creation_state_machine(
     // Verify data integrity
     if let Err(e) = verify_migration_data(canister_id, &export_data).await {
         creation_state.status = CreationStatus::Failed;
-        creation_state.error_message = Some(format!("Data verification failed: {}", e));
+        creation_state.error_message = Some(format!("Data verification failed: {e}"));
 
         return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
-            message: format!("Data verification failed: {}", e),
+            message: format!("Data verification failed: {e}"),
         });
     }
 
@@ -241,7 +241,7 @@ async fn execute_creation_state_machine(
     // Handoff controllers to user
     if let Err(e) = handoff_controllers(canister_id, user).await {
         creation_state.status = CreationStatus::Failed;
-        creation_state.error_message = Some(format!("Controller handoff failed: {}", e));
+        creation_state.error_message = Some(format!("Controller handoff failed: {e}"));
 
         // Handle handoff failure
         if let Err(cleanup_err) = handle_handoff_failure(canister_id, user, e.clone()).await {
@@ -251,7 +251,7 @@ async fn execute_creation_state_machine(
         return Ok(PersonalCanisterCreationResponse {
             success: false,
             canister_id: Some(canister_id),
-            message: format!("Failed to handoff controllers: {}", e),
+            message: format!("Failed to handoff controllers: {e}"),
         });
     }
 

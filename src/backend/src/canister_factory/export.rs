@@ -1,5 +1,6 @@
 use crate::canister_factory::types::*;
-use crate::memory::with_capsules;
+use crate::capsule_store::{CapsuleStore, Order};
+use crate::memory::with_capsule_store;
 use crate::types;
 use candid::Principal;
 
@@ -30,17 +31,18 @@ fn get_current_canister_id() -> Principal {
 pub fn export_user_capsule_data(user: Principal) -> Result<ExportData, String> {
     let user_ref = types::PersonRef::Principal(user);
 
-    // Find the user's self-capsule (where user is both subject and owner)
-    let capsule = with_capsules(|capsules| {
-        capsules
-            .values()
+    // MIGRATED: Find the user's self-capsule (where user is both subject and owner)
+    let capsule = with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .into_iter()
             .find(|capsule| capsule.subject == user_ref && capsule.owners.contains_key(&user_ref))
-            .cloned()
     });
 
     let capsule = match capsule {
         Some(c) => c,
-        None => return Err(format!("No self-capsule found for user {}", user)),
+        None => return Err(format!("No self-capsule found for user {user}")),
     };
 
     // Extract memories as vector of (id, memory) pairs
@@ -254,11 +256,7 @@ pub fn validate_export_data(export_data: &ExportData) -> Result<(), String> {
     );
 
     // Allow some variance in size calculation (within 10%)
-    let size_diff = if calculated_size > export_data.metadata.total_size_bytes {
-        calculated_size - export_data.metadata.total_size_bytes
-    } else {
-        export_data.metadata.total_size_bytes - calculated_size
-    };
+    let size_diff = calculated_size.abs_diff(export_data.metadata.total_size_bytes);
 
     let max_variance = export_data.metadata.total_size_bytes / 10; // 10% variance allowed
     if size_diff > max_variance {
@@ -398,7 +396,7 @@ fn generate_connection_checksum(
 fn person_ref_to_string(person_ref: &types::PersonRef) -> String {
     match person_ref {
         types::PersonRef::Principal(p) => format!("principal:{}", p.to_text()),
-        types::PersonRef::Opaque(id) => format!("opaque:{}", id),
+        types::PersonRef::Opaque(id) => format!("opaque:{id}"),
     }
 }
 
@@ -411,7 +409,7 @@ fn simple_hash(data: &str) -> String {
     for byte in data.bytes() {
         hash = ((hash << 5).wrapping_add(hash)).wrapping_add(byte as u64);
     }
-    format!("{:016x}", hash)
+    format!("{hash:016x}")
 }
 
 /// Verify exported data against a manifest
@@ -454,12 +452,11 @@ pub fn verify_export_against_manifest(
             .iter()
             .find(|(id, _)| id == memory_id)
             .map(|(_, checksum)| checksum)
-            .ok_or_else(|| format!("Memory '{}' not found in manifest", memory_id))?;
+            .ok_or_else(|| format!("Memory '{memory_id}' not found in manifest"))?;
 
         if memory_checksum != *expected_checksum {
             return Err(format!(
-                "Memory '{}' checksum mismatch: calculated '{}', manifest expects '{}'",
-                memory_id, memory_checksum, expected_checksum
+                "Memory '{memory_id}' checksum mismatch: calculated '{memory_checksum}', manifest expects '{expected_checksum}'"
             ));
         }
     }
@@ -474,12 +471,11 @@ pub fn verify_export_against_manifest(
             .iter()
             .find(|(ref_str, _)| ref_str == &person_ref_string)
             .map(|(_, checksum)| checksum)
-            .ok_or_else(|| format!("Connection '{}' not found in manifest", person_ref_string))?;
+            .ok_or_else(|| format!("Connection '{person_ref_string}' not found in manifest"))?;
 
         if connection_checksum != *expected_checksum {
             return Err(format!(
-                "Connection '{}' checksum mismatch: calculated '{}', manifest expects '{}'",
-                person_ref_string, connection_checksum, expected_checksum
+                "Connection '{person_ref_string}' checksum mismatch: calculated '{connection_checksum}', manifest expects '{expected_checksum}'"
             ));
         }
     }

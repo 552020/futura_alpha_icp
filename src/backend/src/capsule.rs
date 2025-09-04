@@ -1,11 +1,9 @@
 use crate::capsule_store::{CapsuleStore, Order};
 use crate::memory::{
-    with_capsule_store, with_capsule_store_mut, with_capsules, with_capsules_mut,
-    with_stable_capsules, with_stable_capsules_mut,
+    with_capsule_store, with_capsule_store_mut, with_capsules_mut,
 };
 use crate::types::*;
 
-use candid::Principal;
 use ic_cdk::api::{msg_caller, time};
 use std::collections::HashMap;
 
@@ -78,7 +76,7 @@ impl Capsule {
     /// Create a new capsule
     pub fn new(subject: PersonRef, initial_owner: PersonRef) -> Self {
         let now = time();
-        let capsule_id = format!("capsule_{}", now);
+        let capsule_id = format!("capsule_{now}");
 
         let mut owners = HashMap::new();
         owners.insert(
@@ -468,8 +466,8 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                 let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
 
                 for capsule in all_capsules.items {
-                    if capsule.owners.contains_key(&caller_ref) {
-                        if capsule.galleries.contains_key(&resource_id) {
+                    if capsule.owners.contains_key(&caller_ref)
+                        && capsule.galleries.contains_key(&resource_id) {
                             // Found the capsule containing the gallery
                             let update_result = store.update(&capsule.id, |capsule| {
                                 if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
@@ -484,7 +482,6 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                             });
                             return update_result.is_ok();
                         }
-                    }
                 }
                 false
             })
@@ -495,8 +492,8 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                 let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
 
                 for capsule in all_capsules.items {
-                    if capsule.owners.contains_key(&caller_ref) {
-                        if capsule.memories.contains_key(&resource_id) {
+                    if capsule.owners.contains_key(&caller_ref)
+                        && capsule.memories.contains_key(&resource_id) {
                             // Found the capsule containing the memory
                             let update_result = store.update(&capsule.id, |capsule| {
                                 if let Some(memory) = capsule.memories.get_mut(&resource_id) {
@@ -529,7 +526,6 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                             });
                             return update_result.is_ok();
                         }
-                    }
                 }
                 false
             })
@@ -598,7 +594,7 @@ pub fn galleries_create(gallery_data: GalleryData) -> StoreGalleryResponse {
                         success: false,
                         gallery_id: None,
                         icp_gallery_id: None,
-                        message: format!("Failed to create capsule: {}", message),
+                        message: format!("Failed to create capsule: {message}"),
                         storage_status: GalleryStorageStatus::Failed,
                     };
                 }
@@ -705,7 +701,7 @@ pub fn galleries_create_with_memories(
                         success: false,
                         gallery_id: None,
                         icp_gallery_id: None,
-                        message: format!("Failed to create capsule: {}", message),
+                        message: format!("Failed to create capsule: {message}"),
                         storage_status: GalleryStorageStatus::Failed,
                     };
                 }
@@ -897,7 +893,7 @@ pub fn galleries_update(
                 }
             });
 
-            if !update_result.is_ok() {
+            if update_result.is_err() {
                 capsule_found = false;
             }
         }
@@ -954,7 +950,7 @@ pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
                 }
             });
 
-            if !update_result.is_ok() {
+            if update_result.is_err() {
                 capsule_found = false;
             }
         }
@@ -1023,7 +1019,7 @@ pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOpe
             let now = ic_cdk::api::time();
             let memory_info = MemoryInfo {
                 memory_type: MemoryType::Image, // Default type, can be updated later
-                name: format!("Memory {}", memory_id),
+                name: format!("Memory {memory_id}"),
                 content_type: "application/octet-stream".to_string(),
                 created_at: now,
                 updated_at: now,
@@ -1040,7 +1036,7 @@ pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOpe
                         .map(|d| d.len() as u64)
                         .unwrap_or(0),
                     mime_type: "application/octet-stream".to_string(),
-                    original_name: format!("Memory {}", memory_id),
+                    original_name: format!("Memory {memory_id}"),
                     uploaded_at: now.to_string(),
                     date_of_memory: None,
                     people_in_memory: None,
@@ -1090,6 +1086,7 @@ pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOpe
     since = "0.7.0",
     note = "Use memories_create with capsule_id parameter instead"
 )]
+#[allow(dead_code)]
 pub fn add_memory_to_capsule(
     memory_id: String,
     memory_data: MemoryData,
@@ -1121,7 +1118,7 @@ pub fn add_memory_to_capsule(
             let now = ic_cdk::api::time();
             let memory_info = MemoryInfo {
                 memory_type: MemoryType::Image, // Default type, can be updated later
-                name: format!("Memory {}", memory_id),
+                name: format!("Memory {memory_id}"),
                 content_type: "application/octet-stream".to_string(),
                 created_at: now,
                 updated_at: now,
@@ -1138,7 +1135,7 @@ pub fn add_memory_to_capsule(
                         .map(|d| d.len() as u64)
                         .unwrap_or(0),
                     mime_type: "application/octet-stream".to_string(),
-                    original_name: format!("Memory {}", memory_id),
+                    original_name: format!("Memory {memory_id}"),
                     uploaded_at: now.to_string(),
                     date_of_memory: None,
                     people_in_memory: None,
@@ -1248,7 +1245,7 @@ pub fn memories_update(memory_id: String, updates: MemoryUpdateData) -> MemoryOp
                 }
             });
 
-            if !update_result.is_ok() {
+            if update_result.is_err() {
                 capsule_found = false;
             }
         }
@@ -1305,7 +1302,7 @@ pub fn memories_delete(memory_id: String) -> MemoryOperationResponse {
                 }
             });
 
-            if !update_result.is_ok() {
+            if update_result.is_err() {
                 capsule_found = false;
             }
         }
@@ -1422,7 +1419,7 @@ mod gallery_tests {
         GalleryData {
             gallery: Gallery {
                 id: format!("test_gallery_{}", mock_time),
-                owner_principal: Principal::anonymous(),
+                owner_principal: candid::Principal::anonymous(),
                 title: "Test Gallery".to_string(),
                 description: Some("Test Description".to_string()),
                 is_public: false,
@@ -1432,7 +1429,7 @@ mod gallery_tests {
                 memory_entries: vec![],
                 bound_to_neon: false,
             },
-            owner_principal: Principal::anonymous(),
+            owner_principal: candid::Principal::anonymous(),
         }
     }
 }

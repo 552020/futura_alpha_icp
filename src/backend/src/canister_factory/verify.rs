@@ -89,16 +89,16 @@ pub async fn verify_migration_data(
 
     // Generate and validate manifest
     let manifest = generate_export_manifest(export_data)
-        .map_err(|e| format!("Failed to generate manifest: {}", e))?;
+        .map_err(|e| format!("Failed to generate manifest: {e}"))?;
 
     // Verify export data against manifest
     verify_export_against_manifest(export_data, &manifest)
-        .map_err(|e| format!("Manifest verification failed: {}", e))?;
+        .map_err(|e| format!("Manifest verification failed: {e}"))?;
 
     // Check API version compatibility
     check_api_version_compatibility(canister_id)
         .await
-        .map_err(|e| format!("API version check failed: {}", e))?;
+        .map_err(|e| format!("API version check failed: {e}"))?;
 
     ic_cdk::println!(
         "Migration data verification completed for canister {}",
@@ -128,8 +128,7 @@ pub async fn check_api_version_compatibility(canister_id: Principal) -> Result<(
 
     if personal_version != factory_version {
         return Err(format!(
-            "API version mismatch: factory {} vs personal canister {}",
-            factory_version, personal_version
+            "API version mismatch: factory {factory_version} vs personal canister {personal_version}"
         ));
     }
 
@@ -186,7 +185,7 @@ pub async fn verify_handoff_readiness(
 
     // Check that the registry entry exists and is in the right state
     let registry_entry = crate::canister_factory::registry::get_registry_entry(canister_id)
-        .ok_or_else(|| format!("No registry entry found for canister {}", canister_id))?;
+        .ok_or_else(|| format!("No registry entry found for canister {canister_id}"))?;
 
     // Verify the user matches the registry
     if registry_entry.created_by != user {
@@ -212,8 +211,7 @@ pub async fn verify_handoff_readiness(
         }
         other_status => {
             return Err(format!(
-                "Canister {} is in {:?} state, not ready for handoff",
-                canister_id, other_status
+                "Canister {canister_id} is in {other_status:?} state, not ready for handoff"
             ));
         }
     }

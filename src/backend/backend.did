@@ -163,10 +163,20 @@ type GalleryUpdateData = record {
 };
 type ICPErrorCode = variant {
   Internal : text;
+  CapsuleInlineBudgetExceeded;
+  ChunkNotFound;
+  InvalidChunkIndex;
+  SessionNotFound;
+  SizeMismatch;
+  PayloadTooLarge;
   NotFound;
+  CapsuleNotFound;
   InvalidHash;
   Unauthorized;
   AlreadyExists;
+  ChecksumMismatch;
+  ChunkTooLarge;
+  BlobNotFound;
 };
 type ICPResult = record {
   data : opt UploadSessionResponse;
@@ -184,21 +194,31 @@ type ICPResult_2 = record {
   success : bool;
 };
 type ICPResult_3 = record {
-  data : opt vec MemoryPresenceResult;
+  data : opt nat64;
   error : opt ICPErrorCode;
   success : bool;
 };
 type ICPResult_4 = record {
-  data : opt ChunkResponse;
+  data : opt text;
   error : opt ICPErrorCode;
   success : bool;
 };
 type ICPResult_5 = record {
-  data : opt BatchMemorySyncResponse;
+  data : opt vec MemoryPresenceResult;
   error : opt ICPErrorCode;
   success : bool;
 };
 type ICPResult_6 = record {
+  data : opt ChunkResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_7 = record {
+  data : opt BatchMemorySyncResponse;
+  error : opt ICPErrorCode;
+  success : bool;
+};
+type ICPResult_8 = record {
   data : opt MetadataResponse;
   error : opt ICPErrorCode;
   success : bool;
@@ -239,6 +259,11 @@ type MemoryListResponse = record {
   memories : vec Memory;
   message : text;
   success : bool;
+};
+type MemoryMeta = record {
+  name : text;
+  tags : vec text;
+  description : opt text;
 };
 type MemoryMetadata = variant {
   Note : NoteMetadata;
@@ -366,23 +391,13 @@ type VideoMetadata = record {
 };
 service : {
   add_admin : (principal) -> (bool);
-  // Begin chunked upload session for large files
-  begin_asset_upload : (text, MemoryType, text, nat32, nat64) -> (ICPResult);
-  // Cancel upload and cleanup resources
-  cancel_upload : (text) -> (ICPResult_1);
   capsules_bind_neon : (ResourceType, text, bool) -> (bool);
   capsules_create : (opt PersonRef) -> (CapsuleCreationResult);
   capsules_list : () -> (vec CapsuleHeader) query;
   capsules_read_basic : (opt text) -> (opt CapsuleInfo) query;
   capsules_read_full : (opt text) -> (opt Capsule) query;
-  // Clean up expired upload sessions (admin function)
-  cleanup_expired_sessions : () -> (nat32);
-  // Clean up orphaned chunks (admin function)
-  cleanup_orphaned_chunks : () -> (nat32);
   clear_creation_state : (principal) -> (Result);
   clear_migration_state : (principal) -> (Result);
-  // Finalize upload after all chunks received
-  commit_asset : (text, text) -> (ICPResult_2);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
   galleries_create : (GalleryData) -> (StoreGalleryResponse);
   galleries_create_with_memories : (GalleryData, bool) -> (
@@ -402,8 +417,6 @@ service : {
   get_my_personal_canister_id : () -> (opt principal) query;
   get_personal_canister_creation_stats : () -> (Result_2) query;
   get_personal_canister_id : (principal) -> (opt principal) query;
-  // Get upload session statistics for monitoring
-  get_upload_session_stats : () -> (nat32, nat32, nat64) query;
   get_user_creation_status : (principal) -> (Result_3) query;
   get_user_migration_status : (principal) -> (Result_3) query;
   greet : (text) -> (text) query;
@@ -413,28 +426,34 @@ service : {
   list_all_creation_states : () -> (Result_1) query;
   list_all_migration_states : () -> (Result_1) query;
   list_superadmins : () -> (vec principal) query;
+  // Abort upload session and cleanup
+  memories_abort : (nat64) -> (ICPResult_1);
+  // Begin chunked upload for large files
+  memories_begin_upload : (text, MemoryMeta, nat32) -> (ICPResult_3);
+  // Commit chunks to create final memory
+  memories_commit : (nat64, blob, nat64) -> (ICPResult_4);
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
+  // Create memory with inline data (≤32KB only)
+  memories_create_inline : (text, blob, MemoryMeta) -> (ICPResult_4);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (ICPResult_3) query;
+  memories_ping : (vec text) -> (ICPResult_5) query;
+  // Upload a chunk for an active session
+  memories_put_chunk : (nat64, nat32, blob) -> (ICPResult_1);
   memories_read : (text) -> (opt Memory) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (bool);
-  // Upload individual file chunk
-  put_chunk : (text, nat32, blob) -> (ICPResult_4);
   register : () -> (bool);
   register_with_nonce : (text) -> (bool);
   remove_admin : (principal) -> (bool);
   set_migration_enabled : (bool) -> (Result_4);
   set_personal_canister_creation_enabled : (bool) -> (Result_4);
-  // Batch sync multiple memories for a gallery to ICP
-  sync_gallery_memories : (text, vec MemorySyncRequest) -> (ICPResult_5);
   update_gallery_storage_status : (text, GalleryStorageStatus) -> (bool);
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
-      ICPResult_6,
+      ICPResult_8,
     );
   verify_nonce : (text) -> (opt principal) query;
   whoami : () -> (principal) query;

@@ -11,6 +11,20 @@ use std::collections::HashMap;
 /// Type alias for capsule identifiers (used throughout the codebase)
 pub type CapsuleId = String;
 
+/// Type alias for memory identifiers
+pub type MemoryId = String;
+
+/// Type alias for unified error handling
+pub type Error = ICPErrorCode;
+
+/// Simplified metadata for memory creation
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct MemoryMeta {
+    pub name: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+}
+
 // ============================================================================
 // MVP ICP ERROR MODEL - Essential error types for ICP operations
 // ============================================================================
@@ -23,6 +37,17 @@ pub enum ICPErrorCode {
     NotFound,
     InvalidHash,
     Internal(String),
+    // Upload workflow specific errors
+    PayloadTooLarge,
+    CapsuleInlineBudgetExceeded,
+    SessionNotFound,
+    ChunkNotFound,
+    InvalidChunkIndex,
+    ChunkTooLarge,
+    ChecksumMismatch,
+    SizeMismatch,
+    BlobNotFound,
+    CapsuleNotFound,
 }
 
 // Lightweight result wrapper for new ICP endpoints
@@ -66,7 +91,22 @@ impl ICPErrorCode {
             ICPErrorCode::AlreadyExists => "Resource already exists".to_string(),
             ICPErrorCode::NotFound => "Resource not found".to_string(),
             ICPErrorCode::InvalidHash => "Invalid content hash".to_string(),
-            ICPErrorCode::Internal(msg) => format!("Internal error: {}", msg),
+            ICPErrorCode::Internal(msg) => format!("Internal error: {msg}"),
+            // Upload workflow error messages
+            ICPErrorCode::PayloadTooLarge => {
+                "Payload exceeds size limit for inline storage".to_string()
+            }
+            ICPErrorCode::CapsuleInlineBudgetExceeded => {
+                "Capsule inline storage budget exceeded".to_string()
+            }
+            ICPErrorCode::SessionNotFound => "Upload session not found".to_string(),
+            ICPErrorCode::ChunkNotFound => "Upload chunk not found".to_string(),
+            ICPErrorCode::InvalidChunkIndex => "Invalid chunk index".to_string(),
+            ICPErrorCode::ChunkTooLarge => "Chunk size exceeds limit".to_string(),
+            ICPErrorCode::ChecksumMismatch => "Data integrity check failed".to_string(),
+            ICPErrorCode::SizeMismatch => "Data size mismatch".to_string(),
+            ICPErrorCode::BlobNotFound => "Blob not found in storage".to_string(),
+            ICPErrorCode::CapsuleNotFound => "Capsule not found".to_string(),
         }
     }
 }
@@ -700,6 +740,86 @@ pub struct Memory {
     pub data: MemoryData,         // actual data + storage location
 }
 
+impl Memory {
+    /// Create a new memory with inline data (≤32KB)
+    pub fn inline(bytes: Vec<u8>, meta: MemoryMeta) -> Self {
+        let now = ic_cdk::api::time();
+        Self {
+            id: format!("mem_{now}"), // Simple ID generation
+            info: MemoryInfo {
+                name: meta.name.clone(),
+                memory_type: MemoryType::Note, // Default type for inline
+                content_type: "application/octet-stream".to_string(),
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: None,
+            },
+            metadata: MemoryMetadata::Note(NoteMetadata {
+                base: MemoryMetadataBase {
+                    size: bytes.len() as u64,
+                    mime_type: "application/octet-stream".to_string(),
+                    original_name: meta.name.clone(),
+                    uploaded_at: format!("{now}"),
+                    date_of_memory: None,
+                    people_in_memory: None,
+                    format: Some("binary".to_string()),
+                    bound_to_neon: false,
+                },
+                tags: Some(meta.tags),
+            }),
+            access: MemoryAccess::Private, // Default to private access
+            data: MemoryData {
+                blob_ref: BlobRef {
+                    kind: MemoryBlobKind::ICPCapsule,
+                    locator: "inline".to_string(),
+                    hash: None,
+                },
+                data: Some(bytes),
+            },
+        }
+    }
+
+    /// Create a new memory with blob reference (>32KB)
+    pub fn from_blob(blob_id: u64, size: u64, checksum: [u8; 32], meta: MemoryMeta) -> Self {
+        let now = ic_cdk::api::time();
+        Self {
+            id: format!("mem_{now}"), // Simple ID generation
+            info: MemoryInfo {
+                name: meta.name.clone(),
+                memory_type: MemoryType::Note, // Default type for blob
+                content_type: "application/octet-stream".to_string(),
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: None,
+            },
+            metadata: MemoryMetadata::Note(NoteMetadata {
+                base: MemoryMetadataBase {
+                    size,
+                    mime_type: "application/octet-stream".to_string(),
+                    original_name: meta.name.clone(),
+                    uploaded_at: format!("{now}"),
+                    date_of_memory: None,
+                    people_in_memory: None,
+                    format: Some("binary".to_string()),
+                    bound_to_neon: false,
+                },
+                tags: Some(meta.tags),
+            }),
+            access: MemoryAccess::Private, // Default to private access
+            data: MemoryData {
+                blob_ref: BlobRef {
+                    kind: MemoryBlobKind::ICPCapsule,
+                    locator: format!("blob_{blob_id}"),
+                    hash: Some(checksum),
+                },
+                data: None,
+            },
+        }
+    }
+}
+
 // ============================================================================
 // GALLERY SYSTEM - Minimal Abstraction Approach
 // ============================================================================
@@ -875,7 +995,7 @@ impl Gallery {
     ) -> Self {
         let memory_entries: Vec<GalleryMemoryEntry> = web2_items
             .iter()
-            .map(|item| GalleryMemoryEntry::from_web2(item))
+            .map(GalleryMemoryEntry::from_web2)
             .collect();
 
         Self {
@@ -993,8 +1113,6 @@ pub struct Web2GalleryItem {
 // ============================================================================
 // STORABLE TRAIT IMPLEMENTATIONS FOR STABLE MEMORY
 // ============================================================================
-
-
 
 impl Storable for UploadSession {
     fn to_bytes(&self) -> Cow<[u8]> {
@@ -1208,5 +1326,29 @@ mod tests {
         assert_eq!(err_response.total_bytes, 0);
         assert_eq!(err_response.message, "Hash mismatch");
         assert_eq!(err_response.error, Some(ICPErrorCode::InvalidHash));
+    }
+}
+
+// ============================================================================
+// ERROR CONVERSIONS - Bridge between storage layer and ICP layer
+// ============================================================================
+
+// Convert UpdateError from capsule_store to ICPErrorCode for API responses
+impl From<crate::capsule_store::UpdateError> for ICPErrorCode {
+    fn from(err: crate::capsule_store::UpdateError) -> Self {
+        match err {
+            crate::capsule_store::UpdateError::NotFound => ICPErrorCode::NotFound,
+            crate::capsule_store::UpdateError::Validation(msg) => ICPErrorCode::Internal(msg),
+            crate::capsule_store::UpdateError::Concurrency => {
+                ICPErrorCode::Internal("Concurrency conflict".to_string())
+            }
+        }
+    }
+}
+
+// Convert AlreadyExists from capsule_store to ICPErrorCode
+impl From<crate::capsule_store::AlreadyExists> for ICPErrorCode {
+    fn from(_err: crate::capsule_store::AlreadyExists) -> Self {
+        ICPErrorCode::AlreadyExists
     }
 }

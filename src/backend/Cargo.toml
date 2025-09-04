@@ -9,9 +9,10 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [features]
-default = ["migration"]
+default = ["migration", "upload"]
 migration = []
 personal_canister_creation = []
+upload = []
 
 [dependencies]
 candid = "0.10"

@@ -15,18 +15,15 @@ pub type CapsuleId = String;
 
 /// Pagination order for listing operations
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Default)]
 pub enum Order {
     /// Ascending order (default)
+    #[default]
     Asc,
     /// Descending order
     Desc,
 }
 
-impl Default for Order {
-    fn default() -> Self {
-        Order::Asc
-    }
-}
 
 /// Pagination result containing items and optional cursor for next page
 #[derive(Debug, Clone)]

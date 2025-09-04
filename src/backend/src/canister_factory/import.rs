@@ -192,8 +192,7 @@ pub fn put_memory_chunk(
             return Ok(ChunkUploadResponse {
                 success: false,
                 message: format!(
-                    "Chunk {} already received for memory {}",
-                    chunk_index, memory_id
+                    "Chunk {chunk_index} already received for memory {memory_id}"
                 ),
                 received_size: session.total_received_size,
                 total_expected_size: session.total_expected_size,
@@ -225,7 +224,7 @@ pub fn put_memory_chunk(
 
         Ok(ChunkUploadResponse {
             success: true,
-            message: format!("Chunk {} uploaded successfully", chunk_index),
+            message: format!("Chunk {chunk_index} uploaded successfully"),
             received_size: session.total_received_size,
             total_expected_size: session.total_expected_size,
         })
@@ -481,7 +480,7 @@ pub fn finalize_import(session_id: String) -> Result<ImportFinalizationResponse,
                 session.status = ImportSessionStatus::Failed;
                 return Ok(ImportFinalizationResponse {
                     success: false,
-                    message: format!("Import validation failed: {}", e),
+                    message: format!("Import validation failed: {e}"),
                     total_memories_imported: 0,
                     total_size_imported: 0,
                 });
@@ -502,8 +501,7 @@ pub fn finalize_import(session_id: String) -> Result<ImportFinalizationResponse,
         Ok(ImportFinalizationResponse {
             success: true,
             message: format!(
-                "Import finalized successfully: {} memories imported",
-                total_memories
+                "Import finalized successfully: {total_memories} memories imported"
             ),
             total_memories_imported: total_memories,
             total_size_imported: total_size,
@@ -513,7 +511,7 @@ pub fn finalize_import(session_id: String) -> Result<ImportFinalizationResponse,
 
 /// Clean up expired import sessions
 pub fn cleanup_expired_sessions() -> u32 {
-    crate::memory::with_migration_state_mut(|state| cleanup_expired_sessions_internal(state))
+    crate::memory::with_migration_state_mut(cleanup_expired_sessions_internal)
 }
 
 // Helper functions for import system
@@ -522,7 +520,7 @@ pub fn cleanup_expired_sessions() -> u32 {
 fn generate_session_id(user: Principal) -> String {
     let timestamp = ic_cdk::api::time();
     let user_text = user.to_text();
-    let session_data = format!("{}:{}", user_text, timestamp);
+    let session_data = format!("{user_text}:{timestamp}");
     format!("import_{}", simple_hash(&session_data))
 }
 
@@ -539,7 +537,7 @@ fn simple_hash(data: &str) -> String {
     for byte in data.bytes() {
         hash = ((hash << 5).wrapping_add(hash)).wrapping_add(byte as u64);
     }
-    format!("{:016x}", hash)
+    format!("{hash:016x}")
 }
 
 /// Create a memory object from assembled chunk data
@@ -563,7 +561,7 @@ fn create_memory_from_assembled_data(
             id: memory_id.to_string(),
             info: types::MemoryInfo {
                 memory_type: types::MemoryType::Document,
-                name: format!("Imported Memory {}", memory_id),
+                name: format!("Imported Memory {memory_id}"),
                 content_type: "application/octet-stream".to_string(),
                 created_at: now,
                 updated_at: now,
@@ -573,7 +571,7 @@ fn create_memory_from_assembled_data(
             data: types::MemoryData {
                 blob_ref: types::BlobRef {
                     kind: types::MemoryBlobKind::ICPCapsule,
-                    locator: format!("imported:{}", memory_id),
+                    locator: format!("imported:{memory_id}"),
                     hash: None,
                 },
                 data: Some(data),
@@ -583,7 +581,7 @@ fn create_memory_from_assembled_data(
                 base: types::MemoryMetadataBase {
                     size: data_size,
                     mime_type: "application/octet-stream".to_string(),
-                    original_name: format!("imported_{}.bin", memory_id),
+                    original_name: format!("imported_{memory_id}.bin"),
                     uploaded_at: now.to_string(),
                     date_of_memory: Some(now.to_string()),
                     people_in_memory: None,
@@ -645,7 +643,7 @@ fn validate_import_against_manifest(
             .iter()
             .find(|(id, _)| id == memory_id)
             .map(|(_, checksum)| checksum)
-            .ok_or_else(|| format!("Memory '{}' not found in manifest", memory_id))?;
+            .ok_or_else(|| format!("Memory '{memory_id}' not found in manifest"))?;
 
         // Calculate checksum for imported memory
         let empty_vec = Vec::new();
@@ -654,8 +652,7 @@ fn validate_import_against_manifest(
 
         if calculated_checksum != *expected_checksum {
             return Err(format!(
-                "Memory '{}' checksum mismatch: calculated '{}', manifest expects '{}'",
-                memory_id, calculated_checksum, expected_checksum
+                "Memory '{memory_id}' checksum mismatch: calculated '{calculated_checksum}', manifest expects '{expected_checksum}'"
             ));
         }
     }

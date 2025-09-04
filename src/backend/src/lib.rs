@@ -1,7 +1,6 @@
 // use crate::types::HttpRequest; // Disabled for now
 // use ic_cdk::api::data_certificate; // Disabled for now
 use candid::Principal;
-use ic_cdk::{api::certified_data_set, *};
 
 // use ic_http_certification::{utils::add_skip_certification_header, HttpResponse}; // Disabled for now
 
@@ -12,14 +11,15 @@ mod canister_factory;
 mod capsule;
 pub mod capsule_store;
 mod memory;
+mod memory_manager;
 mod metadata;
 pub mod types;
-mod upload;
+pub mod upload;
 // memories.rs removed - functionality moved to capsule-based architecture
 
 #[ic_cdk::query]
 fn greet(name: String) -> String {
-    format!("Hello, {}!", name)
+    format!("Hello, {name}!")
 }
 
 #[ic_cdk::query]
@@ -212,7 +212,7 @@ pub async fn create_personal_canister() -> canister_factory::PersonalCanisterCre
         Err(error) => canister_factory::PersonalCanisterCreationResponse {
             success: false,
             canister_id: None,
-            message: format!("Personal canister creation failed: {}", error),
+            message: format!("Personal canister creation failed: {error}"),
         },
     }
 }
@@ -457,74 +457,103 @@ pub fn memories_ping(
 // CHUNKED ASSET UPLOAD ENDPOINTS - ICP Canister API
 // ============================================================================
 
-/// Begin chunked upload session for large files
+// OLD UPLOAD FUNCTIONS REMOVED - Migration to new hybrid architecture complete
+// All old upload functions have been removed and replaced with the new workflow:
+// - memories_create_inline (≤32KB files)
+// - memories_begin_upload + memories_put_chunk + memories_commit (large files)
+// - memories_abort (cancel uploads)
+
+// ============================================================================
+// NEW UPLOAD WORKFLOW - Hybrid Architecture
+// ============================================================================
+
+/// Create memory with inline data (≤32KB only)
 #[ic_cdk::update]
-pub fn begin_asset_upload(
-    memory_id: String,
-    memory_type: types::MemoryType,
-    expected_hash: String,
-    chunk_count: u32,
-    total_size: u64,
-) -> types::ICPResult<types::UploadSessionResponse> {
-    upload::begin_asset_upload(
-        memory_id,
-        memory_type,
-        expected_hash,
-        chunk_count,
-        total_size,
-    )
+pub async fn memories_create_inline(
+    capsule_id: types::CapsuleId,
+    file_data: Vec<u8>,
+    metadata: types::MemoryMeta,
+) -> types::ICPResult<types::MemoryId> {
+    // Use real UploadService with actual store integration
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        match upload_service.create_inline(&capsule_id, file_data, metadata) {
+            Ok(memory_id) => types::ICPResult::ok(memory_id),
+            Err(err) => types::ICPResult::err(err),
+        }
+    })
 }
 
-/// Upload individual file chunk
+/// Begin chunked upload for large files
 #[ic_cdk::update]
-pub fn put_chunk(
-    session_id: String,
-    chunk_index: u32,
-    chunk_data: Vec<u8>,
-) -> types::ICPResult<types::ChunkResponse> {
-    upload::put_chunk(session_id, chunk_index, chunk_data)
+pub async fn memories_begin_upload(
+    capsule_id: types::CapsuleId,
+    metadata: types::MemoryMeta,
+    expected_chunks: u32,
+) -> types::ICPResult<u64> {
+    // Use real UploadService with actual store integration
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        match upload_service.begin_upload(capsule_id, metadata, expected_chunks) {
+            Ok(session_id) => types::ICPResult::ok(session_id.0),
+            Err(err) => types::ICPResult::err(err),
+        }
+    })
 }
 
-/// Finalize upload after all chunks received
+/// Upload a chunk for an active session
 #[ic_cdk::update]
-pub fn commit_asset(
-    session_id: String,
-    final_hash: String,
-) -> types::ICPResult<types::CommitResponse> {
-    upload::commit_asset(session_id, final_hash)
+pub async fn memories_put_chunk(
+    session_id: u64,
+    chunk_idx: u32,
+    bytes: Vec<u8>,
+) -> types::ICPResult<()> {
+    // Use real UploadService with actual store integration
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.put_chunk(&session_id, chunk_idx, bytes) {
+            Ok(()) => types::ICPResult::ok(()),
+            Err(err) => types::ICPResult::err(err),
+        }
+    })
 }
 
-/// Cancel upload and cleanup resources
+/// Commit chunks to create final memory
 #[ic_cdk::update]
-pub fn cancel_upload(session_id: String) -> types::ICPResult<()> {
-    upload::cancel_upload(session_id)
+pub async fn memories_commit(
+    session_id: u64,
+    expected_sha256: Vec<u8>,
+    total_len: u64,
+) -> types::ICPResult<types::MemoryId> {
+    // Use real UploadService with actual store integration
+    let hash: [u8; 32] = match expected_sha256.try_into() {
+        Ok(h) => h,
+        Err(_) => return types::ICPResult::err(types::ICPErrorCode::InvalidHash),
+    };
+
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.commit(session_id, hash, total_len) {
+            Ok(memory_id) => types::ICPResult::ok(memory_id),
+            Err(err) => types::ICPResult::err(err),
+        }
+    })
 }
 
-/// Batch sync multiple memories for a gallery to ICP
+/// Abort upload session and cleanup
 #[ic_cdk::update]
-pub async fn sync_gallery_memories(
-    gallery_id: String,
-    memory_sync_requests: Vec<types::MemorySyncRequest>,
-) -> types::ICPResult<types::BatchMemorySyncResponse> {
-    upload::sync_gallery_memories(gallery_id, memory_sync_requests).await
-}
-
-/// Clean up expired upload sessions (admin function)
-#[ic_cdk::update]
-pub fn cleanup_expired_sessions() -> u32 {
-    upload::cleanup_expired_sessions()
-}
-
-/// Clean up orphaned chunks (admin function)
-#[ic_cdk::update]
-pub fn cleanup_orphaned_chunks() -> u32 {
-    upload::cleanup_orphaned_chunks()
-}
-
-/// Get upload session statistics for monitoring
-#[ic_cdk::query]
-pub fn get_upload_session_stats() -> (u32, u32, u64) {
-    upload::get_upload_session_stats()
+pub async fn memories_abort(session_id: u64) -> types::ICPResult<()> {
+    // Use real UploadService with actual store integration
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.abort(session_id) {
+            Ok(()) => types::ICPResult::ok(()),
+            Err(err) => types::ICPResult::err(err),
+        }
+    })
 }
 
 // Export the interface for the smart contract.

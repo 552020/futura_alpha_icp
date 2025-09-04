@@ -12,7 +12,7 @@
 
 use super::{AlreadyExists, CapsuleId, CapsuleStore, Order, Page, UpdateError};
 use crate::types::Capsule;
-use candid::{Decode, Encode, Principal};
+use candid::{Decode, Encode};
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{storable::Bound, DefaultMemoryImpl, StableBTreeMap, Storable};
 use std::borrow::Cow;
@@ -93,6 +93,12 @@ pub struct StableStore {
     owner_index: StableBTreeMap<OwnerIndexKey, (), VirtualMemory<DefaultMemoryImpl>>,
 }
 
+impl Default for StableStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StableStore {
     /// Create a new StableStore with default memory manager
     pub fn new() -> Self {
@@ -114,7 +120,7 @@ impl StableStore {
         }
 
         // Update owner index (sparse multimap: insert (owner, capsule_id) -> ())
-        for (owner_ref, _) in &capsule.owners {
+        for owner_ref in capsule.owners.keys() {
             if let crate::types::PersonRef::Principal(owner_principal) = owner_ref {
                 let owner_key = owner_principal.as_slice().to_vec();
                 let key = OwnerIndexKey::new(owner_key, id.clone());
@@ -132,7 +138,7 @@ impl StableStore {
         }
 
         // Remove from owner index (sparse multimap: remove (owner, capsule_id) pairs)
-        for (owner_ref, _) in &capsule.owners {
+        for owner_ref in capsule.owners.keys() {
             if let crate::types::PersonRef::Principal(owner_principal) = owner_ref {
                 let owner_key = owner_principal.as_slice().to_vec();
                 let key = OwnerIndexKey::new(owner_key, id.clone());
@@ -186,7 +192,7 @@ impl CapsuleStore for StableStore {
                 .owners
                 .keys()
                 .filter_map(|person_ref| match person_ref {
-                    crate::types::PersonRef::Principal(p) => Some(p.clone()),
+                    crate::types::PersonRef::Principal(p) => Some(*p),
                     crate::types::PersonRef::Opaque(_) => None,
                 })
                 .collect();
@@ -199,7 +205,7 @@ impl CapsuleStore for StableStore {
                 .owners
                 .keys()
                 .filter_map(|person_ref| match person_ref {
-                    crate::types::PersonRef::Principal(p) => Some(p.clone()),
+                    crate::types::PersonRef::Principal(p) => Some(*p),
                     crate::types::PersonRef::Opaque(_) => None,
                 })
                 .collect();
@@ -271,8 +277,8 @@ impl CapsuleStore for StableStore {
             let start_key = OwnerIndexKey::new(owner_key.clone(), String::new());
             let end_key = OwnerIndexKey::new(owner_key, String::from("\u{FFFF}")); // High Unicode value for range end
 
-            let mut iter = self.owner_index.range(start_key..=end_key);
-            while let Some((key, _)) = iter.next() {
+            let iter = self.owner_index.range(start_key..=end_key);
+            for (key, _) in iter {
                 result.push(key.capsule_id);
             }
 
@@ -293,8 +299,8 @@ impl CapsuleStore for StableStore {
         let mut all_capsules: Vec<(CapsuleId, Capsule)> = Vec::new();
 
         // Collect all capsules (inefficient but functional)
-        let mut iter = self.capsules.iter();
-        while let Some((id, capsule)) = iter.next() {
+        let iter = self.capsules.iter();
+        for (id, capsule) in iter {
             all_capsules.push((id, capsule));
         }
 
@@ -416,7 +422,7 @@ mod tests {
     fn create_test_capsule(id: CapsuleId) -> Capsule {
         use std::collections::HashMap;
 
-        let subject = PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap());
+        let subject = PersonRef::Principal(candid::Principal::from_text("aaaaa-aa").unwrap());
         let mut owners = HashMap::new();
         owners.insert(
             subject.clone(),

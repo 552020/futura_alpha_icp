@@ -89,7 +89,7 @@ fn test_index_updates_on_upsert_and_update() {
     for mut store in [Store::new_hash(), Store::new_stable()] {
         // Insert capsule A
         let id: CapsuleId = "cap-1".into();
-        let mut cap = create_test_capsule(id.clone());
+        let cap = create_test_capsule(id.clone());
         let subj_a = cap.subject.clone();
         store.put_if_absent(id.clone(), cap.clone()).unwrap();
 
@@ -134,7 +134,7 @@ fn test_pagination_cursor_semantics() {
         // Page size 2, Asc order
         let p1 = store.paginate(None, 2, Order::Asc);
         assert_eq!(p1.items.len(), 2);
-        let c1 = p1.next_cursor.clone().expect("cursor after page 1");
+        let _c1 = p1.next_cursor.clone().expect("cursor after page 1");
 
         // Page 2 starts strictly after c1 (exclusive)
         let p2 = store.paginate(p1.next_cursor, 2, Order::Asc);
@@ -263,7 +263,7 @@ fn test_index_consistency_on_backend(backend_name: &str, mut store: Store) {
 
     // Verify owner index consistency (simplified check)
     for (subject, expected_id) in &ground_truth_by_subject {
-        if let crate::types::PersonRef::Principal(owner_principal) = subject {
+        if let crate::types::PersonRef::Principal(_owner_principal) = subject {
             let owner_capsules = store.list_by_owner(subject);
             assert!(!owner_capsules.is_empty(), "Owner should have capsules");
             assert!(
@@ -411,6 +411,7 @@ fn test_property_based_operations_on_backend(
     println!("✅ Property test passed for {} backend!", backend_name);
 }
 
+#[allow(dead_code)]
 fn verify_full_consistency(
     store: &Store,
     ground_truth: &std::collections::HashMap<String, String>,
@@ -456,7 +457,7 @@ fn verify_property_consistency(
     ground_truth: &std::collections::HashMap<String, Principal>,
 ) {
     // Verify all capsules in ground truth exist in store
-    for (id, expected_subject) in ground_truth {
+    for (id, _expected_subject) in ground_truth {
         let capsule = store.get(id).expect("Capsule should exist in store");
         assert_eq!(capsule.id, *id, "Capsule ID should match");
 
@@ -512,6 +513,7 @@ fn create_test_capsule_with_principal(
     }
 }
 
+#[allow(dead_code)]
 fn create_test_capsule_with_subject(id: String, subject_principal: &str) -> crate::types::Capsule {
     use crate::types::{Capsule, OwnerState, PersonRef};
     use std::collections::HashMap;

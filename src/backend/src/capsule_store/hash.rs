@@ -26,6 +26,12 @@ pub struct HashStore {
     owner_index: HashMap<Principal, Vec<CapsuleId>>,
 }
 
+impl Default for HashStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HashStore {
     /// Create a new empty HashStore
     pub fn new() -> Self {
@@ -40,17 +46,13 @@ impl HashStore {
     fn update_indexes(&mut self, id: &CapsuleId, capsule: &Capsule) {
         // Update subject index (1:1 - add new)
         if let Some(subject_principal) = capsule.subject.principal() {
-            self.subject_index
-                .insert(subject_principal.clone(), id.clone());
+            self.subject_index.insert(*subject_principal, id.clone());
         }
 
         // Update owner index (1:N - deduplicate per owner)
-        for (owner_ref, _) in &capsule.owners {
+        for owner_ref in capsule.owners.keys() {
             if let crate::types::PersonRef::Principal(owner_principal) = owner_ref {
-                let owner_capsules = self
-                    .owner_index
-                    .entry(owner_principal.clone())
-                    .or_insert_with(Vec::new);
+                let owner_capsules = self.owner_index.entry(*owner_principal).or_default();
 
                 // Only add if not already present (prevent duplicates)
                 if !owner_capsules.contains(id) {
@@ -68,13 +70,13 @@ impl HashStore {
         }
 
         // Remove from owner index
-        for (owner_ref, _) in &capsule.owners {
+        for owner_ref in capsule.owners.keys() {
             if let crate::types::PersonRef::Principal(owner_principal) = owner_ref {
-                if let Some(owner_capsules) = self.owner_index.get_mut(&owner_principal) {
+                if let Some(owner_capsules) = self.owner_index.get_mut(owner_principal) {
                     owner_capsules.retain(|capsule_id| capsule_id != id);
                     // Remove empty vectors
                     if owner_capsules.is_empty() {
-                        self.owner_index.remove(&owner_principal);
+                        self.owner_index.remove(owner_principal);
                     }
                 }
             }
@@ -155,7 +157,7 @@ impl CapsuleStore for HashStore {
                     self.subject_index.remove(&old_principal);
                 }
                 if let Some(new_principal) = &new_subject {
-                    self.subject_index.insert(new_principal.clone(), id.clone());
+                    self.subject_index.insert(*new_principal, id.clone());
                 }
             }
 
@@ -172,10 +174,7 @@ impl CapsuleStore for HashStore {
             }
             for owner in &new_owners {
                 if !old_owners.contains(owner) {
-                    self.owner_index
-                        .entry(owner.clone())
-                        .or_insert_with(Vec::new)
-                        .push(id.clone());
+                    self.owner_index.entry(*owner).or_default().push(id.clone());
                 }
             }
 
@@ -371,6 +370,7 @@ mod tests {
         let id = "test-subject-change".to_string();
 
         // Create initial capsule
+        #[allow(unused_mut)]
         let mut capsule1 = create_test_capsule(id.clone());
         store.upsert(id.clone(), capsule1.clone());
 

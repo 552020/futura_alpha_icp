@@ -22,6 +22,7 @@ pub fn verify_caller_authorized() -> Result<Principal, ICPErrorCode> {
 }
 
 /// Check concurrent upload limit for user (max 3 per user)
+#[allow(dead_code)]
 pub fn check_upload_rate_limit(caller: &Principal) -> Result<(), ICPErrorCode> {
     const MAX_CONCURRENT_UPLOADS: usize = 3;
 
@@ -38,8 +39,7 @@ pub fn check_upload_rate_limit(caller: &Principal) -> Result<(), ICPErrorCode> {
 
     if active_sessions >= MAX_CONCURRENT_UPLOADS {
         return Err(ICPErrorCode::Internal(format!(
-            "Rate limit exceeded: {} concurrent uploads (max {})",
-            active_sessions, MAX_CONCURRENT_UPLOADS
+            "Rate limit exceeded: {active_sessions} concurrent uploads (max {MAX_CONCURRENT_UPLOADS})"
         )));
     }
 

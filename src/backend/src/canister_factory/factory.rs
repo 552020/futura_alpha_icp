@@ -87,8 +87,7 @@ pub async fn create_personal_canister_impl(
         }
         Err(error) => {
             let error_msg = format!(
-                "Failed to create personal canister for user {}: {:?}",
-                user, error
+                "Failed to create personal canister for user {user}: {error:?}"
             );
 
             ic_cdk::println!("{}", error_msg);
@@ -137,8 +136,7 @@ pub async fn install_personal_canister_wasm(
         }
         Err(error) => {
             let error_msg = format!(
-                "Failed to install WASM on personal canister {}: {:?}",
-                canister_id, error
+                "Failed to install WASM on personal canister {canister_id}: {error:?}"
             );
 
             ic_cdk::println!("{}", error_msg);
@@ -198,8 +196,7 @@ pub async fn handoff_controllers(canister_id: Principal, user: Principal) -> Res
         }
         Err(error) => {
             let error_msg = format!(
-                "Failed to update canister settings for handoff: {:?}",
-                error
+                "Failed to update canister settings for handoff: {error:?}"
             );
 
             ic_cdk::println!("Controller handoff failed: {}", error_msg);
@@ -225,7 +222,7 @@ async fn verify_handoff_preconditions(
 
     // Check that the registry entry exists and is in the right state
     let registry_entry = get_registry_entry(canister_id)
-        .ok_or_else(|| format!("No registry entry found for canister {}", canister_id))?;
+        .ok_or_else(|| format!("No registry entry found for canister {canister_id}"))?;
 
     // Verify the user matches the registry
     if registry_entry.created_by != user {
@@ -251,8 +248,7 @@ async fn verify_handoff_preconditions(
         }
         other_status => {
             return Err(format!(
-                "Canister {} is in {:?} state, not ready for handoff",
-                canister_id, other_status
+                "Canister {canister_id} is in {other_status:?} state, not ready for handoff"
             ));
         }
     }
@@ -319,12 +315,12 @@ pub fn prepare_canister_config(
 /// This function logs warnings for any unsupported options but doesn't fail
 /// This allows for future expansion without breaking existing clients
 pub fn check_unsupported_config_options(_config: &CreatePersonalCanisterConfig) -> Vec<String> {
-    let warnings = Vec::new();
+    
 
     // For MVP, all current options are supported
     // Future unsupported options would be detected here
 
-    warnings
+    Vec::new()
 }
 
 #[cfg(test)]

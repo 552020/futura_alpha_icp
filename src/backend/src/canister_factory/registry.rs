@@ -47,8 +47,7 @@ pub fn update_registry_status(
             Ok(())
         } else {
             Err(format!(
-                "Registry entry not found for canister {}",
-                canister_id
+                "Registry entry not found for canister {canister_id}"
             ))
         }
     })
@@ -65,8 +64,7 @@ pub fn update_registry_cycles_consumed(
             Ok(())
         } else {
             Err(format!(
-                "Registry entry not found for canister {}",
-                canister_id
+                "Registry entry not found for canister {canister_id}"
             ))
         }
     })
@@ -115,8 +113,7 @@ pub fn remove_registry_entry(canister_id: Principal) -> Result<(), String> {
             Ok(())
         } else {
             Err(format!(
-                "Registry entry not found for canister {}",
-                canister_id
+                "Registry entry not found for canister {canister_id}"
             ))
         }
     })
@@ -142,8 +139,7 @@ pub fn finalize_registry_after_creation(
             Ok(())
         } else {
             Err(format!(
-                "Registry entry not found for canister {}",
-                canister_id
+                "Registry entry not found for canister {canister_id}"
             ))
         }
     })
