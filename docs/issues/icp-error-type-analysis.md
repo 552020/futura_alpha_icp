@@ -410,10 +410,10 @@ impl From<anyhow::Error> for Error { ... }
 
 #### **2.1 Update Candid Interface**
 
-- [ ] **Regenerate Candid interface**:
-  - [ ] Run `./scripts/deploy-local.sh` to update `.did` file
-  - [ ] Verify new `Error` enum appears correctly in `backend.did`
-  - [ ] Remove old `ICPErrorCode` and `ICPResult` types from `.did`
+- [x] **Regenerate Candid interface**:
+  - [x] Run `./scripts/deploy-local.sh` to update `.did` file
+  - [x] Verify new `Error` enum appears correctly in `backend.did`
+  - [x] Remove old `ICPErrorCode` and `ICPResult` types from `.did`
 
 #### **2.2 Update Frontend TypeScript**
 

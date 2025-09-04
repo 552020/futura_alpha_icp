@@ -21,6 +21,7 @@ This plan establishes a stable, minimal foundation for capsule storage that prev
 ### 📊 **ACTUAL MIGRATION STATUS (Updated 2024)**
 
 **Critical Findings:**
+
 - ❌ **Only 5/58 endpoints migrated to `with_capsule_store` pattern (8.6%)**
 - ❌ **24/58 endpoints still use legacy `capsule::` pattern**
 - ❌ **8/58 endpoints use `upload::` hybrid workflow**
@@ -28,12 +29,14 @@ This plan establishes a stable, minimal foundation for capsule storage that prev
 - ❌ **Document claimed 21/65+ migrated (32.3%) - this was inaccurate**
 
 **What's Actually Working:**
+
 - ✅ **CapsuleStore trait & dual backends fully implemented**
 - ✅ **Secondary indexes (subject + owner) working**
 - ✅ **~20 capsule.rs internal functions migrated**
 - ✅ **All tests passing**
 
 **What's Broken/Missing:**
+
 - ❌ **Production data persistence (still volatile HashMap)**
 - ❌ **53/58 lib.rs endpoints need migration**
 - ❌ **Legacy code cleanup needed**
@@ -50,11 +53,13 @@ This plan establishes a stable, minimal foundation for capsule storage that prev
 ## 🚨 CRITICAL PRODUCTION ISSUES
 
 ### **Data Persistence Risk**
+
 **PROBLEM:** Production still uses `Store::new_hash()` which loses all data on canister upgrades
 **IMPACT:** User capsules and memories will be lost during deployments
 **STATUS:** ❌ **CRITICAL - MUST FIX IMMEDIATELY**
 
 ### **Performance Issues**
+
 **PROBLEM:** Secondary indexes not used in production queries
 **IMPACT:** O(n) scans instead of O(log n) indexed lookups
 **STATUS:** ❌ **HIGH PRIORITY**
@@ -392,16 +397,19 @@ with_capsule_store(|store| {
 ## 🔥 IMMEDIATE ACTION ITEMS (2024 Update)
 
 ### **CRITICAL (Do First):**
+
 1. **Switch to Stable Storage**: Change `Store::new_hash()` → `Store::new_stable()` in production
 2. **Fix Data Persistence**: Ensure user data survives canister upgrades
 3. **Test Upgrade Path**: Verify stable memory works across deployments
 
 ### **HIGH PRIORITY (Do Next):**
+
 1. **Complete Endpoint Migration**: Migrate remaining 53/58 lib.rs endpoints
 2. **Enable Index Performance**: Switch queries to use secondary indexes
 3. **Update Success Metrics**: Make Phase 3 criteria realistic
 
 ### **CLEANUP (Do Last):**
+
 1. **Remove Dead Code**: Clean up unused functions in memory.rs
 2. **Remove Legacy Patterns**: Eliminate `capsule::` and `with_capsules` usage
 3. **Update Documentation**: Reflect actual completion status
@@ -491,12 +499,14 @@ capsule_store/
 ### Phase 3 Success Checks (CORRECTED)
 
 **Current Reality:**
+
 - [x] CapsuleStore trait & dual backends working (5/58 endpoints migrated - 8.6%)
 - [x] Property tests pass for index consistency (IMPLEMENTED - revealed edge cases)
 - [x] Fuzzing tests reveal no corruption scenarios (IMPLEMENTED - found Principal/ID edge cases)
 - [x] CI scan detection implemented and running (found 6 remaining issues in test/legacy code)
 
 **Still Needed:**
+
 - [ ] Switch production from HashMap to Stable storage
 - [ ] Migrate remaining 53/58 lib.rs endpoints
 - [ ] Remove legacy `capsule::` function calls
@@ -511,6 +521,7 @@ capsule_store/
 ### Overall Success Checks (CORRECTED)
 
 **Current Status:**
+
 - [x] CapsuleStore trait working (Phase 1 ✅)
 - [x] Secondary indexes implemented (Phase 2 ✅)
 - [ ] Stable backend switched to production (Phase 4 ❌ - CRITICAL)

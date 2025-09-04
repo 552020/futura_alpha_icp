@@ -44,7 +44,9 @@ pub fn add_admin(new_admin_principal: Principal) -> Result<()> {
 
     // Cannot add a superadmin as a regular admin
     if is_superadmin(&new_admin_principal) {
-        return Err(crate::types::Error::InvalidArgument("Cannot add superadmin as regular admin".to_string()));
+        return Err(crate::types::Error::InvalidArgument(
+            "Cannot add superadmin as regular admin".to_string(),
+        ));
     }
 
     with_admins_mut(|admins| {
@@ -65,7 +67,9 @@ pub fn remove_admin(admin_principal: Principal) -> Result<()> {
 
     // Cannot remove a superadmin
     if is_superadmin(&admin_principal) {
-        return Err(crate::types::Error::InvalidArgument("Cannot remove superadmin".to_string()));
+        return Err(crate::types::Error::InvalidArgument(
+            "Cannot remove superadmin".to_string(),
+        ));
     }
 
     with_admins_mut(|admins| {

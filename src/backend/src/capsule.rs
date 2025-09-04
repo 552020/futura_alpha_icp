@@ -430,14 +430,18 @@ pub fn register() -> Result<()> {
             if update_result.is_ok() {
                 Ok(())
             } else {
-                Err(crate::types::Error::Internal("Failed to update capsule activity".to_string()))
+                Err(crate::types::Error::Internal(
+                    "Failed to update capsule activity".to_string(),
+                ))
             }
         }
         None => {
             // MIGRATED: Create new self-capsule with basic info
             match capsules_create(None) {
                 CapsuleCreationResult { success: true, .. } => Ok(()),
-                CapsuleCreationResult { success: false, .. } => Err(crate::types::Error::Internal("Failed to create capsule".to_string())),
+                CapsuleCreationResult { success: false, .. } => Err(crate::types::Error::Internal(
+                    "Failed to create capsule".to_string(),
+                )),
             }
         }
     }
@@ -445,29 +449,34 @@ pub fn register() -> Result<()> {
 
 /// Flexible resource binding function for Neon database
 /// Can bind capsules, galleries, or memories to Neon
-pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind: bool) -> Result<()> {
+pub fn capsules_bind_neon(
+    resource_type: ResourceType,
+    resource_id: String,
+    bind: bool,
+) -> Result<()> {
     let caller_ref = PersonRef::from_caller();
 
     match resource_type {
         ResourceType::Capsule => {
             // MIGRATED: Bind specific capsule if caller owns it
             with_capsule_store_mut(|store| {
-                let update_result = store
-                    .update(&resource_id, |capsule| {
-                        if capsule.owners.contains_key(&caller_ref) {
-                            capsule.bound_to_neon = bind;
-                            capsule.updated_at = time();
+                let update_result = store.update(&resource_id, |capsule| {
+                    if capsule.owners.contains_key(&caller_ref) {
+                        capsule.bound_to_neon = bind;
+                        capsule.updated_at = time();
 
-                            // Update owner activity
-                            if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                                owner_state.last_activity_at = time();
-                            }
+                        // Update owner activity
+                        if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                            owner_state.last_activity_at = time();
                         }
-                    });
+                    }
+                });
                 if update_result.is_ok() {
                     Ok(())
                 } else {
-                    Err(crate::types::Error::Internal("Failed to update capsule".to_string()))
+                    Err(crate::types::Error::Internal(
+                        "Failed to update capsule".to_string(),
+                    ))
                 }
             })
         }
@@ -495,7 +504,9 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                         return if update_result.is_ok() {
                             Ok(())
                         } else {
-                            Err(crate::types::Error::Internal("Failed to update gallery".to_string()))
+                            Err(crate::types::Error::Internal(
+                                "Failed to update gallery".to_string(),
+                            ))
                         };
                     }
                 }
@@ -536,7 +547,9 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                         return if update_result.is_ok() {
                             Ok(())
                         } else {
-                            Err(crate::types::Error::Internal("Failed to update memory".to_string()))
+                            Err(crate::types::Error::Internal(
+                                "Failed to update memory".to_string(),
+                            ))
                         };
                     }
                 }
@@ -825,7 +838,10 @@ pub fn galleries_read(gallery_id: String) -> Result<Gallery> {
 }
 
 /// Update gallery storage status after memory synchronization
-pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStorageStatus) -> Result<()> {
+pub fn update_gallery_storage_status(
+    gallery_id: String,
+    new_status: GalleryStorageStatus,
+) -> Result<()> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Update gallery storage status in caller's self-capsule
@@ -852,7 +868,9 @@ pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStor
             if update_result.is_ok() {
                 Ok(())
             } else {
-                Err(crate::types::Error::Internal("Failed to update gallery storage status".to_string()))
+                Err(crate::types::Error::Internal(
+                    "Failed to update gallery storage status".to_string(),
+                ))
             }
         } else {
             Err(crate::types::Error::NotFound)

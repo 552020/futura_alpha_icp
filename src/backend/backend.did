@@ -241,19 +241,22 @@ type PersonalCanisterCreationStats = record {
 };
 type ResourceType = variant { Memory; Capsule; Gallery };
 type Result = variant { Ok; Err : Error };
-type Result_1 = variant { Ok : bool; Err : text };
-type Result_10 = variant { Ok : MetadataResponse; Err : Error };
-type Result_2 = variant {
+type Result_1 = variant { Ok : CapsuleInfo; Err : Error };
+type Result_10 = variant { Ok : vec MemoryPresenceResult; Err : Error };
+type Result_11 = variant { Ok : Memory; Err : Error };
+type Result_12 = variant { Ok : MetadataResponse; Err : Error };
+type Result_13 = variant { Ok : principal; Err : Error };
+type Result_2 = variant { Ok : Capsule; Err : Error };
+type Result_3 = variant { Ok : bool; Err : Error };
+type Result_4 = variant { Ok : Gallery; Err : Error };
+type Result_5 = variant {
   Ok : vec record { principal; DetailedCreationStatus };
-  Err : text;
+  Err : Error;
 };
-type Result_3 = variant { Ok : PersonalCanisterCreationStats; Err : text };
-type Result_4 = variant { Ok : opt DetailedCreationStatus; Err : text };
-type Result_5 = variant { Ok : bool; Err : Error };
-type Result_6 = variant { Ok : nat64; Err : Error };
-type Result_7 = variant { Ok : text; Err : Error };
-type Result_8 = variant { Ok : vec MemoryPresenceResult; Err : Error };
-type Result_9 = variant { Ok; Err : text };
+type Result_6 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
+type Result_7 = variant { Ok : opt DetailedCreationStatus; Err : Error };
+type Result_8 = variant { Ok : nat64; Err : Error };
+type Result_9 = variant { Ok : text; Err : Error };
 type SimpleMemoryMetadata = record {
   title : opt text;
   updated_at : nat64;
@@ -288,10 +291,10 @@ service : {
   capsules_bind_neon : (ResourceType, text, bool) -> (Result);
   capsules_create : (opt PersonRef) -> (CapsuleCreationResult);
   capsules_list : () -> (vec CapsuleHeader) query;
-  capsules_read_basic : (opt text) -> (opt CapsuleInfo) query;
-  capsules_read_full : (opt text) -> (opt Capsule) query;
-  clear_creation_state : (principal) -> (Result_1);
-  clear_migration_state : (principal) -> (Result_1);
+  capsules_read_basic : (opt text) -> (Result_1) query;
+  capsules_read_full : (opt text) -> (Result_2) query;
+  clear_creation_state : (principal) -> (Result_3);
+  clear_migration_state : (principal) -> (Result_3);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
   galleries_create : (GalleryData) -> (StoreGalleryResponse);
   galleries_create_with_memories : (GalleryData, bool) -> (
@@ -299,56 +302,56 @@ service : {
     );
   galleries_delete : (text) -> (DeleteGalleryResponse);
   galleries_list : () -> (vec Gallery) query;
-  galleries_read : (text) -> (opt Gallery) query;
+  galleries_read : (text) -> (Result_4) query;
   galleries_update : (text, GalleryUpdateData) -> (UpdateGalleryResponse);
-  get_creation_states_by_status : (CreationStatus) -> (Result_2) query;
+  get_creation_states_by_status : (CreationStatus) -> (Result_5) query;
   get_creation_status : () -> (opt CreationStatusResponse) query;
   get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
   get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
-  get_migration_states_by_status : (CreationStatus) -> (Result_2) query;
-  get_migration_stats : () -> (Result_3) query;
+  get_migration_states_by_status : (CreationStatus) -> (Result_5) query;
+  get_migration_stats : () -> (Result_6) query;
   get_migration_status : () -> (opt CreationStatusResponse) query;
   get_my_personal_canister_id : () -> (opt principal) query;
-  get_personal_canister_creation_stats : () -> (Result_3) query;
+  get_personal_canister_creation_stats : () -> (Result_6) query;
   get_personal_canister_id : (principal) -> (opt principal) query;
-  get_user_creation_status : (principal) -> (Result_4) query;
-  get_user_migration_status : (principal) -> (Result_4) query;
+  get_user_creation_status : (principal) -> (Result_7) query;
+  get_user_migration_status : (principal) -> (Result_7) query;
   greet : (text) -> (text) query;
-  is_migration_enabled : () -> (Result_5) query;
-  is_personal_canister_creation_enabled : () -> (Result_5) query;
+  is_migration_enabled : () -> (Result_3) query;
+  is_personal_canister_creation_enabled : () -> (Result_3) query;
   list_admins : () -> (vec principal) query;
-  list_all_creation_states : () -> (Result_2) query;
-  list_all_migration_states : () -> (Result_2) query;
+  list_all_creation_states : () -> (Result_5) query;
+  list_all_migration_states : () -> (Result_5) query;
   list_superadmins : () -> (vec principal) query;
   // Abort upload session and cleanup
   memories_abort : (nat64) -> (Result);
   // Begin chunked upload for large files
-  memories_begin_upload : (text, MemoryMeta, nat32) -> (Result_6);
+  memories_begin_upload : (text, MemoryMeta, nat32) -> (Result_8);
   // Commit chunks to create final memory
-  memories_commit : (nat64, blob, nat64) -> (Result_7);
+  memories_commit : (nat64, blob, nat64) -> (Result_9);
   memories_create : (text, MemoryData) -> (MemoryOperationResponse);
   // Create memory with inline data (≤32KB only)
-  memories_create_inline : (text, blob, MemoryMeta) -> (Result_7);
+  memories_create_inline : (text, blob, MemoryMeta) -> (Result_9);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (Result_8) query;
+  memories_ping : (vec text) -> (Result_10) query;
   // Upload a chunk for an active session
   memories_put_chunk : (nat64, nat32, blob) -> (Result);
-  memories_read : (text) -> (opt Memory) query;
+  memories_read : (text) -> (Result_11) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   prove_nonce : (text) -> (Result);
   register : () -> (Result);
   register_with_nonce : (text) -> (Result);
   remove_admin : (principal) -> (Result);
-  set_migration_enabled : (bool) -> (Result_9);
-  set_personal_canister_creation_enabled : (bool) -> (Result_9);
+  set_migration_enabled : (bool) -> (Result);
+  set_personal_canister_creation_enabled : (bool) -> (Result);
   update_gallery_storage_status : (text, GalleryStorageStatus) -> (Result);
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
-      Result_10,
+      Result_12,
     );
-  verify_nonce : (text) -> (opt principal) query;
+  verify_nonce : (text) -> (Result_13) query;
   whoami : () -> (principal) query;
 }
