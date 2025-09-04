@@ -157,8 +157,8 @@ mod tests {
     fn create_test_capsule(id: CapsuleId) -> Capsule {
         // Helper function to create a test capsule
         // This would normally be done with proper constructors
-        use crate::types::{Capsule, PersonRef};
         use crate::types::OwnerState;
+        use crate::types::{Capsule, PersonRef};
         use std::collections::HashMap;
 
         let subject = PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap());

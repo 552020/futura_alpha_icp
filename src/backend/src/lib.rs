@@ -35,38 +35,47 @@ fn whoami() -> Principal {
 // AUTHENTICATION & USER MANAGEMENT (6 functions)
 // ============================================================================
 #[ic_cdk::update]
-fn register() -> bool {
-    capsule::register()
+fn register() -> types::Result<()> {
+    match capsule::register() {
+        true => Ok(()),
+        false => Err(types::Error::Internal("registration failed".to_string())),
+    }
 }
 
 // Register user and prove nonce in one call (optimized for II auth flow)
 #[ic_cdk::update]
-fn register_with_nonce(nonce: String) -> bool {
+fn register_with_nonce(nonce: String) -> types::Result<()> {
     let caller = ic_cdk::api::msg_caller();
     let timestamp = ic_cdk::api::time();
 
     // Register the user
-    capsule::register();
+    if !capsule::register() {
+        return Err(types::Error::Internal(
+            "user registration failed".to_string(),
+        ));
+    }
 
     // Store nonce proof
     memory::store_nonce_proof(nonce, caller, timestamp);
 
-    true
+    Ok(())
 }
 
 // Nonce proof for II authentication (kept for backward compatibility)
 #[ic_cdk::update]
-fn prove_nonce(nonce: String) -> bool {
+fn prove_nonce(nonce: String) -> types::Result<()> {
     // Store the nonce proof with the caller's principal and timestamp
     let caller = ic_cdk::api::msg_caller();
     let timestamp = ic_cdk::api::time();
 
     // Store in memory (we'll implement this in memory.rs)
-    memory::store_nonce_proof(nonce, caller, timestamp)
+    memory::store_nonce_proof(nonce, caller, timestamp);
+
+    Ok(())
 }
 
 #[ic_cdk::query]
-fn verify_nonce(nonce: String) -> Option<Principal> {
+fn verify_nonce(nonce: String) -> types::Result<Principal> {
     // Verify and return the principal who proved this nonce
     memory::get_nonce_proof(nonce)
 }
@@ -75,13 +84,19 @@ fn verify_nonce(nonce: String) -> Option<Principal> {
 // ADMINISTRATIVE FUNCTIONS (4 functions)
 // ============================================================================
 #[ic_cdk::update]
-fn add_admin(principal: Principal) -> bool {
-    admin::add_admin(principal)
+fn add_admin(principal: Principal) -> types::Result<()> {
+    match admin::add_admin(principal) {
+        true => Ok(()),
+        false => Err(types::Error::Unauthorized),
+    }
 }
 
 #[ic_cdk::update]
-fn remove_admin(principal: Principal) -> bool {
-    admin::remove_admin(principal)
+fn remove_admin(principal: Principal) -> types::Result<()> {
+    match admin::remove_admin(principal) {
+        true => Ok(()),
+        false => Err(types::Error::Unauthorized),
+    }
 }
 
 #[ic_cdk::query]
@@ -98,8 +113,15 @@ fn list_superadmins() -> Vec<Principal> {
 // CAPSULE MANAGEMENT (5 functions)
 // ============================================================================
 #[ic_cdk::update]
-fn capsules_bind_neon(resource_type: types::ResourceType, resource_id: String, bind: bool) -> bool {
-    capsule::capsules_bind_neon(resource_type, resource_id, bind)
+fn capsules_bind_neon(
+    resource_type: types::ResourceType,
+    resource_id: String,
+    bind: bool,
+) -> types::Result<()> {
+    match capsule::capsules_bind_neon(resource_type, resource_id, bind) {
+        true => Ok(()),
+        false => Err(types::Error::Unauthorized),
+    }
 }
 
 // Capsule management endpoints
@@ -109,7 +131,7 @@ fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationR
 }
 
 #[ic_cdk::query]
-fn capsules_read_full(capsule_id: Option<String>) -> Option<types::Capsule> {
+fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsule> {
     match capsule_id {
         Some(id) => capsule::capsules_read(id),
         None => capsule::capsule_read_self(),
@@ -117,7 +139,7 @@ fn capsules_read_full(capsule_id: Option<String>) -> Option<types::Capsule> {
 }
 
 #[ic_cdk::query]
-fn capsules_read_basic(capsule_id: Option<String>) -> Option<types::CapsuleInfo> {
+fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::CapsuleInfo> {
     match capsule_id {
         Some(id) => capsule::capsules_read_basic(id),
         None => capsule::capsule_read_self_basic(),
@@ -149,8 +171,11 @@ async fn galleries_create_with_memories(
 fn update_gallery_storage_status(
     gallery_id: String,
     new_status: types::GalleryStorageStatus,
-) -> bool {
-    capsule::update_gallery_storage_status(gallery_id, new_status)
+) -> types::Result<()> {
+    match capsule::update_gallery_storage_status(gallery_id, new_status) {
+        true => Ok(()),
+        false => Err(types::Error::Unauthorized),
+    }
 }
 
 #[ic_cdk::query]
@@ -159,7 +184,7 @@ fn galleries_list() -> Vec<types::Gallery> {
 }
 
 #[ic_cdk::query]
-fn galleries_read(gallery_id: String) -> Option<types::Gallery> {
+fn galleries_read(gallery_id: String) -> types::Result<types::Gallery> {
     capsule::galleries_read(gallery_id)
 }
 
@@ -188,7 +213,7 @@ async fn memories_create(
 }
 
 #[ic_cdk::query]
-fn memories_read(memory_id: String) -> Option<types::Memory> {
+fn memories_read(memory_id: String) -> types::Result<types::Memory> {
     capsule::memories_read(memory_id)
 }
 
@@ -322,14 +347,14 @@ fn get_personal_canister_creation_stats(
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-fn is_personal_canister_creation_enabled() -> bool {
-    canister_factory::is_personal_canister_creation_enabled()
+fn is_personal_canister_creation_enabled() -> types::Result<bool> {
+    Ok(canister_factory::is_personal_canister_creation_enabled())
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
-fn is_migration_enabled() -> bool {
-    is_personal_canister_creation_enabled()
+fn is_migration_enabled() -> types::Result<bool> {
+    Ok(canister_factory::is_personal_canister_creation_enabled())
 }
 
 // Legacy function names for backward compatibility

@@ -3,6 +3,7 @@ use crate::memory::{
     with_capsule_store, with_capsule_store_mut, with_capsules_mut,
 };
 use crate::types::*;
+use crate::types::Result;
 
 use ic_cdk::api::{msg_caller, time};
 use std::collections::HashMap;
@@ -301,7 +302,7 @@ pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
 }
 
 /// Get capsule by ID (with read access check)
-pub fn capsules_read(capsule_id: String) -> Option<Capsule> {
+pub fn capsules_read(capsule_id: String) -> Result<Capsule> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Using new trait-based API
@@ -309,11 +310,12 @@ pub fn capsules_read(capsule_id: String) -> Option<Capsule> {
         store
             .get(&capsule_id)
             .filter(|capsule| capsule.has_write_access(&caller))
+            .ok_or(Error::NotFound)
     })
 }
 
 /// Get capsule info by ID (basic version with read access check)
-pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
+pub fn capsules_read_basic(capsule_id: String) -> Result<CapsuleInfo> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Using new trait-based API
@@ -336,11 +338,12 @@ pub fn capsules_read_basic(capsule_id: String) -> Option<CapsuleInfo> {
                 gallery_count: capsule.galleries.len() as u32,
                 connection_count: capsule.connections.len() as u32,
             })
+            .ok_or(Error::NotFound)
     })
 }
 
 /// Get caller's self-capsule (where caller is the subject)
-pub fn capsule_read_self() -> Option<Capsule> {
+pub fn capsule_read_self() -> Result<Capsule> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find caller's self-capsule
@@ -350,11 +353,12 @@ pub fn capsule_read_self() -> Option<Capsule> {
             .items
             .into_iter()
             .find(|capsule| capsule.subject == caller)
+            .ok_or(Error::NotFound)
     })
 }
 
 /// Get caller's self-capsule info (basic version)
-pub fn capsule_read_self_basic() -> Option<CapsuleInfo> {
+pub fn capsule_read_self_basic() -> Result<CapsuleInfo> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find caller's self-capsule and create basic info
@@ -379,6 +383,7 @@ pub fn capsule_read_self_basic() -> Option<CapsuleInfo> {
                 gallery_count: capsule.galleries.len() as u32,
                 connection_count: capsule.connections.len() as u32,
             })
+            .ok_or(Error::NotFound)
     })
 }
 
@@ -796,7 +801,7 @@ pub fn galleries_list() -> Vec<Gallery> {
 }
 
 /// Get gallery by ID from caller's capsule (replaces get_gallery_by_id)
-pub fn galleries_read(gallery_id: String) -> Option<Gallery> {
+pub fn galleries_read(gallery_id: String) -> Result<Gallery> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find gallery in caller's self-capsule
@@ -807,6 +812,7 @@ pub fn galleries_read(gallery_id: String) -> Option<Gallery> {
             .into_iter()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .and_then(|capsule| capsule.galleries.get(&gallery_id).cloned())
+            .ok_or(Error::NotFound)
     })
 }
 
@@ -1181,7 +1187,7 @@ pub fn add_memory_to_capsule(
 }
 
 /// Read a memory by its ID (searches across all capsules the caller has access to)
-pub fn memories_read(memory_id: String) -> Option<Memory> {
+pub fn memories_read(memory_id: String) -> Result<Memory> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find memory across caller's accessible capsules
@@ -1195,6 +1201,7 @@ pub fn memories_read(memory_id: String) -> Option<Memory> {
                 capsule.owners.contains_key(&caller) || capsule.subject == caller
             })
             .and_then(|capsule| capsule.memories.get(&memory_id).cloned())
+            .ok_or(Error::NotFound)
     })
 }
 

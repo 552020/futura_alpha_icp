@@ -11,29 +11,41 @@ This plan establishes a stable, minimal foundation for capsule storage that prev
 - ✅ Complete `CapsuleStore` trait with 12 methods (exceeded plan)
 - ✅ Dual backend support (HashMap + StableBTreeMap)
 - ✅ Secondary indexes: subject (1:1) + owner (sparse multimap)
-- ✅ Endpoint migrations COMPLETED (21/65+ functions - 32.3%)
 - ✅ 185 tests passing (exceeded plan)
 - ✅ Schema versioning and Storable implementation
 - ✅ MemoryId reservations and bounded sizing
 - ✅ Custom OwnerIndexKey for multimap storage
 
-### 🎯 **PHASE 3.2: ENDPOINT MIGRATION - COMPLETED!**
+⚠️ **CORRECTED STATUS: Phase 3 Migration Incomplete**
 
-- ✅ **21/65+ endpoints migrated (32.3% complete)**
-- ✅ **All major function categories fully migrated:**
-  - Core Capsule Operations (12/12) ✅
-  - Gallery Operations (5/5) ✅
-  - Memory Operations (4/4) ✅
-- ✅ **Complex business logic successfully migrated**
-- ✅ **Access control and data integrity preserved**
-- ✅ **Backward compatibility maintained**
-- ✅ **Code compiles successfully**
+### 📊 **ACTUAL MIGRATION STATUS (Updated 2024)**
 
-🔄 **In Progress (Phase 3):**
+**Critical Findings:**
+- ❌ **Only 5/58 endpoints migrated to `with_capsule_store` pattern (8.6%)**
+- ❌ **24/58 endpoints still use legacy `capsule::` pattern**
+- ❌ **8/58 endpoints use `upload::` hybrid workflow**
+- ❌ **Production still uses HashMap, NOT Stable storage**
+- ❌ **Document claimed 21/65+ migrated (32.3%) - this was inaccurate**
 
-- ✅ Phase 3.1: Dual-Backend Test Harness (COMPLETED - found edge cases!)
-- ✅ Phase 3.2: Endpoint Migration (21/65+ functions migrated & validated - COMPLETED!)
-- ✅ Phase 3.3: Write-Heavy Endpoints & CI Scan Detection (COMPLETED!)
+**What's Actually Working:**
+- ✅ **CapsuleStore trait & dual backends fully implemented**
+- ✅ **Secondary indexes (subject + owner) working**
+- ✅ **~20 capsule.rs internal functions migrated**
+- ✅ **All tests passing**
+
+**What's Broken/Missing:**
+- ❌ **Production data persistence (still volatile HashMap)**
+- ❌ **53/58 lib.rs endpoints need migration**
+- ❌ **Legacy code cleanup needed**
+- ❌ **Performance benefits not realized**
+
+🔄 **Current State:**
+
+- ✅ Phase 1: Repository Interface (COMPLETE)
+- ✅ Phase 2: Secondary Indexes (COMPLETE)
+- ⚠️ Phase 3: Endpoint Migration (~8.6% complete, NOT 32.3%)
+- ❌ Phase 4: Production Switch (NOT DONE - still HashMap)
+- ❌ Phase 5: Cleanup (NOT DONE - dead code present)
 
 ## Implementation Structure
 
@@ -447,12 +459,20 @@ capsule_store/
 - [x] Owner index implemented with sparse multimap structure
 - [x] Custom `OwnerIndexKey` for `Storable` compatibility
 
-### Phase 3 Success Checks
+### Phase 3 Success Checks (CORRECTED)
 
-- [x] 100% of write-heavy endpoints use `store.update`/`remove` only (21/65+ migrated)
+**Current Reality:**
+- [x] CapsuleStore trait & dual backends working (5/58 endpoints migrated - 8.6%)
 - [x] Property tests pass for index consistency (IMPLEMENTED - revealed edge cases)
 - [x] Fuzzing tests reveal no corruption scenarios (IMPLEMENTED - found Principal/ID edge cases)
 - [x] CI scan detection implemented and running (found 6 remaining issues in test/legacy code)
+
+**Still Needed:**
+- [ ] Switch production from HashMap to Stable storage
+- [ ] Migrate remaining 53/58 lib.rs endpoints
+- [ ] Remove legacy `capsule::` function calls
+- [ ] Clean up dead code in memory.rs
+- [ ] 100% of endpoints use `store.update`/`remove` pattern
 
 ### Phase 4 Success Checks
 

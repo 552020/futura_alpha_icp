@@ -1,7 +1,7 @@
 #[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
 use crate::capsule_store::Store;
-use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession};
+use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession, Result};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{DefaultMemoryImpl, StableBTreeMap};
@@ -229,8 +229,14 @@ pub fn store_nonce_proof(nonce: String, principal: Principal, timestamp: u64) ->
     true
 }
 
-pub fn get_nonce_proof(nonce: String) -> Option<Principal> {
-    NONCE_PROOFS.with(|proofs| proofs.borrow().get(&nonce).map(|(principal, _)| *principal))
+pub fn get_nonce_proof(nonce: String) -> Result<Principal> {
+    NONCE_PROOFS.with(|proofs| {
+        proofs
+            .borrow()
+            .get(&nonce)
+            .map(|(principal, _)| *principal)
+            .ok_or(crate::types::Error::NotFound)
+    })
 }
 
 // Migration state access functions (only available with migration feature)
@@ -265,7 +271,7 @@ where
 
 // Helper to migrate data from thread_local to stable storage (for future use)
 #[allow(dead_code)]
-pub fn migrate_capsules_to_stable() -> Result<u32, String> {
+pub fn migrate_capsules_to_stable() -> Result<u32> {
     let mut migrated_count = 0;
 
     // Get all capsules from thread_local storage
