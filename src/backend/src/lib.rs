@@ -36,10 +36,7 @@ fn whoami() -> Principal {
 // ============================================================================
 #[ic_cdk::update]
 fn register() -> types::Result<()> {
-    match capsule::register() {
-        true => Ok(()),
-        false => Err(types::Error::Internal("registration failed".to_string())),
-    }
+    capsule::register()
 }
 
 // Register user and prove nonce in one call (optimized for II auth flow)
@@ -49,11 +46,7 @@ fn register_with_nonce(nonce: String) -> types::Result<()> {
     let timestamp = ic_cdk::api::time();
 
     // Register the user
-    if !capsule::register() {
-        return Err(types::Error::Internal(
-            "user registration failed".to_string(),
-        ));
-    }
+    capsule::register()?;
 
     // Store nonce proof
     memory::store_nonce_proof(nonce, caller, timestamp);
@@ -77,7 +70,10 @@ fn prove_nonce(nonce: String) -> types::Result<()> {
 #[ic_cdk::query]
 fn verify_nonce(nonce: String) -> types::Result<Principal> {
     // Verify and return the principal who proved this nonce
-    memory::get_nonce_proof(nonce)
+    match memory::get_nonce_proof(nonce) {
+        Some(principal) => Ok(principal),
+        None => Err(types::Error::NotFound),
+    }
 }
 
 // ============================================================================
@@ -85,18 +81,12 @@ fn verify_nonce(nonce: String) -> types::Result<Principal> {
 // ============================================================================
 #[ic_cdk::update]
 fn add_admin(principal: Principal) -> types::Result<()> {
-    match admin::add_admin(principal) {
-        true => Ok(()),
-        false => Err(types::Error::Unauthorized),
-    }
+    admin::add_admin(principal)
 }
 
 #[ic_cdk::update]
 fn remove_admin(principal: Principal) -> types::Result<()> {
-    match admin::remove_admin(principal) {
-        true => Ok(()),
-        false => Err(types::Error::Unauthorized),
-    }
+    admin::remove_admin(principal)
 }
 
 #[ic_cdk::query]
@@ -118,10 +108,7 @@ fn capsules_bind_neon(
     resource_id: String,
     bind: bool,
 ) -> types::Result<()> {
-    match capsule::capsules_bind_neon(resource_type, resource_id, bind) {
-        true => Ok(()),
-        false => Err(types::Error::Unauthorized),
-    }
+    capsule::capsules_bind_neon(resource_type, resource_id, bind)
 }
 
 // Capsule management endpoints
@@ -172,10 +159,7 @@ fn update_gallery_storage_status(
     gallery_id: String,
     new_status: types::GalleryStorageStatus,
 ) -> types::Result<()> {
-    match capsule::update_gallery_storage_status(gallery_id, new_status) {
-        true => Ok(()),
-        false => Err(types::Error::Unauthorized),
-    }
+    capsule::update_gallery_storage_status(gallery_id, new_status)
 }
 
 #[ic_cdk::query]
@@ -278,28 +262,28 @@ fn get_detailed_creation_status() -> Option<canister_factory::DetailedCreationSt
 #[ic_cdk::query]
 fn get_user_creation_status(
     user: Principal,
-) -> Result<Option<canister_factory::DetailedCreationStatus>, String> {
+) -> types::Result<Option<canister_factory::DetailedCreationStatus>> {
     canister_factory::get_user_creation_status(user)
 }
 
 #[ic_cdk::query]
 fn get_user_migration_status(
     user: Principal,
-) -> Result<Option<canister_factory::DetailedCreationStatus>, String> {
+) -> types::Result<Option<canister_factory::DetailedCreationStatus>> {
     get_user_creation_status(user)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 fn list_all_creation_states(
-) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
+) -> types::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>> {
     canister_factory::list_all_creation_states()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 fn list_all_migration_states(
-) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
+) -> types::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>> {
     list_all_creation_states()
 }
 
@@ -307,7 +291,7 @@ fn list_all_migration_states(
 #[ic_cdk::query]
 fn get_creation_states_by_status(
     status: canister_factory::CreationStatus,
-) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
+) -> types::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>> {
     canister_factory::get_creation_states_by_status(status)
 }
 
@@ -315,46 +299,46 @@ fn get_creation_states_by_status(
 #[ic_cdk::query]
 fn get_migration_states_by_status(
     status: canister_factory::CreationStatus,
-) -> Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, String> {
+) -> types::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>> {
     get_creation_states_by_status(status)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-fn clear_creation_state(user: Principal) -> Result<bool, String> {
+fn clear_creation_state(user: Principal) -> types::Result<bool> {
     canister_factory::clear_creation_state(user)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-fn clear_migration_state(user: Principal) -> Result<bool, String> {
+fn clear_migration_state(user: Principal) -> types::Result<bool> {
     clear_creation_state(user)
 }
 
 // Admin controls for migration (only available with migration feature)
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::update]
-fn set_personal_canister_creation_enabled(enabled: bool) -> Result<(), String> {
+fn set_personal_canister_creation_enabled(enabled: bool) -> types::Result<()> {
     canister_factory::set_personal_canister_creation_enabled(enabled)
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 fn get_personal_canister_creation_stats(
-) -> Result<canister_factory::PersonalCanisterCreationStats, String> {
+) -> types::Result<canister_factory::PersonalCanisterCreationStats> {
     canister_factory::get_personal_canister_creation_stats()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 fn is_personal_canister_creation_enabled() -> types::Result<bool> {
-    Ok(canister_factory::is_personal_canister_creation_enabled())
+    canister_factory::is_personal_canister_creation_enabled()
 }
 
 #[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
 #[ic_cdk::query]
 fn is_migration_enabled() -> types::Result<bool> {
-    Ok(canister_factory::is_personal_canister_creation_enabled())
+    canister_factory::is_migration_enabled()
 }
 
 // Legacy function names for backward compatibility
@@ -378,13 +362,13 @@ fn get_detailed_migration_status() -> Option<canister_factory::DetailedCreationS
 
 #[cfg(feature = "migration")]
 #[ic_cdk::update]
-fn set_migration_enabled(enabled: bool) -> Result<(), String> {
+fn set_migration_enabled(enabled: bool) -> types::Result<()> {
     set_personal_canister_creation_enabled(enabled)
 }
 
 #[cfg(feature = "migration")]
 #[ic_cdk::query]
-fn get_migration_stats() -> Result<canister_factory::PersonalCanisterCreationStats, String> {
+fn get_migration_stats() -> types::Result<canister_factory::PersonalCanisterCreationStats> {
     get_personal_canister_creation_stats()
 }
 

@@ -394,10 +394,10 @@ impl From<anyhow::Error> for Error { ... }
 
 #### **1.4 Update Error Handling Logic**
 
-- [ ] **Update function implementations** to return `Result<T, Error>`:
-  - [ ] Replace `return true/false` with `Ok(())` / `Err(Error::...)`
-  - [ ] Replace `return Some(x)/None` with `Ok(x)` / `Err(Error::NotFound)`
-  - [ ] Update error mapping in upload service, auth, metadata modules
+- [x] **Update function implementations** to return `Result<T, Error>`:
+  - [x] Replace `return true/false` with `Ok(())` / `Err(Error::...)`
+  - [x] Replace `return Some(x)/None` with `Ok(x)` / `Err(Error::NotFound)`
+  - [x] Update error mapping in upload service, auth, metadata modules
 
 #### **1.5 Update Tests**
 

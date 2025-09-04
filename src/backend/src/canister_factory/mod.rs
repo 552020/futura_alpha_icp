@@ -18,6 +18,7 @@ pub mod integration_tests;
 
 // Re-export commonly used types
 pub use types::*;
+use crate::types::Result;
 
 // Re-export only the functions that are actually used
 pub use orchestrator::{
@@ -62,61 +63,61 @@ pub fn get_detailed_creation_status() -> Option<DetailedCreationStatus> {
 
 pub fn get_user_creation_status(
     _user: Principal,
-) -> Result<Option<DetailedCreationStatus>, String> {
+) -> Result<Option<DetailedCreationStatus>> {
     Ok(None)
 }
 
 // Legacy function for backward compatibility
 pub fn get_user_migration_status(
     user: Principal,
-) -> Result<Option<DetailedCreationStatus>, String> {
+) -> Result<Option<DetailedCreationStatus>> {
     get_user_creation_status(user)
 }
 
-pub fn list_all_creation_states() -> Result<Vec<(Principal, DetailedCreationStatus)>, String> {
+pub fn list_all_creation_states() -> Result<Vec<(Principal, DetailedCreationStatus)>> {
     Ok(vec![])
 }
 
 // Legacy function for backward compatibility
-pub fn list_all_migration_states() -> Result<Vec<(Principal, DetailedCreationStatus)>, String> {
+pub fn list_all_migration_states() -> Result<Vec<(Principal, DetailedCreationStatus)>> {
     list_all_creation_states()
 }
 
 pub fn get_creation_states_by_status(
     _status: CreationStatus,
-) -> Result<Vec<(Principal, DetailedCreationStatus)>, String> {
+) -> Result<Vec<(Principal, DetailedCreationStatus)>> {
     Ok(vec![])
 }
 
 // Legacy function for backward compatibility
 pub fn get_migration_states_by_status(
     status: CreationStatus,
-) -> Result<Vec<(Principal, DetailedCreationStatus)>, String> {
+) -> Result<Vec<(Principal, DetailedCreationStatus)>> {
     get_creation_states_by_status(status)
 }
 
-pub fn clear_creation_state(_user: Principal) -> Result<bool, String> {
+pub fn clear_creation_state(_user: Principal) -> Result<bool> {
     Ok(false)
 }
 
 // Legacy function for backward compatibility
-pub fn clear_migration_state(user: Principal) -> Result<bool, String> {
+pub fn clear_migration_state(user: Principal) -> Result<bool> {
     clear_creation_state(user)
 }
 
-pub fn set_personal_canister_creation_enabled(_enabled: bool) -> Result<(), String> {
+pub fn set_personal_canister_creation_enabled(_enabled: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn get_personal_canister_creation_stats() -> Result<PersonalCanisterCreationStats, String> {
+pub fn get_personal_canister_creation_stats() -> Result<PersonalCanisterCreationStats> {
     Ok(PersonalCanisterCreationStats::default())
 }
 
-pub fn is_personal_canister_creation_enabled() -> bool {
-    false
+pub fn is_personal_canister_creation_enabled() -> Result<bool> {
+    Ok(false)
 }
 
 // Legacy function for backward compatibility
-pub fn is_migration_enabled() -> bool {
+pub fn is_migration_enabled() -> Result<bool> {
     is_personal_canister_creation_enabled()
 }

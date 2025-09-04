@@ -1,9 +1,7 @@
 use crate::capsule_store::{CapsuleStore, Order};
-use crate::memory::{
-    with_capsule_store, with_capsule_store_mut, with_capsules_mut,
-};
-use crate::types::*;
+use crate::memory::{with_capsule_store, with_capsule_store_mut, with_capsules_mut};
 use crate::types::Result;
+use crate::types::*;
 
 use ic_cdk::api::{msg_caller, time};
 use std::collections::HashMap;
@@ -405,7 +403,7 @@ pub fn capsules_list() -> Vec<CapsuleHeader> {
 
 /// Simple user registration for II integration (idempotent)
 /// Tracks basic user info: { registered_at, last_activity_at, bound: bool }
-pub fn register() -> bool {
+pub fn register() -> Result<()> {
     let caller_ref = PersonRef::from_caller();
     let now = time();
 
@@ -429,13 +427,17 @@ pub fn register() -> bool {
                     capsule.updated_at = now;
                 })
             });
-            update_result.is_ok()
+            if update_result.is_ok() {
+                Ok(())
+            } else {
+                Err(crate::types::Error::Internal("Failed to update capsule activity".to_string()))
+            }
         }
         None => {
             // MIGRATED: Create new self-capsule with basic info
             match capsules_create(None) {
-                CapsuleCreationResult { success: true, .. } => true,
-                CapsuleCreationResult { success: false, .. } => false,
+                CapsuleCreationResult { success: true, .. } => Ok(()),
+                CapsuleCreationResult { success: false, .. } => Err(crate::types::Error::Internal("Failed to create capsule".to_string())),
             }
         }
     }
@@ -443,14 +445,14 @@ pub fn register() -> bool {
 
 /// Flexible resource binding function for Neon database
 /// Can bind capsules, galleries, or memories to Neon
-pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind: bool) -> bool {
+pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind: bool) -> Result<()> {
     let caller_ref = PersonRef::from_caller();
 
     match resource_type {
         ResourceType::Capsule => {
             // MIGRATED: Bind specific capsule if caller owns it
             with_capsule_store_mut(|store| {
-                store
+                let update_result = store
                     .update(&resource_id, |capsule| {
                         if capsule.owners.contains_key(&caller_ref) {
                             capsule.bound_to_neon = bind;
@@ -461,8 +463,12 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
                                 owner_state.last_activity_at = time();
                             }
                         }
-                    })
-                    .is_ok()
+                    });
+                if update_result.is_ok() {
+                    Ok(())
+                } else {
+                    Err(crate::types::Error::Internal("Failed to update capsule".to_string()))
+                }
             })
         }
         ResourceType::Gallery => {
@@ -472,23 +478,28 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
 
                 for capsule in all_capsules.items {
                     if capsule.owners.contains_key(&caller_ref)
-                        && capsule.galleries.contains_key(&resource_id) {
-                            // Found the capsule containing the gallery
-                            let update_result = store.update(&capsule.id, |capsule| {
-                                if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
-                                    gallery.bound_to_neon = bind;
-                                    capsule.updated_at = time();
+                        && capsule.galleries.contains_key(&resource_id)
+                    {
+                        // Found the capsule containing the gallery
+                        let update_result = store.update(&capsule.id, |capsule| {
+                            if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
+                                gallery.bound_to_neon = bind;
+                                capsule.updated_at = time();
 
-                                    // Update owner activity
-                                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                                        owner_state.last_activity_at = time();
-                                    }
+                                // Update owner activity
+                                if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                                    owner_state.last_activity_at = time();
                                 }
-                            });
-                            return update_result.is_ok();
-                        }
+                            }
+                        });
+                        return if update_result.is_ok() {
+                            Ok(())
+                        } else {
+                            Err(crate::types::Error::Internal("Failed to update gallery".to_string()))
+                        };
+                    }
                 }
-                false
+                Err(crate::types::Error::NotFound)
             })
         }
         ResourceType::Memory => {
@@ -498,41 +509,38 @@ pub fn capsules_bind_neon(resource_type: ResourceType, resource_id: String, bind
 
                 for capsule in all_capsules.items {
                     if capsule.owners.contains_key(&caller_ref)
-                        && capsule.memories.contains_key(&resource_id) {
-                            // Found the capsule containing the memory
-                            let update_result = store.update(&capsule.id, |capsule| {
-                                if let Some(memory) = capsule.memories.get_mut(&resource_id) {
-                                    // Update the bound_to_neon field in the memory's metadata
-                                    match &mut memory.metadata {
-                                        MemoryMetadata::Image(meta) => {
-                                            meta.base.bound_to_neon = bind
-                                        }
-                                        MemoryMetadata::Video(meta) => {
-                                            meta.base.bound_to_neon = bind
-                                        }
-                                        MemoryMetadata::Audio(meta) => {
-                                            meta.base.bound_to_neon = bind
-                                        }
-                                        MemoryMetadata::Document(meta) => {
-                                            meta.base.bound_to_neon = bind
-                                        }
-                                        MemoryMetadata::Note(meta) => {
-                                            meta.base.bound_to_neon = bind
-                                        }
+                        && capsule.memories.contains_key(&resource_id)
+                    {
+                        // Found the capsule containing the memory
+                        let update_result = store.update(&capsule.id, |capsule| {
+                            if let Some(memory) = capsule.memories.get_mut(&resource_id) {
+                                // Update the bound_to_neon field in the memory's metadata
+                                match &mut memory.metadata {
+                                    MemoryMetadata::Image(meta) => meta.base.bound_to_neon = bind,
+                                    MemoryMetadata::Video(meta) => meta.base.bound_to_neon = bind,
+                                    MemoryMetadata::Audio(meta) => meta.base.bound_to_neon = bind,
+                                    MemoryMetadata::Document(meta) => {
+                                        meta.base.bound_to_neon = bind
                                     }
-
-                                    capsule.updated_at = time();
-
-                                    // Update owner activity
-                                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                                        owner_state.last_activity_at = time();
-                                    }
+                                    MemoryMetadata::Note(meta) => meta.base.bound_to_neon = bind,
                                 }
-                            });
-                            return update_result.is_ok();
-                        }
+
+                                capsule.updated_at = time();
+
+                                // Update owner activity
+                                if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                                    owner_state.last_activity_at = time();
+                                }
+                            }
+                        });
+                        return if update_result.is_ok() {
+                            Ok(())
+                        } else {
+                            Err(crate::types::Error::Internal("Failed to update memory".to_string()))
+                        };
+                    }
                 }
-                false
+                Err(crate::types::Error::NotFound)
             })
         }
     }
@@ -817,7 +825,7 @@ pub fn galleries_read(gallery_id: String) -> Result<Gallery> {
 }
 
 /// Update gallery storage status after memory synchronization
-pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStorageStatus) -> bool {
+pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStorageStatus) -> Result<()> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Update gallery storage status in caller's self-capsule
@@ -841,9 +849,13 @@ pub fn update_gallery_storage_status(gallery_id: String, new_status: GalleryStor
                 }
             });
 
-            update_result.is_ok()
+            if update_result.is_ok() {
+                Ok(())
+            } else {
+                Err(crate::types::Error::Internal("Failed to update gallery storage status".to_string()))
+            }
         } else {
-            false
+            Err(crate::types::Error::NotFound)
         }
     })
 }
@@ -1102,7 +1114,8 @@ pub fn add_memory_to_capsule(
     // MIGRATED: Find caller's self-capsule
     let capsule = with_capsule_store(|store| {
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules.items
+        all_capsules
+            .items
             .into_iter()
             .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
     });

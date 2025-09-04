@@ -47,6 +47,18 @@ This plan establishes a stable, minimal foundation for capsule storage that prev
 - ❌ Phase 4: Production Switch (NOT DONE - still HashMap)
 - ❌ Phase 5: Cleanup (NOT DONE - dead code present)
 
+## 🚨 CRITICAL PRODUCTION ISSUES
+
+### **Data Persistence Risk**
+**PROBLEM:** Production still uses `Store::new_hash()` which loses all data on canister upgrades
+**IMPACT:** User capsules and memories will be lost during deployments
+**STATUS:** ❌ **CRITICAL - MUST FIX IMMEDIATELY**
+
+### **Performance Issues**
+**PROBLEM:** Secondary indexes not used in production queries
+**IMPACT:** O(n) scans instead of O(log n) indexed lookups
+**STATUS:** ❌ **HIGH PRIORITY**
+
 ## Implementation Structure
 
 ### Module Layout (Production-Grade Architecture)
@@ -377,6 +389,23 @@ with_capsule_store(|store| {
 - [ ] HashMap in CI for fast tests
 - [ ] Performance benchmarks green
 
+## 🔥 IMMEDIATE ACTION ITEMS (2024 Update)
+
+### **CRITICAL (Do First):**
+1. **Switch to Stable Storage**: Change `Store::new_hash()` → `Store::new_stable()` in production
+2. **Fix Data Persistence**: Ensure user data survives canister upgrades
+3. **Test Upgrade Path**: Verify stable memory works across deployments
+
+### **HIGH PRIORITY (Do Next):**
+1. **Complete Endpoint Migration**: Migrate remaining 53/58 lib.rs endpoints
+2. **Enable Index Performance**: Switch queries to use secondary indexes
+3. **Update Success Metrics**: Make Phase 3 criteria realistic
+
+### **CLEANUP (Do Last):**
+1. **Remove Dead Code**: Clean up unused functions in memory.rs
+2. **Remove Legacy Patterns**: Eliminate `capsule::` and `with_capsules` usage
+3. **Update Documentation**: Reflect actual completion status
+
 ## Risk Mitigation
 
 ### Rollback Plan
@@ -479,13 +508,18 @@ capsule_store/
 - [ ] Zero list endpoints perform full scans
 - [ ] All list endpoints use `paginate` with keyset cursors
 
-### Overall Success Checks
+### Overall Success Checks (CORRECTED)
 
-- [ ] All 65+ endpoints compile against `CapsuleStore` helpers
+**Current Status:**
+- [x] CapsuleStore trait working (Phase 1 ✅)
+- [x] Secondary indexes implemented (Phase 2 ✅)
+- [ ] Stable backend switched to production (Phase 4 ❌ - CRITICAL)
+- [ ] 58/58 endpoints use CapsuleStore helpers (8.6% complete)
 - [ ] StableStore maintains indexes automatically
 - [ ] Test suite passes on both backends
 - [ ] Hot query paths are O(log n), not O(n)
-- [ ] No performance regressions in production
+- [ ] No data loss on canister upgrades
+- [ ] Dead code cleaned up from memory.rs
 
 ---
 
@@ -517,6 +551,7 @@ This plan now provides:
 - **Performance guarantees** on all hot paths
 - **Maintainable architecture** with clear separation of concerns
 
-**Status**: 🟢 PHASE 1-3.3 COMPLETE! Foundation is PRODUCTION READY
-**Next Action**: 🎉 READY FOR PRODUCTION! Phases 4-5 are OPTIONAL optimizations
-**Assessment**: Core foundation complete - Phase 4/5 can be deferred until performance needs arise
+**Status**: ⚠️ PHASE 1-2 COMPLETE, Phase 3-5 INCOMPLETE (Updated 2024)
+**Next Action**: 🚨 CRITICAL: Switch to stable storage immediately
+**Assessment**: Foundation architecture excellent, but production migration never completed. Data persistence at risk.
+**Documentation**: Updated to reflect actual implementation status vs. planning intentions

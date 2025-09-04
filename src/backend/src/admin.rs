@@ -1,4 +1,5 @@
 use crate::memory::{with_admins, with_admins_mut};
+use crate::types::Result;
 use candid::Principal;
 use ic_cdk::api::msg_caller;
 
@@ -33,41 +34,47 @@ pub fn is_admin(principal: &Principal) -> bool {
 }
 
 /// Add new admin (only superadmins can add admins)
-pub fn add_admin(new_admin_principal: Principal) -> bool {
+pub fn add_admin(new_admin_principal: Principal) -> Result<()> {
     let caller = msg_caller();
 
     // Only superadmins can add new admins
     if !is_superadmin(&caller) {
-        return false;
+        return Err(crate::types::Error::Unauthorized);
     }
 
     // Cannot add a superadmin as a regular admin
     if is_superadmin(&new_admin_principal) {
-        return false;
+        return Err(crate::types::Error::InvalidArgument("Cannot add superadmin as regular admin".to_string()));
     }
 
     with_admins_mut(|admins| {
         admins.insert(new_admin_principal);
     });
 
-    true
+    Ok(())
 }
 
 /// Remove admin (only superadmins can remove admins)
-pub fn remove_admin(admin_principal: Principal) -> bool {
+pub fn remove_admin(admin_principal: Principal) -> Result<()> {
     let caller = msg_caller();
 
     // Only superadmins can remove admins
     if !is_superadmin(&caller) {
-        return false;
+        return Err(crate::types::Error::Unauthorized);
     }
 
     // Cannot remove a superadmin
     if is_superadmin(&admin_principal) {
-        return false;
+        return Err(crate::types::Error::InvalidArgument("Cannot remove superadmin".to_string()));
     }
 
-    with_admins_mut(|admins| admins.remove(&admin_principal))
+    with_admins_mut(|admins| {
+        if admins.remove(&admin_principal) {
+            Ok(())
+        } else {
+            Err(crate::types::Error::NotFound)
+        }
+    })
 }
 
 /// List all admins

@@ -1,7 +1,7 @@
 #[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
 use crate::capsule_store::Store;
-use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession, Result};
+use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{DefaultMemoryImpl, StableBTreeMap};
@@ -16,13 +16,9 @@ use std::collections::{HashMap, HashSet};
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
 // Memory IDs for different data types
-#[allow(dead_code)]
 const CAPSULES_MEMORY_ID: MemoryId = MemoryId::new(0);
-#[allow(dead_code)]
 const UPLOAD_SESSIONS_MEMORY_ID: MemoryId = MemoryId::new(1);
-#[allow(dead_code)]
 const MEMORY_ARTIFACTS_MEMORY_ID: MemoryId = MemoryId::new(2);
-#[allow(dead_code)]
 const CHUNK_DATA_MEMORY_ID: MemoryId = MemoryId::new(3);
 
 // Stable storage structures
@@ -78,7 +74,6 @@ thread_local! {
 // ============================================================================
 
 // Stable capsule storage functions
-#[allow(dead_code)]
 pub fn with_stable_capsules<F, R>(f: F) -> R
 where
     F: FnOnce(&StableBTreeMap<String, Capsule, Memory>) -> R,
@@ -86,7 +81,6 @@ where
     STABLE_CAPSULES.with(|capsules| f(&capsules.borrow()))
 }
 
-#[allow(dead_code)]
 pub fn with_stable_capsules_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StableBTreeMap<String, Capsule, Memory>) -> R,
@@ -95,7 +89,6 @@ where
 }
 
 // Stable upload session storage functions
-#[allow(dead_code)]
 pub fn with_stable_upload_sessions<F, R>(f: F) -> R
 where
     F: FnOnce(&StableBTreeMap<String, UploadSession, Memory>) -> R,
@@ -103,7 +96,6 @@ where
     STABLE_UPLOAD_SESSIONS.with(|sessions| f(&sessions.borrow()))
 }
 
-#[allow(dead_code)]
 pub fn with_stable_upload_sessions_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StableBTreeMap<String, UploadSession, Memory>) -> R,
@@ -127,7 +119,6 @@ where
 }
 
 // Stable chunk data storage functions
-#[allow(dead_code)]
 pub fn with_stable_chunk_data<F, R>(f: F) -> R
 where
     F: FnOnce(&StableBTreeMap<String, ChunkData, Memory>) -> R,
@@ -135,7 +126,6 @@ where
     STABLE_CHUNK_DATA.with(|chunks| f(&chunks.borrow()))
 }
 
-#[allow(dead_code)]
 pub fn with_stable_chunk_data_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StableBTreeMap<String, ChunkData, Memory>) -> R,
@@ -229,14 +219,8 @@ pub fn store_nonce_proof(nonce: String, principal: Principal, timestamp: u64) ->
     true
 }
 
-pub fn get_nonce_proof(nonce: String) -> Result<Principal> {
-    NONCE_PROOFS.with(|proofs| {
-        proofs
-            .borrow()
-            .get(&nonce)
-            .map(|(principal, _)| *principal)
-            .ok_or(crate::types::Error::NotFound)
-    })
+pub fn get_nonce_proof(nonce: String) -> Option<Principal> {
+    NONCE_PROOFS.with(|proofs| proofs.borrow().get(&nonce).map(|(principal, _)| *principal))
 }
 
 // Migration state access functions (only available with migration feature)
@@ -271,7 +255,7 @@ where
 
 // Helper to migrate data from thread_local to stable storage (for future use)
 #[allow(dead_code)]
-pub fn migrate_capsules_to_stable() -> Result<u32> {
+pub fn migrate_capsules_to_stable() -> Result<u32, String> {
     let mut migrated_count = 0;
 
     // Get all capsules from thread_local storage
@@ -296,7 +280,6 @@ pub fn migrate_capsules_to_stable() -> Result<u32> {
 }
 
 // Helper to check stable memory health
-#[allow(dead_code)]
 pub fn get_stable_memory_stats() -> (u64, u64, u64) {
     let capsule_count = with_capsules(|capsules| capsules.len());
     let session_count = with_stable_upload_sessions(|sessions| sessions.len());
