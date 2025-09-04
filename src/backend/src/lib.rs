@@ -412,8 +412,10 @@ fn capsules_list() -> Vec<types::CapsuleHeader> {
 #[ic_cdk::update]
 async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
     use crate::capsule_store::{Order, PersonRef};
+    use crate::types::{
+        Gallery, GalleryStorageStatus, PersonRef as TypesPersonRef, StoreGalleryResponse,
+    };
     use ic_cdk::api::time;
-    use crate::types::{Gallery, GalleryStorageStatus, PersonRef as TypesPersonRef, StoreGalleryResponse};
 
     let caller = PersonRef::from_caller();
 
@@ -513,7 +515,7 @@ async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalle
             icp_gallery_id: None,
             message: "No capsule found for caller".to_string(),
             storage_status: GalleryStorageStatus::Failed,
-        }
+        },
     }
 }
 
@@ -617,8 +619,8 @@ async fn galleries_update(
     update_data: types::GalleryUpdateData,
 ) -> types::UpdateGalleryResponse {
     use crate::capsule_store::{Order, PersonRef};
-    use ic_cdk::api::time;
     use crate::types::{Gallery, UpdateGalleryResponse};
+    use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
 
@@ -697,8 +699,8 @@ async fn galleries_update(
 #[ic_cdk::update]
 async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
     use crate::capsule_store::{Order, PersonRef};
-    use ic_cdk::api::time;
     use crate::types::DeleteGalleryResponse;
+    use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
 
@@ -761,7 +763,105 @@ async fn memories_create(
     capsule_id: String,
     memory_data: types::MemoryData,
 ) -> types::MemoryOperationResponse {
-    capsule::memories_create(capsule_id, memory_data)
+    use crate::capsule_store::PersonRef;
+    use crate::types::{
+        Memory, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase, MemoryOperationResponse,
+        MemoryType, ImageMetadata,
+    };
+    use ic_cdk::api::time;
+
+    let caller = PersonRef::from_caller();
+
+    // Find the specified capsule
+    let capsule = with_capsule_store(|store| {
+        store.get(&capsule_id).and_then(|capsule| {
+            // Check if caller has access to this capsule
+            if capsule.owners.contains_key(&caller) || capsule.subject == caller {
+                Some(capsule)
+            } else {
+                None
+            }
+        })
+    });
+
+    match capsule {
+        Some(mut capsule) => {
+            // Extract memory ID from the data or generate one
+            let memory_id = memory_data.blob_ref.locator.clone();
+
+            // Check if memory already exists with this UUID (idempotency)
+            if capsule.memories.contains_key(&memory_id) {
+                return MemoryOperationResponse {
+                    success: true,
+                    memory_id: Some(memory_id),
+                    message: "Memory already exists with this UUID".to_string(),
+                };
+            }
+
+            // Create memory info
+            let now = time();
+            let memory_info = MemoryInfo {
+                memory_type: MemoryType::Image, // Default type, can be updated later
+                name: format!("Memory {memory_id}"),
+                content_type: "application/octet-stream".to_string(),
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: None,
+            };
+
+            // Create memory metadata (default to Image type)
+            let memory_metadata = MemoryMetadata::Image(ImageMetadata {
+                base: MemoryMetadataBase {
+                    size: memory_data
+                        .data
+                        .as_ref()
+                        .map(|d| d.len() as u64)
+                        .unwrap_or(0),
+                    mime_type: "application/octet-stream".to_string(),
+                    original_name: format!("Memory {memory_id}"),
+                    uploaded_at: now.to_string(),
+                    date_of_memory: None,
+                    people_in_memory: None,
+                    format: None,
+                    bound_to_neon: false,
+                },
+                dimensions: None,
+            });
+
+            // Create memory access (default to private)
+            let memory_access = MemoryAccess::Private;
+
+            // Create the memory
+            let memory = Memory {
+                id: memory_id.clone(),
+                info: memory_info,
+                metadata: memory_metadata,
+                access: memory_access,
+                data: memory_data,
+            };
+
+            // Store memory in capsule
+            capsule.memories.insert(memory_id.clone(), memory);
+            capsule.updated_at = time(); // Update capsule timestamp
+
+            // Save updated capsule
+            with_capsule_store_mut(|store| {
+                store.upsert(capsule_id.clone(), capsule);
+            });
+
+            MemoryOperationResponse {
+                success: true,
+                memory_id: Some(memory_id),
+                message: "Memory created successfully in capsule".to_string(),
+            }
+        }
+        None => MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "Capsule not found or access denied".to_string(),
+        },
+    }
 }
 
 #[ic_cdk::query]
@@ -790,12 +890,141 @@ async fn memories_update(
     memory_id: String,
     updates: types::MemoryUpdateData,
 ) -> types::MemoryOperationResponse {
-    capsule::memories_update(memory_id, updates)
+    use crate::capsule_store::{Order, PersonRef};
+    use ic_cdk::api::time;
+
+    let caller = PersonRef::from_caller();
+    let memory_id_clone = memory_id.clone();
+
+    // Find and update memory across caller's accessible capsules
+    let mut capsule_found = false;
+    let mut memory_found = false;
+
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the memory
+        if let Some(capsule) = all_capsules
+            .items
+            .into_iter()
+            .find(|capsule| capsule.owners.contains_key(&caller) || capsule.subject == caller)
+            .filter(|capsule| capsule.memories.contains_key(&memory_id))
+        {
+            capsule_found = true;
+            let capsule_id = capsule.id.clone();
+
+            // Update the capsule with the modified memory
+            let update_result = store.update(&capsule_id, |capsule| {
+                if let Some(memory) = capsule.memories.get(&memory_id) {
+                    memory_found = true;
+
+                    // Update memory fields
+                    let mut updated_memory = memory.clone();
+                    if let Some(name) = updates.name.clone() {
+                        updated_memory.info.name = name;
+                    }
+                    if let Some(metadata) = updates.metadata.clone() {
+                        updated_memory.metadata = metadata;
+                    }
+                    if let Some(access) = updates.access.clone() {
+                        updated_memory.access = access;
+                    }
+
+                    updated_memory.info.updated_at = time();
+
+                    // Store updated memory
+                    capsule.memories.insert(memory_id, updated_memory);
+                    capsule.updated_at = time(); // Update capsule timestamp
+                }
+            });
+
+            if update_result.is_err() {
+                capsule_found = false;
+            }
+        }
+    });
+
+    if !capsule_found {
+        return types::MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "No accessible capsule found for caller".to_string(),
+        };
+    }
+
+    if !memory_found {
+        return types::MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "Memory not found in any accessible capsule".to_string(),
+        };
+    }
+
+    types::MemoryOperationResponse {
+        success: true,
+        memory_id: Some(memory_id_clone),
+        message: "Memory updated successfully".to_string(),
+    }
 }
 
 #[ic_cdk::update]
 async fn memories_delete(memory_id: String) -> types::MemoryOperationResponse {
-    capsule::memories_delete(memory_id)
+    use crate::capsule_store::{Order, PersonRef};
+    use ic_cdk::api::time;
+
+    let caller = PersonRef::from_caller();
+    let memory_id_clone = memory_id.clone();
+
+    // Search across all capsules the caller has access to
+    let mut memory_found = false;
+    let mut capsule_found = false;
+
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the memory
+        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
+            capsule.has_write_access(&caller) && capsule.memories.contains_key(&memory_id)
+        }) {
+            capsule_found = true;
+            let capsule_id = capsule.id.clone();
+
+            // Update the capsule to remove the memory
+            let update_result = store.update(&capsule_id, |capsule| {
+                if capsule.memories.contains_key(&memory_id) {
+                    capsule.memories.remove(&memory_id);
+                    capsule.updated_at = time(); // Update capsule timestamp
+                    memory_found = true;
+                }
+            });
+
+            if update_result.is_err() {
+                capsule_found = false;
+            }
+        }
+    });
+
+    if !capsule_found {
+        return types::MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "No accessible capsule found for caller".to_string(),
+        };
+    }
+
+    if !memory_found {
+        return types::MemoryOperationResponse {
+            success: false,
+            memory_id: None,
+            message: "Memory not found in any accessible capsule".to_string(),
+        };
+    }
+
+    types::MemoryOperationResponse {
+        success: true,
+        memory_id: Some(memory_id_clone),
+        message: "Memory deleted successfully".to_string(),
+    }
 }
 
 #[ic_cdk::query]
