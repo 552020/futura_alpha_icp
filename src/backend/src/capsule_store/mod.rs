@@ -14,8 +14,7 @@
 pub type CapsuleId = String;
 
 /// Pagination order for listing operations
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Order {
     /// Ascending order (default)
     #[default]
@@ -23,7 +22,6 @@ pub enum Order {
     /// Descending order
     Desc,
 }
-
 
 /// Pagination result containing items and optional cursor for next page
 #[derive(Debug, Clone)]

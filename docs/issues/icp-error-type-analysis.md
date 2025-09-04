@@ -417,10 +417,10 @@ impl From<anyhow::Error> for Error { ... }
 
 #### **2.2 Update Frontend TypeScript**
 
-- [ ] **Edit `src/nextjs/src/services/icp-gallery.ts`**:
-  - [ ] Replace `ICPErrorCode` type with new `Error` type (6 variants)
-  - [ ] Update error handling in service functions
-  - [ ] Add error normalization helper if needed
+- [x] **Edit `src/nextjs/src/services/icp-gallery.ts`**:
+  - [x] Replace `ICPErrorCode` type with new `Error` type (6 variants)
+  - [x] Update error handling in service functions
+  - [x] Handle Result types directly in frontend code (no separate helper needed)
 
 #### **2.3 Update Frontend Usage**
 

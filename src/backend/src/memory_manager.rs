@@ -1,4 +1,7 @@
-use ic_stable_structures::{DefaultMemoryImpl, memory_manager::{MemoryManager, MemoryId}};
+use ic_stable_structures::{
+    memory_manager::{MemoryId, MemoryManager},
+    DefaultMemoryImpl,
+};
 use std::cell::RefCell;
 
 thread_local! {
