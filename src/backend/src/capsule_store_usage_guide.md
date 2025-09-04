@@ -170,6 +170,63 @@ with_capsule_store(|store| {
 });
 ```
 
+## Technical Implementation Details
+
+### HashMap vs StableBTreeMap Method Mapping
+
+**Reference:** Extracted from stable memory migration analysis
+
+| HashMap Method | StableBTreeMap Equivalent     | Notes                      |
+| -------------- | ----------------------------- | -------------------------- |
+| `values()`     | `iter().map(\|(_, v)\| v)`    | Iterate over values only   |
+| `cloned()`     | `map(\|(_, v)\| v)`           | Owned values from iterator |
+| `get_mut()`    | **Read-modify-write pattern** | See below                  |
+| `values_mut()` | **Read-modify-write pattern** | See below                  |
+
+### Read-Modify-Write Pattern (for Mutations)
+
+```rust
+// ✅ CORRECT - Use read-modify-write for mutations
+with_capsule_store_mut(|store| {
+    if let Some(mut capsule) = store.get(&capsule_id) {
+        // Mutate the capsule
+        capsule.updated_at = current_time();
+        capsule.some_field = new_value;
+
+        // Put it back
+        store.upsert(capsule_id, capsule);
+    }
+})
+```
+
+**Why this pattern?**
+
+- `StableBTreeMap` doesn't support mutable references
+- Ensures atomic updates with proper index maintenance
+- Prevents data corruption during concurrent operations
+
+### Performance Optimization Notes
+
+- **O(log n) queries**: Use `find_by_subject()` instead of manual iteration
+- **Secondary indexes**: Automatically maintained on `upsert()`/`update()`/`remove()`
+- **Batch operations**: Use `get_many()` for multiple reads
+- **Pagination**: Use keyset pagination to avoid O(n) scans
+
+### Error Handling Best Practices
+
+```rust
+// ✅ CORRECT - Handle all update error types
+with_capsule_store_mut(|store| {
+    store.update(&capsule_id, |capsule| {
+        // mutate capsule
+    }).map_err(|e| match e {
+        UpdateError::NotFound => Error::CapsuleNotFound,
+        UpdateError::Validation(msg) => Error::Validation(msg),
+        UpdateError::Concurrency => Error::ConcurrentModification,
+    })
+})
+```
+
 ## Testing Guidelines
 
 When writing tests:

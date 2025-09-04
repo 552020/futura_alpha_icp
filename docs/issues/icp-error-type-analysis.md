@@ -424,10 +424,10 @@ impl From<anyhow::Error> for Error { ... }
 
 #### **2.3 Update Frontend Usage**
 
-- [ ] **Search for error handling** in Next.js code:
-  - [ ] Update error handling in API routes
-  - [ ] Update error handling in React components
-  - [ ] Update error handling in hooks
+- [x] **Search for error handling** in Next.js code:
+  - [x] Update error handling in API routes (ii-client.ts, auth routes)
+  - [x] Update error handling in React components (ICP page)
+  - [x] Update error handling in hooks (no backend calls found)
 
 ### **Phase 3: Validation & Cleanup (Low Priority)**
 

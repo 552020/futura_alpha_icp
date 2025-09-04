@@ -1,8 +1,16 @@
 # Stable Memory Migration: API Compatibility Issues
 
-## Issue Description
+## ⚠️ ARCHIVED DOCUMENT - See capsule-storage-foundation-plan.md
 
-We're attempting to migrate from volatile thread-local storage (`HashMap`) to persistent stable memory (`StableBTreeMap`) for capsule storage, but encountering significant API compatibility issues that require senior developer guidance.
+**Status:** 🏛️ **ARCHIVED** - Historical Technical Reference
+**Migration Completed:** ✅ **Stable Memory Implementation Complete**
+**Current Status:** See [capsule-storage-foundation-plan.md](../capsule-storage-foundation-plan.md) for current project status
+
+---
+
+## Original Issue Description (Historical)
+
+This document captured the challenges of migrating from volatile thread-local storage (`HashMap`) to persistent stable memory (`StableBTreeMap`) for capsule storage during the initial implementation phase.
 
 ## Current Status
 
@@ -271,6 +279,19 @@ pub trait CapsuleStore {
 - ✅ **Core functionality working** with stable storage
 - ✅ **Sprint unblocked** for other refactoring work
 - ✅ **Architecture aligned** with ICP best practices
+
+---
+
+## 📚 Technical Patterns Extracted
+
+**Important:** The valuable technical implementation patterns from this document have been extracted and integrated into the current usage guide:
+
+- **Method Mapping Cheatsheet** → [capsule_store_usage_guide.md](../capsule_store_usage_guide.md#hashmap-vs-stablebtreemap-method-mapping)
+- **Read-Modify-Write Patterns** → [capsule_store_usage_guide.md](../capsule_store_usage_guide.md#read-modify-write-pattern-for-mutations)
+- **Performance Optimization Notes** → [capsule_store_usage_guide.md](../capsule_store_usage_guide.md#performance-optimization-notes)
+- **Error Handling Best Practices** → [capsule_store_usage_guide.md](../capsule_store_usage_guide.md#error-handling-best-practices)
+
+**For current development, refer to the [Capsule Store Usage Guide](../capsule_store_usage_guide.md) for up-to-date patterns and best practices.**
 
 ## Senior Developer's Adapter Pattern
 
