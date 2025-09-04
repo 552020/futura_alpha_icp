@@ -4,7 +4,7 @@
 # Tests binding/unbinding capsules, galleries, and memories to Neon database
 
 # Source test utilities
-source scripts/tests/backend/test_config.sh
+source ../test_config.sh
 
 # Define our own logging functions (don't use test_utils.sh)
 echo_info() {
@@ -67,7 +67,7 @@ test_capsules_bind_neon_basic() {
     # Test binding capsule to Neon
     local bind_result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"$capsule_id\", true)" 2>&1)
     echo_info "Bind result: '$bind_result'"
-    if ! echo "$bind_result" | grep -q "(true)"; then
+    if ! echo "$bind_result" | grep -q "Ok"; then
         echo_error "Failed to bind capsule to Neon: $bind_result"
         return 1
     fi
@@ -76,7 +76,7 @@ test_capsules_bind_neon_basic() {
     # Test unbinding capsule from Neon
     local unbind_result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"$capsule_id\", false)" 2>&1)
     echo_info "Unbind result: '$unbind_result'"
-    if ! echo "$unbind_result" | grep -q "(true)"; then
+    if ! echo "$unbind_result" | grep -q "Ok"; then
         echo_error "Failed to unbind capsule from Neon: $unbind_result"
         return 1
     fi
@@ -133,7 +133,7 @@ test_capsules_bind_neon_gallery() {
     
     # Test binding gallery to Neon
     local bind_result=$(dfx canister call backend capsules_bind_neon "(variant { Gallery }, \"$unique_gallery_id\", true)" 2>&1)
-    if ! echo "$bind_result" | grep -q "(true)"; then
+    if ! echo "$bind_result" | grep -q "Ok"; then
         echo_error "Failed to bind gallery to Neon: $bind_result"
         return 1
     fi
@@ -141,7 +141,7 @@ test_capsules_bind_neon_gallery() {
     
     # Test unbinding gallery from Neon
     local unbind_result=$(dfx canister call backend capsules_bind_neon "(variant { Gallery }, \"$unique_gallery_id\", false)" 2>&1)
-    if ! echo "$unbind_result" | grep -q "(true)"; then
+    if ! echo "$unbind_result" | grep -q "Ok"; then
         echo_error "Failed to unbind gallery from Neon: $unbind_result"
         return 1
     fi
@@ -178,7 +178,7 @@ test_capsules_bind_neon_memory() {
     
     # Test binding memory to Neon
     local bind_result=$(dfx canister call backend capsules_bind_neon "(variant { Memory }, \"$memory_id\", true)" 2>&1)
-    if ! echo "$bind_result" | grep -q "(true)"; then
+    if ! echo "$bind_result" | grep -q "Ok"; then
         echo_error "Failed to bind memory to Neon: $bind_result"
         return 1
     fi
@@ -186,7 +186,7 @@ test_capsules_bind_neon_memory() {
     
     # Test unbinding memory to Neon
     local unbind_result=$(dfx canister call backend capsules_bind_neon "(variant { Memory }, \"$memory_id\", false)" 2>&1)
-    if ! echo "$unbind_result" | grep -q "(true)"; then
+    if ! echo "$unbind_result" | grep -q "Ok"; then
         echo_error "Failed to unbind memory from Neon: $unbind_result"
         return 1
     fi
@@ -204,7 +204,7 @@ test_capsules_bind_neon_invalid_resource() {
     local result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"invalid_id\", true)" 2>&1)
     
     # Should return false for invalid resource ID
-    if echo "$result" | grep -q "(true)"; then
+    if echo "$result" | grep -q "Ok"; then
         echo_error "Invalid resource ID should not succeed: $result"
         return 1
     fi
@@ -220,7 +220,7 @@ test_capsules_bind_neon_nonexistent_resource() {
     local result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"nonexistent_id\", true)" 2>&1)
     
     # Should return false for nonexistent resource
-    if echo "$result" | grep -q "(true)"; then
+    if echo "$result" | grep -q "Ok"; then
         echo_error "Nonexistent resource should not succeed: $result"
         return 1
     fi
@@ -247,17 +247,17 @@ test_capsules_bind_neon_unauthorized() {
 test_capsules_bind_neon_edge_cases() {
     echo_info "Testing capsules_bind_neon edge cases..."
     
-    # Test with empty resource ID (should return false since empty ID is invalid)
+    # Test with empty resource ID (should return error since empty ID is invalid)
     local result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"\", true)" 2>&1)
-    if ! echo "$result" | grep -q "(false)"; then
-        echo_error "Empty resource ID should return false: $result"
+    if ! echo "$result" | grep -q "Err"; then
+        echo_error "Empty resource ID should return error: $result"
         return 1
     fi
     
     # Test with very long resource ID
     local long_id=$(printf 'a%.0s' {1..1000})
     local result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"$long_id\", true)" 2>&1)
-    if ! echo "$result" | grep -q "(true\|false)"; then
+    if ! echo "$result" | grep -q "Ok\|Err"; then
         echo_error "Long resource ID should return boolean: $result"
         return 1
     fi

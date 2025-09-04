@@ -31,11 +31,12 @@ test_galleries_create_basic() {
             is_public = true;
             created_at = 0;
             updated_at = 0;
-            owner_principal = principal \"2vxsx-fae\";
+            owner_principal = principal \"$(dfx identity get-principal)\";
             storage_status = variant { Web2Only };
             memory_entries = vec {};
+            bound_to_neon = false;
         };
-        owner_principal = principal \"2vxsx-fae\";
+        owner_principal = principal \"$(dfx identity get-principal)\";
     })"
     
     # Call galleries_create
@@ -74,11 +75,12 @@ test_galleries_create_idempotency() {
             is_public = false;
             created_at = 0;
             updated_at = 0;
-            owner_principal = principal \"2vxsx-fae\";
+            owner_principal = principal \"$(dfx identity get-principal)\";
             storage_status = variant { Web2Only };
             memory_entries = vec {};
+            bound_to_neon = false;
         };
-        owner_principal = principal \"2vxsx-fae\";
+        owner_principal = principal \"$(dfx identity get-principal)\";
     })"
     
     # Call galleries_create again with same ID
@@ -133,7 +135,7 @@ test_galleries_create_with_memories() {
             is_public = true;
             created_at = 0;
             updated_at = 0;
-            owner_principal = principal \"2vxsx-fae\";
+            owner_principal = principal \"$(dfx identity get-principal)\";
             storage_status = variant { Web2Only };
             memory_entries = vec {
                 record {
@@ -144,8 +146,9 @@ test_galleries_create_with_memories() {
                     gallery_metadata = \"{\\\"test\\\": true}\";
                 };
             };
+            bound_to_neon = false;
         };
-        owner_principal = principal \"2vxsx-fae\";
+        owner_principal = principal \"$(dfx identity get-principal)\";
     })"
     
     # Call galleries_create

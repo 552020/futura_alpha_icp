@@ -29,10 +29,10 @@ test_memories_ping_single() {
         echo_debug "Result: $result"
         
         # Verify response format (should return ICPResult with data array)
-        if echo "$result" | grep -q "success = true"; then
-            echo_success "✅ Response format is correct (ICPResult with success = true)"
+        if echo "$result" | grep -q "Ok = vec"; then
+            echo_success "✅ Response format is correct (Result<T, Error> with Ok variant)"
         else
-            echo_error "❌ Response format is incorrect - expected success = true"
+            echo_error "❌ Response format is incorrect - expected Ok variant"
             return 1
         fi
     else
@@ -56,11 +56,11 @@ test_memories_ping_multiple() {
         echo_success "✅ memories_ping with multiple memory IDs succeeded"
         echo_debug "Result: $result"
         
-        # Verify response is successful and contains data array
-        if echo "$result" | grep -q "success = true"; then
+        # Verify response is successful and contains data array (new Result<T, Error> format)
+        if echo "$result" | grep -q "Ok = vec"; then
             echo_success "✅ Response is successful as expected"
         else
-            echo_error "❌ Response should be successful"
+            echo_error "❌ Response should be Ok variant"
             return 1
         fi
     else
@@ -80,11 +80,11 @@ test_memories_ping_empty() {
         echo_success "✅ memories_ping with empty list succeeded"
         echo_debug "Result: $result"
         
-        # Verify response is empty data array (check for both null and empty array formats)
-        if echo "$result" | grep -q "data = \[\]" || echo "$result" | grep -q "data = null"; then
-            echo_success "✅ Empty list returns empty data array as expected"
+        # Verify response is empty data array (check for empty vec format)
+        if echo "$result" | grep -q "Ok = vec {}"; then
+            echo_success "✅ Empty list returns empty vec as expected"
         else
-            echo_error "❌ Empty list should return empty data array or null"
+            echo_error "❌ Empty list should return Ok with empty vec"
             return 1
         fi
     else
@@ -152,10 +152,10 @@ test_memories_ping_large_list() {
         echo_debug "Result: $result"
         
         # Verify response is successful
-        if echo "$result" | grep -q "success = true"; then
+        if echo "$result" | grep -q "Ok = vec"; then
             echo_success "✅ Response is successful as expected"
         else
-            echo_error "❌ Response should be successful"
+            echo_error "❌ Response should be Ok variant"
             return 1
         fi
     else
@@ -198,10 +198,10 @@ test_memories_ping_mixed_existence() {
             echo_debug "Result: $result"
             
             # Verify response is successful
-            if echo "$result" | grep -q "success = true"; then
+            if echo "$result" | grep -q "Ok = vec"; then
                 echo_success "✅ Response is successful as expected"
             else
-                echo_error "❌ Response should be successful"
+                echo_error "❌ Response should be Ok variant"
                 return 1
             fi
         else

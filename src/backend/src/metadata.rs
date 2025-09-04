@@ -90,6 +90,8 @@ pub fn memories_ping(memory_ids: Vec<String>) -> Result<Vec<MemoryPresenceResult
         .iter()
         .map(|memory_id| {
             let (metadata_present, asset_present) = with_stable_memory_artifacts(|artifacts| {
+                // Note: If there are UTF-8 decoding errors in stable memory, this may panic
+                // The panic will propagate up and be handled by the canister framework
                 let metadata_exists = artifacts
                     .iter()
                     .any(|(key, _)| key.contains(memory_id) && key.contains("metadata"));

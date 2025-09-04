@@ -17,19 +17,19 @@ FAILED_TESTS=0
 # Test data
 TEST_CAPSULE_ID="test_capsule_$(date +%s)"
 
-# Helper function to check if response contains capsule data
+# Helper function to check if response contains capsule data (new Result<T, Error> format)
 has_capsule_data() {
     local response="$1"
-    echo "$response" | grep -q "opt record {"
+    echo "$response" | grep -q "Ok = record {"
 }
 
-# Helper function to check if response is None (no capsule found)
+# Helper function to check if response is NotFound error (new Result<T, Error> format)
 is_none_response() {
     local response="$1"
-    echo "$response" | grep -q "(null)"
+    echo "$response" | grep -q "Err = variant { NotFound }"
 }
 
-# Helper function to check if response contains expected field hashes
+# Helper function to check if response contains expected field hashes (for full capsule)
 has_expected_capsule_fields() {
     local response="$1"
     # Check for common Candid field hashes that indicate a valid capsule
@@ -44,18 +44,18 @@ has_expected_capsule_info_fields() {
     local response="$1"
     # Check for expected CapsuleInfo fields by name (more reliable than hash values)
     # Check for essential fields that should always be present
-    echo "$response" | grep -q "capsule_id" && \
-    echo "$response" | grep -q "subject" && \
-    echo "$response" | grep -q "is_owner" && \
-    echo "$response" | grep -q "is_controller" && \
-    echo "$response" | grep -q "is_self_capsule" && \
-    echo "$response" | grep -q "bound_to_web2" && \
-    echo "$response" | grep -q "created_at" && \
-    echo "$response" | grep -q "updated_at" && \
+    echo "$response" | grep -q "capsule_id =" && \
+    echo "$response" | grep -q "subject =" && \
+    echo "$response" | grep -q "is_owner =" && \
+    echo "$response" | grep -q "is_controller =" && \
+    echo "$response" | grep -q "is_self_capsule =" && \
+    echo "$response" | grep -q "bound_to_neon =" && \
+    echo "$response" | grep -q "created_at =" && \
+    echo "$response" | grep -q "updated_at =" && \
     # Check for new count fields
-    echo "$response" | grep -q "memory_count" && \
-    echo "$response" | grep -q "gallery_count" && \
-    echo "$response" | grep -q "connection_count"
+    echo "$response" | grep -q "memory_count =" && \
+    echo "$response" | grep -q "gallery_count =" && \
+    echo "$response" | grep -q "connection_count ="
 }
 
 # Helper function to increment test counters

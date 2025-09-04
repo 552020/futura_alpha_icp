@@ -31,11 +31,12 @@ test_galleries_update_basic() {
             is_public = true;
             created_at = 0;
             updated_at = 0;
-            owner_principal = principal \"2vxsx-fae\";
+            owner_principal = principal \"$(dfx identity get-principal)\";
             storage_status = variant { Web2Only };
             memory_entries = vec {};
+            bound_to_neon = false;
         };
-        owner_principal = principal \"2vxsx-fae\";
+        owner_principal = principal \"$(dfx identity get-principal)\";
     })"
     
     # Create the gallery

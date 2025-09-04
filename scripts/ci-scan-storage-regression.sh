@@ -88,3 +88,4 @@ else
     echo -e "${YELLOW}Note: Some findings may be false positives in test files or legacy code.${NC}"
     exit 1
 fi
+
