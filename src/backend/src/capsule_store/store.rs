@@ -31,6 +31,12 @@ impl Store {
         Store::Stable(crate::capsule_store::stable::StableStore::new())
     }
 
+    /// Create a new Stable store with fresh memory (for testing)
+    #[cfg(test)]
+    pub fn new_stable_test() -> Self {
+        Store::Stable(crate::capsule_store::stable::StableStore::new_test())
+    }
+
     /// Get the current backend type (for debugging/testing)
     pub fn backend_type(&self) -> &'static str {
         match self {
@@ -152,6 +158,72 @@ mod tests {
         assert!(store.exists(&id));
         let retrieved = store.get(&id);
         assert!(retrieved.is_some());
+    }
+
+    #[test]
+    fn test_subject_index_hash_backend() {
+        let mut store = Store::new_hash();
+
+        // Create a test capsule
+        let capsule_id = "test_subject_capsule".to_string();
+        let capsule = create_test_capsule(capsule_id.clone());
+
+        // Insert the capsule
+        let result = store.upsert(capsule_id.clone(), capsule.clone());
+        assert!(result.is_none(), "Should be None for new insertion");
+
+        // Get the subject from the capsule we just created
+        let subject = &capsule.subject;
+
+        // Try to find it by subject
+        let found = store.find_by_subject(subject);
+        assert!(found.is_some(), "Should find capsule by subject");
+
+        let found_capsule = found.unwrap();
+        assert_eq!(
+            found_capsule.id, capsule_id,
+            "Should return the correct capsule"
+        );
+
+        eprintln!(
+            "✅ Subject index test passed - found capsule: {}",
+            found_capsule.id
+        );
+    }
+
+    #[test]
+    #[ignore] // Ignore in normal test runs since it requires IC environment
+    fn test_subject_index_stable_backend() {
+        // This test can only run in IC environment, but let's document what we expect
+        let mut store = Store::new_stable();
+
+        // Create a test capsule
+        let capsule_id = "test_stable_capsule".to_string();
+        let capsule = create_test_capsule(capsule_id.clone());
+
+        // Insert the capsule
+        let result = store.upsert(capsule_id.clone(), capsule.clone());
+        assert!(result.is_none(), "Should be None for new insertion");
+
+        // Get the subject from the capsule we just created
+        let subject = &capsule.subject;
+
+        // Try to find it by subject - this is where the bug manifests
+        let found = store.find_by_subject(subject);
+        if found.is_none() {
+            eprintln!("❌ BUG: Subject index failed to find capsule in stable backend");
+            eprintln!("   Capsule ID: {}", capsule_id);
+            eprintln!("   Subject: {:?}", subject);
+            panic!("Subject index bug reproduced!");
+        }
+
+        let found_capsule = found.unwrap();
+        assert_eq!(
+            found_capsule.id, capsule_id,
+            "Should return the correct capsule"
+        );
+
+        eprintln!("✅ Stable backend subject index test passed");
     }
 
     fn create_test_capsule(id: CapsuleId) -> Capsule {

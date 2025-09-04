@@ -20,7 +20,7 @@ fn test_store_enum_delegation() {
     test_store_operations(&mut hash_store, "HashMap");
 
     // Stable backend (works off-chain with DefaultMemoryImpl)
-    let mut stable_store = Store::new_stable();
+    let mut stable_store = Store::new_stable_test();
     test_store_operations(&mut stable_store, "StableBTreeMap");
 }
 
@@ -86,7 +86,7 @@ fn test_store_api_completeness() {
 #[test]
 fn test_index_updates_on_upsert_and_update() {
     // Run against both backends
-    for mut store in [Store::new_hash(), Store::new_stable()] {
+    for mut store in [Store::new_hash(), Store::new_stable_test()] {
         // Insert capsule A
         let id: CapsuleId = "cap-1".into();
         let cap = create_test_capsule(id.clone());
@@ -123,7 +123,7 @@ fn test_index_updates_on_upsert_and_update() {
 
 #[test]
 fn test_pagination_cursor_semantics() {
-    for mut store in [Store::new_hash(), Store::new_stable()] {
+    for mut store in [Store::new_hash(), Store::new_stable_test()] {
         // Insert 5 items with deterministic ids
         for i in 0..5 {
             let id = format!("cap-{i}");
@@ -188,7 +188,7 @@ fn test_store_operations(store: &mut Store, backend_name: &str) {
 fn test_index_consistency_property_based() {
     // Test both backends for index consistency
     test_index_consistency_on_backend("HashMap", Store::new_hash());
-    test_index_consistency_on_backend("StableBTreeMap", Store::new_stable());
+    test_index_consistency_on_backend("StableBTreeMap", Store::new_stable_test());
 }
 
 fn test_index_consistency_on_backend(backend_name: &str, mut store: Store) {
@@ -287,7 +287,8 @@ proptest! {
 
     #[test]
     fn test_property_based_operations_stable(operations in prop::collection::vec(operation_strategy(), 10..50)) {
-        test_property_based_operations_on_backend("StableBTreeMap", Store::new_stable(), operations);
+        // Use fresh memory for each test to prevent cross-test contamination
+        test_property_based_operations_on_backend("StableBTreeMap", Store::new_stable_test(), operations);
     }
 }
 
