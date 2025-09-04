@@ -39,7 +39,50 @@ fn whoami() -> Principal {
 // ============================================================================
 #[ic_cdk::update]
 fn register() -> types::Result<()> {
-    capsule::register()
+    use crate::capsule_store::{Order, PersonRef};
+    use ic_cdk::api::time;
+
+    let caller_ref = PersonRef::from_caller();
+    let now = time();
+
+    // Check if user already has a self-capsule
+    let all_capsules = with_capsule_store(|store| store.paginate(None, u32::MAX, Order::Asc));
+
+    let existing_self_capsule = all_capsules
+        .items
+        .into_iter()
+        .find(|capsule| capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref));
+
+    match existing_self_capsule {
+        Some(capsule) => {
+            // Update activity timestamp using store.update()
+            let capsule_id = capsule.id.clone();
+            let update_result = with_capsule_store_mut(|store| {
+                store.update(&capsule_id, |capsule| {
+                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
+                        owner_state.last_activity_at = now;
+                    }
+                    capsule.updated_at = now;
+                })
+            });
+            if update_result.is_ok() {
+                Ok(())
+            } else {
+                Err(types::Error::Internal(
+                    "Failed to update capsule activity".to_string(),
+                ))
+            }
+        }
+        None => {
+            // Create new self-capsule with basic info
+            match capsules_create(None) {
+                types::CapsuleCreationResult { success: true, .. } => Ok(()),
+                types::CapsuleCreationResult { success: false, .. } => Err(types::Error::Internal(
+                    "Failed to create capsule".to_string(),
+                )),
+            }
+        }
+    }
 }
 
 // Register user and prove nonce in one call (optimized for II auth flow)
@@ -49,7 +92,7 @@ fn register_with_nonce(nonce: String) -> types::Result<()> {
     let timestamp = ic_cdk::api::time();
 
     // Register the user
-    capsule::register()?;
+    register()?;
 
     // Store nonce proof
     memory::store_nonce_proof(nonce, caller, timestamp);
@@ -112,8 +155,8 @@ fn capsules_bind_neon(
     bind: bool,
 ) -> types::Result<()> {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
     use ic_cdk::api::time;
 
     let caller_ref = PersonRef::from_caller();
@@ -185,8 +228,8 @@ fn capsules_bind_neon(
 #[ic_cdk::update]
 fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
     use crate::types::{Capsule, CapsuleCreationResult};
     use ic_cdk::api::time;
 
@@ -252,8 +295,8 @@ fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationR
 #[ic_cdk::query]
 fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsule> {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
 
@@ -284,8 +327,8 @@ fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsul
 #[ic_cdk::query]
 fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::CapsuleInfo> {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
 
@@ -346,8 +389,8 @@ fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::Capsu
 #[ic_cdk::query]
 fn capsules_list() -> Vec<types::CapsuleHeader> {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
 
@@ -368,7 +411,110 @@ fn capsules_list() -> Vec<types::CapsuleHeader> {
 // ============================================================================
 #[ic_cdk::update]
 async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
-    capsule::galleries_create(gallery_data)
+    use crate::capsule_store::{Order, PersonRef};
+    use ic_cdk::api::time;
+    use crate::types::{Gallery, GalleryStorageStatus, PersonRef as TypesPersonRef, StoreGalleryResponse};
+
+    let caller = PersonRef::from_caller();
+
+    // Use the gallery ID provided by Web2 (don't generate new ID)
+    let gallery_id = gallery_data.gallery.id.clone();
+
+    // Ensure caller has a capsule - create one if it doesn't exist
+    let capsule = match with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .into_iter()
+            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
+    }) {
+        Some(capsule) => Some(capsule),
+        None => {
+            // No capsule found - create one automatically for first-time users
+            match capsules_create(None) {
+                types::CapsuleCreationResult { success: true, .. } => {
+                    // Now get the newly created capsule
+                    with_capsule_store(|store| {
+                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+                        all_capsules.items.into_iter().find(|capsule| {
+                            capsule.subject == caller && capsule.owners.contains_key(&caller)
+                        })
+                    })
+                }
+                types::CapsuleCreationResult {
+                    success: false,
+                    message,
+                    ..
+                } => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: format!("Failed to create capsule: {message}"),
+                        storage_status: GalleryStorageStatus::Failed,
+                    };
+                }
+            }
+        }
+    };
+
+    match capsule {
+        Some(mut capsule) => {
+            // Check if gallery already exists with this UUID (idempotency)
+            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
+                return StoreGalleryResponse {
+                    success: true,
+                    gallery_id: Some(gallery_id.clone()),
+                    icp_gallery_id: Some(gallery_id),
+                    message: "Gallery already exists with this UUID".to_string(),
+                    storage_status: GalleryStorageStatus::ICPOnly,
+                };
+            }
+
+            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
+            let mut gallery = gallery_data.gallery;
+            gallery.owner_principal = match caller {
+                PersonRef::Principal(p) => p,
+                PersonRef::Opaque(_) => {
+                    return StoreGalleryResponse {
+                        success: false,
+                        gallery_id: None,
+                        icp_gallery_id: None,
+                        message: "Only principals can store galleries".to_string(),
+                        storage_status: GalleryStorageStatus::Failed,
+                    }
+                }
+            };
+            gallery.created_at = time();
+            gallery.updated_at = time();
+            gallery.storage_status = GalleryStorageStatus::ICPOnly;
+
+            // Store gallery in capsule
+            capsule.galleries.insert(gallery_id.clone(), gallery);
+            capsule.updated_at = time(); // Update capsule timestamp
+
+            // Save updated capsule
+            let capsule_id = capsule.id.clone();
+            with_capsule_store_mut(|store| {
+                store.upsert(capsule_id, capsule);
+            });
+
+            StoreGalleryResponse {
+                success: true,
+                gallery_id: Some(gallery_id.clone()),
+                icp_gallery_id: Some(gallery_id),
+                message: "Gallery stored successfully in capsule".to_string(),
+                storage_status: GalleryStorageStatus::ICPOnly,
+            }
+        }
+        None => StoreGalleryResponse {
+            success: false,
+            gallery_id: None,
+            icp_gallery_id: None,
+            message: "No capsule found for caller".to_string(),
+            storage_status: GalleryStorageStatus::Failed,
+        }
+    }
 }
 
 #[ic_cdk::update]
@@ -385,8 +531,8 @@ fn update_gallery_storage_status(
     new_status: types::GalleryStorageStatus,
 ) -> types::Result<()> {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
     use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
@@ -428,8 +574,8 @@ fn update_gallery_storage_status(
 #[ic_cdk::query]
 fn galleries_list() -> Vec<types::Gallery> {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
 
@@ -448,8 +594,8 @@ fn galleries_list() -> Vec<types::Gallery> {
 #[ic_cdk::query]
 fn galleries_read(gallery_id: String) -> types::Result<types::Gallery> {
     use crate::capsule_store::Order;
-    use crate::types::PersonRef;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
 
@@ -470,12 +616,141 @@ async fn galleries_update(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
 ) -> types::UpdateGalleryResponse {
-    capsule::galleries_update(gallery_id, update_data)
+    use crate::capsule_store::{Order, PersonRef};
+    use ic_cdk::api::time;
+    use crate::types::{Gallery, UpdateGalleryResponse};
+
+    let caller = PersonRef::from_caller();
+
+    // Find and update gallery in caller's self-capsule
+    let mut capsule_found = false;
+    let mut updated_gallery: Option<Gallery> = None;
+
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the gallery
+        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
+            capsule.subject == caller
+                && capsule.owners.contains_key(&caller)
+                && capsule.galleries.contains_key(&gallery_id)
+        }) {
+            capsule_found = true;
+            let capsule_id = capsule.id.clone();
+
+            // Update the capsule with the modified gallery
+            let update_result = store.update(&capsule_id, |capsule| {
+                if let Some(gallery) = capsule.galleries.get(&gallery_id) {
+                    // Update gallery fields
+                    let mut gallery_clone = gallery.clone();
+                    if let Some(title) = update_data.title.clone() {
+                        gallery_clone.title = title;
+                    }
+                    if let Some(description) = update_data.description.clone() {
+                        gallery_clone.description = Some(description);
+                    }
+                    if let Some(is_public) = update_data.is_public {
+                        gallery_clone.is_public = is_public;
+                    }
+                    if let Some(memory_entries) = update_data.memory_entries.clone() {
+                        gallery_clone.memory_entries = memory_entries;
+                    }
+
+                    gallery_clone.updated_at = time();
+
+                    // Store updated gallery
+                    capsule.galleries.insert(gallery_id, gallery_clone.clone());
+                    capsule.updated_at = time(); // Update capsule timestamp
+
+                    updated_gallery = Some(gallery_clone);
+                }
+            });
+
+            if update_result.is_err() {
+                capsule_found = false;
+            }
+        }
+    });
+
+    if !capsule_found {
+        return UpdateGalleryResponse {
+            success: false,
+            gallery: None,
+            message: "No capsule found for caller".to_string(),
+        };
+    }
+
+    match updated_gallery {
+        Some(gallery) => UpdateGalleryResponse {
+            success: true,
+            gallery: Some(gallery),
+            message: "Gallery updated successfully".to_string(),
+        },
+        None => UpdateGalleryResponse {
+            success: false,
+            gallery: None,
+            message: "Gallery not found".to_string(),
+        },
+    }
 }
 
 #[ic_cdk::update]
 async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
-    capsule::galleries_delete(gallery_id)
+    use crate::capsule_store::{Order, PersonRef};
+    use ic_cdk::api::time;
+    use crate::types::DeleteGalleryResponse;
+
+    let caller = PersonRef::from_caller();
+
+    // Find and delete gallery from caller's self-capsule
+    let mut capsule_found = false;
+    let mut gallery_found = false;
+
+    with_capsule_store_mut(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+
+        // Find the capsule containing the gallery
+        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
+            capsule.subject == caller
+                && capsule.owners.contains_key(&caller)
+                && capsule.galleries.contains_key(&gallery_id)
+        }) {
+            capsule_found = true;
+            let capsule_id = capsule.id.clone();
+
+            // Update the capsule to remove the gallery
+            let update_result = store.update(&capsule_id, |capsule| {
+                if capsule.galleries.contains_key(&gallery_id) {
+                    capsule.galleries.remove(&gallery_id);
+                    capsule.updated_at = time(); // Update capsule timestamp
+                    gallery_found = true;
+                }
+            });
+
+            if update_result.is_err() {
+                capsule_found = false;
+            }
+        }
+    });
+
+    if !capsule_found {
+        return DeleteGalleryResponse {
+            success: false,
+            message: "No capsule found for caller".to_string(),
+        };
+    }
+
+    if !gallery_found {
+        return DeleteGalleryResponse {
+            success: false,
+            message: "Gallery not found".to_string(),
+        };
+    }
+
+    DeleteGalleryResponse {
+        success: true,
+        message: "Gallery deleted successfully".to_string(),
+    }
 }
 
 // ============================================================================
