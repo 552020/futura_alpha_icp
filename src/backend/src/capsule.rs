@@ -1,5 +1,6 @@
 use crate::capsule_store::{CapsuleStore, Order};
 use crate::memory::{with_capsule_store, with_capsule_store_mut, with_capsules_mut};
+use crate::types::BlobRef;
 use crate::types::Result;
 use crate::types::*;
 
@@ -98,12 +99,72 @@ impl Capsule {
             created_at: now,
             updated_at: now,
             bound_to_neon: false, // Initially not bound to Neon
+            inline_bytes_used: 0, // Start with zero inline consumption
         }
     }
 
     /// Check if a PersonRef is an owner
     pub fn is_owner(&self, person: &PersonRef) -> bool {
         self.owners.contains_key(person)
+    }
+
+    /// Insert a new memory into the capsule
+    pub fn insert_memory(
+        &mut self,
+        memory_id: &str,
+        blob: BlobRef,
+        meta: MemoryMeta,
+        now: u64,
+        idempotency_key: Option<String>,
+    ) -> crate::types::Result<()> {
+        use crate::types::{
+            ImageMetadata, Memory, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase,
+            MemoryType,
+        };
+
+        let memory_info = MemoryInfo {
+            memory_type: MemoryType::Image, // Default, can be updated later
+            name: meta.name.clone(),
+            content_type: "application/octet-stream".to_string(),
+            created_at: now,
+            updated_at: now,
+            uploaded_at: now,
+            date_of_memory: None,
+        };
+
+        let memory_metadata = MemoryMetadata::Image(ImageMetadata {
+            base: MemoryMetadataBase {
+                size: blob.hash.map_or(0, |_| 32), // Use hash length as size indicator, or calculate properly
+                mime_type: "application/octet-stream".to_string(),
+                original_name: meta.name.clone(),
+                uploaded_at: now.to_string(),
+                date_of_memory: None,
+                people_in_memory: None,
+                format: None,
+                bound_to_neon: false,
+            },
+            dimensions: None,
+        });
+
+        let memory_access = MemoryAccess::Private;
+
+        let memory_data = MemoryData::BlobRef {
+            blob,
+            meta: meta.clone(),
+        };
+
+        let memory = Memory {
+            id: memory_id.to_string(),
+            info: memory_info,
+            metadata: memory_metadata,
+            access: memory_access,
+            data: memory_data,
+            idempotency_key,
+        };
+
+        self.memories.insert(memory_id.to_string(), memory);
+        self.updated_at = now;
+        Ok(())
     }
 
     /// Check if a PersonRef is a controller
@@ -1023,102 +1084,6 @@ pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
 // more complex memory-specific logic.
 // ============================================================================
 
-/// Create a new memory in a specific capsule
-pub fn memories_create(capsule_id: String, memory_data: MemoryData) -> MemoryOperationResponse {
-    let caller = PersonRef::from_caller();
-
-    // MIGRATED: Find the specified capsule
-    let capsule = with_capsule_store(|store| {
-        store.get(&capsule_id).and_then(|capsule| {
-            // Check if caller has access to this capsule
-            if capsule.owners.contains_key(&caller) || capsule.subject == caller {
-                Some(capsule)
-            } else {
-                None
-            }
-        })
-    });
-
-    match capsule {
-        Some(mut capsule) => {
-            // Extract memory ID from the data or generate one
-            let memory_id = memory_data.blob_ref.locator.clone();
-
-            // Check if memory already exists with this UUID (idempotency)
-            if capsule.memories.contains_key(&memory_id) {
-                return MemoryOperationResponse {
-                    success: true,
-                    memory_id: Some(memory_id),
-                    message: "Memory already exists with this UUID".to_string(),
-                };
-            }
-
-            // Create memory info
-            let now = ic_cdk::api::time();
-            let memory_info = MemoryInfo {
-                memory_type: MemoryType::Image, // Default type, can be updated later
-                name: format!("Memory {memory_id}"),
-                content_type: "application/octet-stream".to_string(),
-                created_at: now,
-                updated_at: now,
-                uploaded_at: now,
-                date_of_memory: None,
-            };
-
-            // Create memory metadata (default to Image type)
-            let memory_metadata = MemoryMetadata::Image(ImageMetadata {
-                base: MemoryMetadataBase {
-                    size: memory_data
-                        .data
-                        .as_ref()
-                        .map(|d| d.len() as u64)
-                        .unwrap_or(0),
-                    mime_type: "application/octet-stream".to_string(),
-                    original_name: format!("Memory {memory_id}"),
-                    uploaded_at: now.to_string(),
-                    date_of_memory: None,
-                    people_in_memory: None,
-                    format: None,
-                    bound_to_neon: false,
-                },
-                dimensions: None,
-            });
-
-            // Create memory access (default to private)
-            let memory_access = MemoryAccess::Private;
-
-            // Create the memory
-            let memory = Memory {
-                id: memory_id.clone(),
-                info: memory_info,
-                metadata: memory_metadata,
-                access: memory_access,
-                data: memory_data,
-            };
-
-            // Store memory in capsule
-            capsule.memories.insert(memory_id.clone(), memory);
-            capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
-
-            // MIGRATED: Save updated capsule
-            with_capsule_store_mut(|store| {
-                store.upsert(capsule_id.clone(), capsule);
-            });
-
-            MemoryOperationResponse {
-                success: true,
-                memory_id: Some(memory_id),
-                message: "Memory created successfully in capsule".to_string(),
-            }
-        }
-        None => MemoryOperationResponse {
-            success: false,
-            memory_id: None,
-            message: "Capsule not found or access denied".to_string(),
-        },
-    }
-}
-
 /// Add a memory to the caller's capsule (deprecated - use memories_create instead)
 #[deprecated(
     since = "0.7.0",
@@ -1168,11 +1133,12 @@ pub fn add_memory_to_capsule(
             // Create memory metadata (default to Image type)
             let memory_metadata = MemoryMetadata::Image(ImageMetadata {
                 base: MemoryMetadataBase {
-                    size: memory_data
-                        .data
-                        .as_ref()
-                        .map(|d| d.len() as u64)
-                        .unwrap_or(0),
+                    size: match &memory_data {
+                        crate::types::MemoryData::Inline { bytes, .. } => bytes.len() as u64,
+                        crate::types::MemoryData::BlobRef { blob, .. } => {
+                            blob.hash.map_or(0, |_| 32)
+                        } // Size of hash if available
+                    },
                     mime_type: "application/octet-stream".to_string(),
                     original_name: format!("Memory {memory_id}"),
                     uploaded_at: now.to_string(),
@@ -1194,6 +1160,7 @@ pub fn add_memory_to_capsule(
                 metadata: memory_metadata,
                 access: memory_access,
                 data: memory_data,
+                idempotency_key: None, // No idempotency key for legacy memories_create
             };
 
             // Store memory in capsule

@@ -1,12 +1,12 @@
-use ic_stable_structures::{Storable, storable::Bound};
-use candid::{CandidType, Deserialize, Encode, Decode};
-use std::borrow::Cow;
 use crate::types::{CapsuleId, MemoryId, MemoryMeta};
+use candid::{CandidType, Decode, Deserialize, Encode};
+use ic_stable_structures::{storable::Bound, Storable};
+use std::borrow::Cow;
 
 // Size constants aligned with senior developer feedback
 pub const INLINE_MAX: usize = 32 * 1024; // 32KB (fits in Capsule bound)
 pub const CHUNK_SIZE: usize = 64 * 1024; // 64KB
-pub const PAGE_SIZE: usize = 64 * 1024;  // 64KB
+pub const PAGE_SIZE: usize = 64 * 1024; // 64KB
 pub const CAPSULE_INLINE_BUDGET: usize = 32 * 1024; // Max inline bytes per capsule
 
 /// Session identifier using u64 for efficient storage
@@ -28,14 +28,19 @@ impl SessionId {
 }
 
 impl Storable for SessionId {
-    const BOUND: Bound = Bound::Bounded { max_size: 8, is_fixed_size: true };
-    
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 8,
+        is_fixed_size: true,
+    };
+
     fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(self.0.to_le_bytes().to_vec())
     }
-    
+
     fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        let arr: [u8; 8] = bytes.as_ref().try_into()
+        let arr: [u8; 8] = bytes
+            .as_ref()
+            .try_into()
             .expect("Invalid SessionId bytes - expected 8 bytes");
         SessionId(u64::from_le_bytes(arr))
     }
@@ -60,14 +65,19 @@ impl BlobId {
 }
 
 impl Storable for BlobId {
-    const BOUND: Bound = Bound::Bounded { max_size: 8, is_fixed_size: true };
-    
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 8,
+        is_fixed_size: true,
+    };
+
     fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(self.0.to_le_bytes().to_vec())
     }
-    
+
     fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        let arr: [u8; 8] = bytes.as_ref().try_into()
+        let arr: [u8; 8] = bytes
+            .as_ref()
+            .try_into()
             .expect("Invalid BlobId bytes - expected 8 bytes");
         BlobId(u64::from_le_bytes(arr))
     }
@@ -95,15 +105,18 @@ pub struct SessionMeta {
 }
 
 impl Storable for SessionMeta {
-    const BOUND: Bound = Bound::Bounded { max_size: 2048, is_fixed_size: false };
-    
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 2048,
+        is_fixed_size: false,
+    };
+
     fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(Encode!(&(1u16, self)).expect("Failed to encode SessionMeta"))
     }
-    
+
     fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        let (version, meta): (u16, SessionMeta) = Decode!(bytes.as_ref(), (u16, SessionMeta))
-            .expect("Failed to decode SessionMeta");
+        let (version, meta): (u16, SessionMeta) =
+            Decode!(bytes.as_ref(), (u16, SessionMeta)).expect("Failed to decode SessionMeta");
         assert_eq!(version, 1, "Unsupported SessionMeta version");
         meta
     }
@@ -118,24 +131,19 @@ pub struct BlobMeta {
 }
 
 impl Storable for BlobMeta {
-    const BOUND: Bound = Bound::Bounded { max_size: 512, is_fixed_size: false };
-    
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 512,
+        is_fixed_size: false,
+    };
+
     fn to_bytes(&self) -> Cow<[u8]> {
         Cow::Owned(Encode!(&(1u16, self)).expect("Failed to encode BlobMeta"))
     }
-    
+
     fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        let (version, meta): (u16, BlobMeta) = Decode!(bytes.as_ref(), (u16, BlobMeta))
-            .expect("Failed to decode BlobMeta");
+        let (version, meta): (u16, BlobMeta) =
+            Decode!(bytes.as_ref(), (u16, BlobMeta)).expect("Failed to decode BlobMeta");
         assert_eq!(version, 1, "Unsupported BlobMeta version");
         meta
     }
-}
-
-/// Reference to a blob for large memory storage
-#[derive(Clone, Debug, CandidType, Deserialize)]
-pub struct BlobRef {
-    pub blob_id: u64,
-    pub size: u64,
-    pub checksum: [u8; 32],
 }

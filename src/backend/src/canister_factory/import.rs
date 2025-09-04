@@ -191,9 +191,7 @@ pub fn put_memory_chunk(
         if memory_state.received_chunks.contains_key(&chunk_index) {
             return Ok(ChunkUploadResponse {
                 success: false,
-                message: format!(
-                    "Chunk {chunk_index} already received for memory {memory_id}"
-                ),
+                message: format!("Chunk {chunk_index} already received for memory {memory_id}"),
                 received_size: session.total_received_size,
                 total_expected_size: session.total_expected_size,
             });
@@ -500,9 +498,7 @@ pub fn finalize_import(session_id: String) -> Result<ImportFinalizationResponse,
 
         Ok(ImportFinalizationResponse {
             success: true,
-            message: format!(
-                "Import finalized successfully: {total_memories} memories imported"
-            ),
+            message: format!("Import finalized successfully: {total_memories} memories imported"),
             total_memories_imported: total_memories,
             total_size_imported: total_size,
         })
@@ -552,7 +548,12 @@ fn create_memory_from_assembled_data(
     let memory = if let Some(existing_memory) = metadata {
         // Clone existing memory and update data
         let mut memory = existing_memory.clone();
-        memory.data.data = Some(data);
+        if let types::MemoryData::Inline { meta, .. } = &memory.data {
+            memory.data = types::MemoryData::Inline {
+                bytes: data,
+                meta: meta.clone(),
+            };
+        }
         memory
     } else {
         // Create basic memory structure for MVP
@@ -568,13 +569,13 @@ fn create_memory_from_assembled_data(
                 uploaded_at: now,
                 date_of_memory: Some(now),
             },
-            data: types::MemoryData {
-                blob_ref: types::BlobRef {
-                    kind: types::MemoryBlobKind::ICPCapsule,
-                    locator: format!("imported:{memory_id}"),
-                    hash: None,
+            data: types::MemoryData::Inline {
+                bytes: data,
+                meta: types::MemoryMeta {
+                    name: format!("Imported memory {memory_id}"),
+                    description: None,
+                    tags: vec![],
                 },
-                data: Some(data),
             },
             access: types::MemoryAccess::Private,
             metadata: types::MemoryMetadata::Document(types::DocumentMetadata {
@@ -589,6 +590,7 @@ fn create_memory_from_assembled_data(
                     bound_to_neon: false,
                 },
             }),
+            idempotency_key: None, // No idempotency key for imported memories
         }
     };
 
@@ -646,8 +648,10 @@ fn validate_import_against_manifest(
             .ok_or_else(|| format!("Memory '{memory_id}' not found in manifest"))?;
 
         // Calculate checksum for imported memory
-        let empty_vec = Vec::new();
-        let memory_data = memory.data.data.as_ref().unwrap_or(&empty_vec);
+        let memory_data = match &memory.data {
+            types::MemoryData::Inline { bytes, .. } => bytes,
+            types::MemoryData::BlobRef { .. } => &Vec::new(), // No inline data for blob refs
+        };
         let calculated_checksum = calculate_sha256(memory_data);
 
         if calculated_checksum != *expected_checksum {

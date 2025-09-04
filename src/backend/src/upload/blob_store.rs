@@ -2,6 +2,7 @@ use crate::memory_manager::{MEM_BLOBS, MEM_BLOB_COUNTER, MEM_BLOB_META, MM};
 use crate::types::Error;
 use crate::upload::sessions::SessionStore;
 use crate::upload::types::{BlobId, BlobMeta};
+use hex;
 use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::DefaultMemoryImpl;
 use ic_stable_structures::{StableBTreeMap, StableCell};
@@ -33,6 +34,40 @@ pub struct BlobStore;
 impl BlobStore {
     pub fn new() -> Self {
         BlobStore
+    }
+
+    /// Store inline bytes and return blob reference
+    pub fn put_inline(&self, bytes: &[u8]) -> Result<crate::types::BlobRef, Error> {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let sha256: [u8; 32] = hasher.finalize().into();
+
+        let blob_id = BlobId::new();
+        let store_key = format!("inline_{}", hex::encode(&sha256[..8]));
+
+        // Store the bytes directly (for inline, we can store as a single page)
+        let page_key = (blob_id.0, 0u32);
+        STABLE_BLOB_STORE.with(|store| {
+            store.borrow_mut().insert(page_key, bytes.to_vec());
+        });
+
+        // Store blob metadata
+        let meta = BlobMeta {
+            size: bytes.len() as u64,
+            checksum: sha256,
+            created_at: ic_cdk::api::time(),
+        };
+
+        STABLE_BLOB_META.with(|metastore| {
+            metastore.borrow_mut().insert(blob_id.0, meta);
+        });
+
+        Ok(crate::types::BlobRef {
+            kind: crate::types::MemoryBlobKind::ICPCapsule,
+            locator: store_key,
+            hash: Some(sha256),
+            len: bytes.len() as u64,
+        })
     }
 
     /// Store chunks from session as a blob with integrity verification

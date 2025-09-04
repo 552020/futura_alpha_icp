@@ -17,11 +17,22 @@ pub type MemoryId = String;
 /// Type alias for unified error handling - see Error enum below
 
 /// Simplified metadata for memory creation
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryMeta {
     pub name: String,
     pub description: Option<String>,
     pub tags: Vec<String>,
+}
+
+/// Upload configuration for TS client discoverability
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct UploadConfig {
+    /// Maximum size for inline uploads (bytes)
+    pub inline_max: u32,
+    /// Recommended chunk size for chunked uploads (bytes)
+    pub chunk_size: u32,
+    /// Maximum inline budget per capsule (bytes)
+    pub inline_budget_per_capsule: u32,
 }
 
 // ============================================================================
@@ -493,7 +504,8 @@ pub struct Capsule {
     pub galleries: HashMap<String, Gallery>,                 // galleries (collections of memories)
     pub created_at: u64,
     pub updated_at: u64,
-    pub bound_to_neon: bool, // Neon database binding status
+    pub bound_to_neon: bool,    // Neon database binding status
+    pub inline_bytes_used: u64, // Track inline storage consumption
 }
 
 // Capsule creation result
@@ -688,21 +700,38 @@ pub struct BlobRef {
     pub kind: MemoryBlobKind,
     pub locator: String,        // canister+key, URL, CID, etc.
     pub hash: Option<[u8; 32]>, // optional integrity hash
+    pub len: u64,               // size in bytes
 }
 
+// #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+// pub struct MemoryData {
+//     pub blob_ref: BlobRef,     // where the data is stored
+//     pub data: Option<Vec<u8>>, // inline data (for IcCanister storage)
+// }
+
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct MemoryData {
-    pub blob_ref: BlobRef,     // where the data is stored
-    pub data: Option<Vec<u8>>, // inline data (for IcCanister storage)
+pub enum MemoryData {
+    /// Inline upload (for small files ≤ INLINE_MAX).
+    Inline {
+        bytes: Vec<u8>,
+        meta: MemoryMeta, // metadata like mime_type, name, etc.
+    },
+
+    /// Reference to an existing blob in the blob store.
+    BlobRef {
+        blob: BlobRef, // sha256, len, store_key
+        meta: MemoryMeta,
+    },
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct Memory {
-    pub id: String,               // unique identifier
-    pub info: MemoryInfo,         // basic info (name, type, timestamps)
-    pub metadata: MemoryMetadata, // rich metadata (size, dimensions, etc.)
-    pub access: MemoryAccess,     // who can access + temporal rules
-    pub data: MemoryData,         // actual data + storage location
+    pub id: String,                      // unique identifier
+    pub info: MemoryInfo,                // basic info (name, type, timestamps)
+    pub metadata: MemoryMetadata,        // rich metadata (size, dimensions, etc.)
+    pub access: MemoryAccess,            // who can access + temporal rules
+    pub data: MemoryData,                // actual data + storage location
+    pub idempotency_key: Option<String>, // idempotency key for deduplication
 }
 
 impl Memory {
@@ -731,17 +760,11 @@ impl Memory {
                     format: Some("binary".to_string()),
                     bound_to_neon: false,
                 },
-                tags: Some(meta.tags),
+                tags: Some(meta.tags.clone()),
             }),
             access: MemoryAccess::Private, // Default to private access
-            data: MemoryData {
-                blob_ref: BlobRef {
-                    kind: MemoryBlobKind::ICPCapsule,
-                    locator: "inline".to_string(),
-                    hash: None,
-                },
-                data: Some(bytes),
-            },
+            data: MemoryData::Inline { bytes, meta },
+            idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
 
@@ -770,17 +793,19 @@ impl Memory {
                     format: Some("binary".to_string()),
                     bound_to_neon: false,
                 },
-                tags: Some(meta.tags),
+                tags: Some(meta.tags.clone()),
             }),
             access: MemoryAccess::Private, // Default to private access
-            data: MemoryData {
-                blob_ref: BlobRef {
+            data: MemoryData::BlobRef {
+                blob: BlobRef {
                     kind: MemoryBlobKind::ICPCapsule,
                     locator: format!("blob_{blob_id}"),
                     hash: Some(checksum),
+                    len: size,
                 },
-                data: None,
+                meta,
             },
+            idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
 }
