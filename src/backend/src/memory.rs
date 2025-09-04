@@ -1,6 +1,6 @@
 #[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
-use crate::capsule_store::Store;
+use crate::capsule_store::{stable::StableStore, Store};
 use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
@@ -158,6 +158,25 @@ where
 }
 
 // ============================================================================
+// GLOBAL MEMORY MANAGER ACCESS FUNCTIONS (for StableStore)
+// ============================================================================
+
+/// Get virtual memory for capsules from global memory manager
+pub fn get_capsules_memory() -> VirtualMemory<DefaultMemoryImpl> {
+    MEMORY_MANAGER.with(|m| m.borrow().get(CAPSULES_MEMORY_ID))
+}
+
+/// Get virtual memory for subject index from global memory manager
+pub fn get_subject_index_memory() -> VirtualMemory<DefaultMemoryImpl> {
+    MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1))) // Subject index
+}
+
+/// Get virtual memory for owner index from global memory manager
+pub fn get_owner_index_memory() -> VirtualMemory<DefaultMemoryImpl> {
+    MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2))) // Owner index
+}
+
+// ============================================================================
 // LEGACY ACCESS FUNCTIONS (backward compatibility during transition)
 // ============================================================================
 
@@ -252,6 +271,25 @@ where
 // ============================================================================
 // HELPER FUNCTIONS FOR STABLE MEMORY OPERATIONS
 // ============================================================================
+
+// Helper to clear all stable memory data (for emergency recovery)
+#[allow(dead_code)]
+pub fn clear_all_stable_memory() -> Result<(), String> {
+    // Note: clear_new() modifies in place and returns ()
+    STABLE_MEMORY_ARTIFACTS.with(|cell| {
+        let mut artifacts = cell.borrow_mut();
+        artifacts.clear_new();
+    });
+    STABLE_UPLOAD_SESSIONS.with(|cell| {
+        let mut sessions = cell.borrow_mut();
+        sessions.clear_new();
+    });
+    STABLE_CHUNK_DATA.with(|cell| {
+        let mut chunks = cell.borrow_mut();
+        chunks.clear_new();
+    });
+    Ok(())
+}
 
 // Helper to migrate data from thread_local to stable storage (for future use)
 #[allow(dead_code)]

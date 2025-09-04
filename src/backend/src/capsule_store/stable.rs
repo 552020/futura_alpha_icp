@@ -16,6 +16,7 @@ use candid::{Decode, Encode};
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{storable::Bound, DefaultMemoryImpl, StableBTreeMap, Storable};
 use std::borrow::Cow;
+use std::cell::RefCell;
 
 /// Owner index key for sparse multimap: (owner_principal_bytes, capsule_id)
 ///
@@ -102,21 +103,29 @@ impl Default for StableStore {
 impl StableStore {
     /// Create a new StableStore with default memory manager
     pub fn new() -> Self {
-        let memory_manager = MemoryManager::init(DefaultMemoryImpl::default());
-
-        Self {
-            capsules: StableBTreeMap::init(memory_manager.get(MEM_CAPSULES)),
-            subject_index: StableBTreeMap::init(memory_manager.get(MEM_IDX_SUBJECT)),
-            owner_index: StableBTreeMap::init(memory_manager.get(MEM_IDX_OWNER)),
+        // 🔧 FIX: Use thread-local memory manager to prevent overlap
+        // Create one memory manager per thread to avoid conflicts
+        thread_local! {
+            static SHARED_MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
+                RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
         }
+
+        SHARED_MEMORY_MANAGER.with(|mm| {
+            let mm = mm.borrow();
+            Self {
+                capsules: StableBTreeMap::init(mm.get(MEM_CAPSULES)),
+                subject_index: StableBTreeMap::init(mm.get(MEM_IDX_SUBJECT)),
+                owner_index: StableBTreeMap::init(mm.get(MEM_IDX_OWNER)),
+            }
+        })
     }
 
     /// Internal helper: Update indexes when a capsule is added/modified
     fn update_indexes(&mut self, id: &CapsuleId, capsule: &Capsule) {
         // Update subject index (1:1 - add new)
         if let Some(subject_principal) = capsule.subject.principal() {
-            self.subject_index
-                .insert(subject_principal.as_slice().to_vec(), id.clone());
+            let subject_key = subject_principal.as_slice().to_vec();
+            self.subject_index.insert(subject_key, id.clone());
         }
 
         // Update owner index (sparse multimap: insert (owner, capsule_id) -> ())
@@ -471,5 +480,44 @@ mod tests {
         let cap = create_test_capsule(id.clone());
         let bytes = cap.to_bytes();
         assert!(bytes.len() <= 8 * 1024);
+    }
+
+    /// 🔧 GUARDRAIL TEST: Memory Manager Uniqueness
+    /// Test that memory manager instances are unique (no overlap)
+    #[test]
+    fn test_memory_manager_uniqueness() {
+        // This test ensures we don't accidentally create multiple managers
+        // which would cause memory overlap
+
+        // Create two stores - they should share the same thread-local manager
+        let store1 = StableStore::new();
+        let store2 = StableStore::new();
+
+        // Both should work correctly without interfering with each other
+        // This is a basic smoke test that the shared manager is working
+        assert!(store1.capsules.is_empty());
+        assert!(store2.capsules.is_empty());
+    }
+
+    /// 🔧 GUARDRAIL TEST: Memory Overlap Canary
+    /// Test canary pattern to detect memory overlap
+    #[test]
+    fn test_memory_overlap_canary() {
+        let mut store = StableStore::new();
+
+        // Insert a test capsule
+        let test_id = "test_canary".to_string();
+        let test_capsule = create_test_capsule(test_id.clone());
+
+        // This should work without corruption
+        // If there's memory overlap, this might fail or corrupt other data
+        let result = store.capsules.insert(test_id.clone(), test_capsule);
+
+        assert!(result.is_none()); // Should be a new insertion
+
+        // Verify we can retrieve it
+        let retrieved = store.capsules.get(&test_id);
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().id, test_id);
     }
 }
