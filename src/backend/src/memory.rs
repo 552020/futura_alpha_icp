@@ -142,8 +142,8 @@ pub fn with_capsule_store<F, R>(f: F) -> R
 where
     F: FnOnce(&Store) -> R,
 {
-    // Use HashMap for now during transition - switch to Stable later
-    let store = Store::new_hash();
+    // ✅ PRODUCTION: Use Stable storage for data persistence across upgrades
+    let store = Store::new_stable();
     f(&store)
 }
 
@@ -152,8 +152,8 @@ pub fn with_capsule_store_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Store) -> R,
 {
-    // Use HashMap for now during transition - switch to Stable later
-    let mut store = Store::new_hash();
+    // ✅ PRODUCTION: Use Stable storage for data persistence across upgrades
+    let mut store = Store::new_stable();
     f(&mut store)
 }
 

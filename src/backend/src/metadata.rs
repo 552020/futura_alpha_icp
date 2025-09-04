@@ -204,8 +204,7 @@ mod tests {
         let result = upsert_metadata(memory_id.clone(), memory_type, metadata, idempotency_key);
 
         assert!(result.is_ok());
-        assert!(result.data.is_some());
-        if let Some(response) = result.data {
+        if let Ok(response) = result {
             assert!(response.success);
             assert_eq!(response.memory_id, Some(memory_id));
         }
@@ -217,7 +216,7 @@ mod tests {
         let result = memories_ping(vec![memory_id]);
 
         assert!(result.is_ok());
-        if let Some(response) = result.data {
+        if let Ok(response) = result {
             assert_eq!(response.len(), 1);
             assert!(!response[0].metadata_present);
             assert!(!response[0].asset_present);
@@ -230,7 +229,7 @@ mod tests {
         let result = memories_ping(memory_ids);
 
         assert!(result.is_ok());
-        if let Some(response) = result.data {
+        if let Ok(response) = result {
             assert_eq!(response.len(), 0);
         }
     }
@@ -247,7 +246,7 @@ mod tests {
 
         let result = memories_ping(memory_ids);
         assert!(result.is_ok());
-        if let Some(response) = result.data {
+        if let Ok(response) = result {
             assert_eq!(response.len(), 5);
             // All memories should not be present (nonexistent)
             for memory_presence in response {
@@ -263,7 +262,7 @@ mod tests {
 
         let result = memories_ping(memory_ids);
         assert!(result.is_ok());
-        if let Some(response) = result.data {
+        if let Ok(response) = result {
             assert_eq!(response.len(), 1);
             assert!(!response[0].metadata_present);
             assert!(!response[0].asset_present);
@@ -302,7 +301,7 @@ fn test_integration_upsert_and_query() {
     // 2. Query memory presence
     let presence_result = memories_ping(vec![memory_id.clone()]);
     assert!(presence_result.is_ok());
-    if let Some(response) = presence_result.data {
+    if let Ok(response) = presence_result {
         assert_eq!(response.len(), 1);
         assert!(response[0].metadata_present);
         assert!(!response[0].asset_present); // Asset not stored yet
@@ -325,7 +324,7 @@ fn test_integration_upsert_and_query() {
         idempotency_key,
     );
     assert!(idempotent_result.is_ok());
-    if let Some(response) = idempotent_result.data {
+    if let Ok(response) = idempotent_result {
         assert!(response.success);
         assert!(response.message.contains("same idempotency key"));
     }
