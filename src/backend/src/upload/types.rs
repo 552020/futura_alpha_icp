@@ -4,10 +4,10 @@ use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
 
 // Size constants aligned with senior developer feedback
-pub const INLINE_MAX: usize = 32 * 1024; // 32KB (fits in Capsule bound)
+pub const INLINE_MAX: u64 = 32 * 1024; // 32KB (fits in Capsule bound)
 pub const CHUNK_SIZE: usize = 64 * 1024; // 64KB
 pub const PAGE_SIZE: usize = 64 * 1024; // 64KB
-pub const CAPSULE_INLINE_BUDGET: usize = 32 * 1024; // Max inline bytes per capsule
+pub const CAPSULE_INLINE_BUDGET: u64 = 32 * 1024; // Max inline bytes per capsule
 
 /// Session identifier using u64 for efficient storage
 #[derive(Clone, Debug, CandidType, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]

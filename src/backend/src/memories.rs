@@ -20,7 +20,7 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
         MemoryData::Inline { bytes, meta } => {
             // 1) Size check
             let len_u64 = bytes.len() as u64;
-            if len_u64 > INLINE_MAX as u64 {
+            if len_u64 > INLINE_MAX {
                 return Err(Error::InvalidArgument(format!(
                     "inline_too_large: {} > {}",
                     len_u64, INLINE_MAX
@@ -28,113 +28,163 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
             }
 
             // 2) Persist bytes -> BlobRef (durable)
+            // Trust blob store as single source of truth for hash and length
             let blob_store = BlobStore::new();
             let blob = blob_store
                 .put_inline(&bytes)
                 .map_err(|e| Error::Internal(format!("blob_store_put_inline: {:?}", e)))?;
 
-            // Extract values from the returned BlobRef
-            let sha256 = blob.hash.unwrap_or_else(|| {
-                let mut hasher = sha2::Sha256::new();
-                hasher.update(&bytes);
-                hasher.finalize().into()
-            });
+            // Use the hash and length from blob store directly
+            let sha256 = blob
+                .hash
+                .ok_or_else(|| Error::Internal("blob_store_did_not_provide_hash".to_string()))?;
 
             // 3) Single atomic pass: auth + budget + idempotency + insert
             with_capsule_store_mut(|store| {
-                // First, check for existing memory with same content (idempotency)
-                if let Some(existing_id) =
-                    find_existing_memory_by_content(store, &capsule_id, &sha256, len_u64, &idem)
-                {
-                    return Ok(existing_id); // Return existing memory ID
-                }
-
-                // Pre-generate the ID outside the closure
-                let memory_id = generate_memory_id();
-                let now = ic_cdk::api::time();
-
-                // Use the BlobRef directly (no conversion needed)
-                let types_blob = blob.clone();
-
+                // Use update_with for proper error propagation and atomicity
                 store
-                    .update(&capsule_id, |cap| {
+                    .update_with(&capsule_id, |cap| {
+                        // First, check for existing memory with same content (idempotency)
+                        // Move this inside the closure for full atomicity
+                        if let Some(existing_id) =
+                            find_existing_memory_by_content_in_capsule(cap, &sha256, len_u64, &idem)
+                        {
+                            return Ok(existing_id); // Return existing memory ID
+                        }
                         // Check authorization
                         if !cap.owners.contains_key(&caller) && cap.subject != caller {
-                            return; // Early return if not authorized
+                            return Err(crate::types::Error::Unauthorized);
                         }
 
                         // Check budget (use maintained counter)
                         let used = cap.inline_bytes_used;
-                        if used.saturating_add(len_u64) > CAPSULE_INLINE_BUDGET as u64 {
-                            return; // Early return if budget exceeded
+                        if used.saturating_add(len_u64) > CAPSULE_INLINE_BUDGET {
+                            return Err(crate::types::Error::ResourceExhausted);
                         }
 
+                        // Pre-generate the ID
+                        let memory_id = generate_memory_id();
+                        let now = ic_cdk::api::time();
+
+                        // Use the BlobRef directly (no conversion needed)
+                        let types_blob = blob.clone();
+
                         // Insert the memory
-                        if let Err(_) = cap.insert_memory(
+                        cap.insert_memory(
                             &memory_id,
                             types_blob.clone(),
                             meta.clone(),
                             now,
                             Some(idem.clone()),
-                        ) {
-                            return; // Early return if insert failed
-                        }
+                        )
+                        .map_err(|e| {
+                            crate::types::Error::Internal(format!("insert_memory: {:?}", e))
+                        })?;
 
-                        // Maintain inline budget counter when the blob originated as inline
-                        if blob.locator.starts_with("inline_") {
-                            cap.inline_bytes_used = cap.inline_bytes_used.saturating_add(blob.len);
-                        }
+                        // Update inline budget counter for inline uploads
+                        cap.inline_bytes_used = cap.inline_bytes_used.saturating_add(blob.len);
 
                         cap.updated_at = now;
-                    })
-                    .map_err(|_| crate::types::Error::NotFound)?;
 
-                // Return the pre-generated ID
-                Ok(memory_id)
+                        // Return the generated ID
+                        Ok(memory_id)
+                    })
+                    .map_err(|e| match e {
+                        crate::capsule_store::UpdateError::NotFound => {
+                            crate::types::Error::NotFound
+                        }
+                        crate::capsule_store::UpdateError::Validation(msg) => {
+                            crate::types::Error::InvalidArgument(msg)
+                        }
+                        crate::capsule_store::UpdateError::Concurrency => {
+                            crate::types::Error::Internal("concurrency error".into())
+                        }
+                    })
             })
         }
 
         MemoryData::BlobRef { blob, meta } => {
-            // Optional: validate blob ownership/integrity here
-            with_capsule_store_mut(|store| {
-                // First, check for existing memory with same content (idempotency)
-                // For BlobRef, we can only check by hash since we don't have length info
-                if let Some(hash) = &blob.hash {
-                    if let Some(existing_id) =
-                        find_existing_memory_by_content(store, &capsule_id, hash, 0, &idem)
-                    {
-                        return Ok(existing_id); // Return existing memory ID
-                    }
-                }
+            // Verify blob exists and matches provided hash/length
+            {
+                let blob_store = BlobStore::new();
+                let blob_meta = blob_store.head(&blob.locator)?;
 
-                // Pre-generate the ID outside the closure
-                let memory_id = generate_memory_id();
-                let now = ic_cdk::api::time();
-
-                store
-                    .update(&capsule_id, |cap| {
-                        // Check authorization
-                        if !cap.owners.contains_key(&caller) && cap.subject != caller {
-                            return; // Early return if not authorized
+                match blob_meta {
+                    Some(meta) => {
+                        // Verify hash matches
+                        if let Some(expected_hash) = &blob.hash {
+                            if meta.checksum != *expected_hash {
+                                return Err(crate::types::Error::InvalidArgument(
+                                    "blob_hash_mismatch".to_string(),
+                                ));
+                            }
                         }
 
+                        // Verify length matches
+                        if meta.size != blob.len {
+                            return Err(crate::types::Error::InvalidArgument(
+                                "blob_length_mismatch".to_string(),
+                            ));
+                        }
+                    }
+                    None => {
+                        return Err(crate::types::Error::InvalidArgument(
+                            "blob_not_found".to_string(),
+                        ));
+                    }
+                }
+            }
+
+            with_capsule_store_mut(|store| {
+                // Use update_with for proper error propagation and atomicity
+                store
+                    .update_with(&capsule_id, |cap| {
+                        // First, check for existing memory with same content (idempotency)
+                        // Use the actual blob length for proper deduplication
+                        if let Some(hash) = &blob.hash {
+                            if let Some(existing_id) = find_existing_memory_by_content_in_capsule(
+                                cap, hash, blob.len, &idem,
+                            ) {
+                                return Ok(existing_id); // Return existing memory ID
+                            }
+                        }
+                        // Check authorization
+                        if !cap.owners.contains_key(&caller) && cap.subject != caller {
+                            return Err(crate::types::Error::Unauthorized);
+                        }
+
+                        // Pre-generate the ID
+                        let memory_id = generate_memory_id();
+                        let now = ic_cdk::api::time();
+
                         // For blob refs, we don't do budget checks since they're already persisted
-                        if let Err(_) = cap.insert_memory(
+                        cap.insert_memory(
                             &memory_id,
                             blob.clone(),
                             meta.clone(),
                             now,
                             Some(idem.clone()),
-                        ) {
-                            return; // Early return if insert failed
-                        }
+                        )
+                        .map_err(|e| {
+                            crate::types::Error::Internal(format!("insert_memory: {:?}", e))
+                        })?;
 
                         cap.updated_at = now;
-                    })
-                    .map_err(|_| crate::types::Error::NotFound)?;
 
-                // Return the pre-generated ID
-                Ok(memory_id)
+                        // Return the generated ID
+                        Ok(memory_id)
+                    })
+                    .map_err(|e| match e {
+                        crate::capsule_store::UpdateError::NotFound => {
+                            crate::types::Error::NotFound
+                        }
+                        crate::capsule_store::UpdateError::Validation(msg) => {
+                            crate::types::Error::InvalidArgument(msg)
+                        }
+                        crate::capsule_store::UpdateError::Concurrency => {
+                            crate::types::Error::Internal("concurrency error".into())
+                        }
+                    })
             })
         }
     }
@@ -152,6 +202,43 @@ fn ensure_capsule_access(cap: &crate::types::Capsule, who: &PersonRef) -> Result
     } else {
         Err(Error::Unauthorized)
     }
+}
+
+/// Helper: Find existing memory by content hash, length, and idempotency key within a capsule
+/// This version works on a single capsule for use within update_with closures
+fn find_existing_memory_by_content_in_capsule(
+    cap: &crate::types::Capsule,
+    sha256: &[u8; 32],
+    len: u64,
+    idem: &str,
+) -> Option<MemoryId> {
+    cap.memories
+        .values()
+        .find(|memory| {
+            // Check idempotency key first (most specific)
+            if let Some(ref memory_idem) = memory.idempotency_key {
+                if memory_idem == idem {
+                    return true; // Same idempotency key = same request
+                }
+            }
+
+            // Fallback to content-based deduplication
+            match &memory.data {
+                MemoryData::Inline { bytes, .. } => {
+                    let memory_sha256 = compute_sha256(bytes);
+                    memory_sha256 == *sha256 && bytes.len() as u64 == len
+                }
+                MemoryData::BlobRef { blob: mem_blob, .. } => {
+                    // For existing blob refs, compare hash AND length
+                    if let Some(ref hash) = mem_blob.hash {
+                        *hash == *sha256 && mem_blob.len == len
+                    } else {
+                        false
+                    }
+                }
+            }
+        })
+        .map(|memory| memory.id.clone())
 }
 
 /// Helper: Find existing memory by content hash, length, and idempotency key
@@ -181,9 +268,9 @@ fn find_existing_memory_by_content(
                         memory_sha256 == *sha256 && bytes.len() as u64 == len
                     }
                     MemoryData::BlobRef { blob: mem_blob, .. } => {
-                        // For existing blob refs, compare hash if available
+                        // For existing blob refs, compare hash AND length
                         if let Some(ref hash) = mem_blob.hash {
-                            *hash == *sha256
+                            *hash == *sha256 && mem_blob.len == len
                         } else {
                             false
                         }

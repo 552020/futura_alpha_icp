@@ -17,6 +17,7 @@ type AudioMetadata = record {
   format : opt text;
 };
 type BlobRef = record {
+  len : nat64;
   locator : text;
   hash : opt blob;
   kind : MemoryBlobKind;
@@ -27,6 +28,7 @@ type Capsule = record {
   controllers : vec record { PersonRef; ControllerState };
   subject : PersonRef;
   owners : vec record { PersonRef; OwnerState };
+  inline_bytes_used : nat64;
   created_at : nat64;
   connection_groups : vec record { text; ConnectionGroup };
   connections : vec record { PersonRef; Connection };
@@ -154,6 +156,7 @@ type Memory = record {
   metadata : MemoryMetadata;
   data : MemoryData;
   info : MemoryInfo;
+  idempotency_key : opt text;
 };
 type MemoryAccess = variant {
   Private;
@@ -166,7 +169,10 @@ type MemoryAccess = variant {
   Scheduled : record { access : MemoryAccess; accessible_after : nat64 };
 };
 type MemoryBlobKind = variant { MemoryBlobKindExternal; ICPCapsule };
-type MemoryData = record { data : opt blob; blob_ref : BlobRef };
+type MemoryData = variant {
+  BlobRef : record { "blob" : BlobRef; meta : MemoryMeta };
+  Inline : record { meta : MemoryMeta; bytes : blob };
+};
 type MemoryInfo = record {
   updated_at : nat64;
   date_of_memory : opt nat64;
@@ -293,6 +299,9 @@ service : {
   capsules_list : () -> (vec CapsuleHeader) query;
   capsules_read_basic : (opt text) -> (Result_1) query;
   capsules_read_full : (opt text) -> (Result_2) query;
+  // Emergency function to clear all stable memory data
+  // WARNING: This will delete all stored data and should only be used for recovery
+  clear_all_stable_memory : () -> (Result);
   clear_creation_state : (principal) -> (Result_3);
   clear_migration_state : (principal) -> (Result_3);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
@@ -329,13 +338,15 @@ service : {
   memories_begin_upload : (text, MemoryMeta, nat32) -> (Result_8);
   // Commit chunks to create final memory
   memories_commit : (nat64, blob, nat64) -> (Result_9);
-  memories_create : (text, MemoryData) -> (MemoryOperationResponse);
+  memories_create : (text, MemoryData, text) -> (Result_9);
   // Create memory with inline data (≤32KB only)
   memories_create_inline : (text, blob, MemoryMeta) -> (Result_9);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
-  // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
+  // DEPRECATED: Use memories_presence instead
   memories_ping : (vec text) -> (Result_10) query;
+  // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
+  memories_presence : (vec text) -> (Result_10) query;
   // Upload a chunk for an active session
   memories_put_chunk : (nat64, nat32, blob) -> (Result);
   memories_read : (text) -> (Result_11) query;

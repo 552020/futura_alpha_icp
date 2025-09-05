@@ -30,7 +30,7 @@ impl<'a> UploadService<'a> {
         bytes: Vec<u8>,
         meta: MemoryMeta,
     ) -> Result<MemoryId, Error> {
-        if bytes.len() > INLINE_MAX {
+        if bytes.len() > INLINE_MAX as usize {
             return Err(Error::ResourceExhausted);
         }
 
@@ -42,12 +42,15 @@ impl<'a> UploadService<'a> {
                 capsule
                     .memories
                     .values()
-                    .filter_map(|m| m.data.data.as_ref().map(|data| data.len()))
+                    .filter_map(|m| match &m.data {
+                        crate::types::MemoryData::Inline { bytes, .. } => Some(bytes.len()),
+                        crate::types::MemoryData::BlobRef { .. } => None,
+                    })
                     .sum::<usize>()
             })
             .unwrap_or(0);
 
-        if current_inline_size + bytes.len() > CAPSULE_INLINE_BUDGET {
+        if (current_inline_size as u64).saturating_add(bytes.len() as u64) > CAPSULE_INLINE_BUDGET {
             return Err(Error::ResourceExhausted);
         }
 
@@ -119,10 +122,7 @@ impl<'a> UploadService<'a> {
         bytes: Vec<u8>,
     ) -> Result<(), Error> {
         // Verify session exists and caller matches
-        let session = self
-            .sessions
-            .get(session_id)?
-            .ok_or(Error::NotFound)?;
+        let session = self.sessions.get(session_id)?.ok_or(Error::NotFound)?;
 
         let caller = ic_cdk::api::msg_caller();
         if session.caller != caller {
@@ -151,10 +151,7 @@ impl<'a> UploadService<'a> {
         expected_sha256: [u8; 32],
         total_len: u64,
     ) -> Result<MemoryId, Error> {
-        let mut session = self
-            .sessions
-            .get(&session_id)?
-            .ok_or(Error::NotFound)?;
+        let mut session = self.sessions.get(&session_id)?.ok_or(Error::NotFound)?;
 
         // Verify caller matches
         let caller = ic_cdk::api::msg_caller();

@@ -1,0 +1,13 @@
+# Test state and logs
+.test_state
+logs/
+
+# Temporary files
+*.tmp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+

@@ -179,6 +179,42 @@ impl BlobStore {
         STABLE_BLOB_META.with(|metas| metas.borrow().contains_key(&blob_id.0))
     }
 
+    /// Get blob metadata by store key (for verification)
+    pub fn head(&self, store_key: &str) -> Result<Option<BlobMeta>, Error> {
+        // Parse store_key to extract hash prefix
+        // Format: "inline_{hex_hash_prefix}" or other locator formats
+        let hash_prefix = if store_key.starts_with("inline_") {
+            store_key.strip_prefix("inline_")
+        } else {
+            // For other locator types, we might need different parsing
+            // For now, assume inline format or return None
+            None
+        };
+
+        if let Some(prefix_hex) = hash_prefix {
+            // Try to decode the hex prefix
+            if let Ok(prefix_bytes) = hex::decode(prefix_hex) {
+                // Search through all blob metadata for a matching hash prefix
+                let result = STABLE_BLOB_META.with(|metas| {
+                    for (_blob_id, meta) in metas.borrow().iter() {
+                        // Check if the hash starts with our prefix
+                        if meta.checksum.len() >= prefix_bytes.len()
+                            && meta.checksum[..prefix_bytes.len()] == prefix_bytes[..]
+                        {
+                            return Some(meta.clone());
+                        }
+                    }
+                    None
+                });
+                Ok(result)
+            } else {
+                Ok(None) // Invalid hex in store_key
+            }
+        } else {
+            Ok(None) // Unsupported store_key format
+        }
+    }
+
     /// Get total number of blobs (for monitoring)
     pub fn blob_count(&self) -> u64 {
         STABLE_BLOB_META.with(|metas| metas.borrow().len())
