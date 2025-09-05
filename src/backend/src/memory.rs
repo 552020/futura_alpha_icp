@@ -1,5 +1,4 @@
 use crate::canister_factory::PersonalCanisterCreationStateData;
-use crate::capsule_store::CapsuleStore;
 use crate::capsule_store::Store;
 use crate::types::Capsule;
 use candid::Principal;
@@ -184,38 +183,4 @@ pub fn clear_all_stable_memory() -> Result<(), String> {
     // STABLE_UPLOAD_SESSIONS removed - using new SessionStore
     // STABLE_CHUNK_DATA removed - using active chunk storage in upload/sessions.rs
     Ok(())
-}
-
-pub fn get_stable_memory_stats() -> (u64, u64, u64) {
-    // Use the active CapsuleStore instead of legacy STABLE_CAPSULES
-    let store = Store::new_stable();
-    let (capsule_count, _, _) = store.stats();
-
-    // TODO: Add session count when needed using SessionStore::new().count_active_for() or similar
-    let session_count = 0u64; // Legacy sessions removed, use new SessionStore when needed
-    let artifact_count = 0u64; // Artifacts system removed
-
-    (capsule_count, session_count, artifact_count)
-}
-// ============================================================================
-// TESTS FOR STABLE MEMORY INFRASTRUCTURE
-// ============================================================================
-
-#[cfg(test)]
-mod stable_memory_tests {
-    use super::*;
-    // MemoryType import removed - no longer needed
-
-    #[test]
-    fn test_stable_memory_stats() {
-        let (capsules, sessions, artifacts) = get_stable_memory_stats();
-        // Just verify the function works - counts start at 0 in test environment
-        assert_eq!(capsules, 0);
-        assert_eq!(sessions, 0); // Legacy sessions removed, always 0 now
-        assert_eq!(artifacts, 0); // Artifacts system removed, always 0
-    }
-
-    // Artifact tests removed - artifacts system deleted
-
-    // Concurrent access test removed - was testing artifacts system
 }

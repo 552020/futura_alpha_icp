@@ -709,7 +709,7 @@ mod tests {
         assert!(export_data.metadata.total_size_bytes > 0);
 
         // Clean up
-        crate::memory::with_capsule_store_mut(|store| {
+        crate::memory::with_capsule_store_mut(|_store| {
             // Note: No direct clear method, but tests use fresh store each time
         });
     }
@@ -744,7 +744,7 @@ mod tests {
         assert!(result.unwrap_err().contains("No self-capsule found"));
 
         // Clean up
-        crate::memory::with_capsule_store_mut(|store| {
+        crate::memory::with_capsule_store_mut(|_store| {
             // Note: No direct clear method, but tests use fresh store each time
         });
     }
@@ -778,7 +778,7 @@ mod tests {
         );
 
         // Clean up
-        crate::memory::with_capsule_store_mut(|store| {
+        crate::memory::with_capsule_store_mut(|_store| {
             // Note: No direct clear method, but tests use fresh store each time
         });
     }

@@ -8,10 +8,6 @@ use crate::types::{Capsule, OwnerState, PersonRef};
 use candid::Principal;
 use std::collections::HashMap;
 
-#[cfg(test)]
-use proptest::prelude::*;
-#[cfg(test)]
-use proptest::strategy::Just;
 
 #[test]
 fn test_store_enum_delegation() {
@@ -83,64 +79,64 @@ fn test_index_updates_on_upsert_and_update() {
     // Run against stable backend
     let mut store = Store::new_stable_test();
 
-    // Insert capsule A
-    let id: CapsuleId = "cap-1".into();
-    let cap = create_test_capsule(id.clone());
-    let subj_a = cap.subject.clone();
-    store.put_if_absent(id.clone(), cap.clone()).unwrap();
+        // Insert capsule A
+        let id: CapsuleId = "cap-1".into();
+        let cap = create_test_capsule(id.clone());
+        let subj_a = cap.subject.clone();
+        store.put_if_absent(id.clone(), cap.clone()).unwrap();
 
-    // Verify subject index → A
-    let got = store.find_by_subject(&subj_a).expect("found by subj A");
-    assert_eq!(got.id, id);
+        // Verify subject index → A
+        let got = store.find_by_subject(&subj_a).expect("found by subj A");
+        assert_eq!(got.id, id);
 
-    // Change subject via update: A -> B
-    let subj_b = PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap());
-    store
-        .update(&id, |c| {
-            c.subject = subj_b.clone();
-        })
-        .unwrap();
+        // Change subject via update: A -> B
+        let subj_b = PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap());
+        store
+            .update(&id, |c| {
+                c.subject = subj_b.clone();
+            })
+            .unwrap();
 
-    // Old subject should no longer resolve
-    assert!(store.find_by_subject(&subj_a).is_none());
+        // Old subject should no longer resolve
+        assert!(store.find_by_subject(&subj_a).is_none());
 
-    // New subject resolves
-    let got_b = store.find_by_subject(&subj_b).expect("found by subj B");
-    assert_eq!(got_b.id, id);
+        // New subject resolves
+        let got_b = store.find_by_subject(&subj_b).expect("found by subj B");
+        assert_eq!(got_b.id, id);
 
-    // Owner index should not duplicate entries after repeated upserts
-    let before = store.list_by_owner(&subj_b).len();
-    let cap2 = create_test_capsule(id.clone()); // same owners by default
-    let _ = store.upsert(id.clone(), cap2);
-    let after = store.list_by_owner(&subj_b).len();
-    assert_eq!(before, after, "owner index should not duplicate ids");
+        // Owner index should not duplicate entries after repeated upserts
+        let before = store.list_by_owner(&subj_b).len();
+        let cap2 = create_test_capsule(id.clone()); // same owners by default
+        let _ = store.upsert(id.clone(), cap2);
+        let after = store.list_by_owner(&subj_b).len();
+        assert_eq!(before, after, "owner index should not duplicate ids");
 }
 
 #[test]
 fn test_pagination_cursor_semantics() {
     let mut store = Store::new_stable_test();
 
-    // Insert 5 items with deterministic ids
-    for i in 0..5 {
-        let id = format!("cap-{i}");
-        let cap = create_test_capsule(id.clone());
-        store.put_if_absent(id, cap).unwrap();
-    }
+        // Insert 5 items with deterministic ids
+        for i in 0..5 {
+            let id = format!("cap-{i}");
+            let cap = create_test_capsule(id.clone());
+            store.put_if_absent(id, cap).unwrap();
+        }
 
-    // Page size 2, Asc order
-    let p1 = store.paginate(None, 2, Order::Asc);
-    assert_eq!(p1.items.len(), 2);
-    let _c1 = p1.next_cursor.clone().expect("cursor after page 1");
+        // Page size 2, Asc order
+        let p1 = store.paginate(None, 2, Order::Asc);
+        assert_eq!(p1.items.len(), 2);
+        let _c1 = p1.next_cursor.clone().expect("cursor after page 1");
 
-    // Page 2 starts strictly after c1 (exclusive)
-    let p2 = store.paginate(p1.next_cursor, 2, Order::Asc);
-    assert_eq!(p2.items.len(), 2);
-    let c2 = p2.next_cursor.clone().expect("cursor after page 2");
+        // Page 2 starts strictly after c1 (exclusive)
+        let p2 = store.paginate(p1.next_cursor, 2, Order::Asc);
+        assert_eq!(p2.items.len(), 2);
+        let c2 = p2.next_cursor.clone().expect("cursor after page 2");
 
-    // Page 3 (last, possibly shorter)
-    let p3 = store.paginate(Some(c2), 2, Order::Asc);
-    assert_eq!(p3.items.len(), 1);
-    assert!(p3.next_cursor.is_none(), "no cursor at end");
+        // Page 3 (last, possibly shorter)
+        let p3 = store.paginate(Some(c2), 2, Order::Asc);
+        assert_eq!(p3.items.len(), 1);
+        assert!(p3.next_cursor.is_none(), "no cursor at end");
 }
 
 fn test_store_operations(store: &mut Store, backend_name: &str) {
@@ -275,226 +271,7 @@ fn test_index_consistency_on_backend(backend_name: &str, mut store: Store) {
 
 // TODO: Fix property-based test - it has fundamental issues with subject index conflicts
 // The test tries to create multiple capsules with the same subject, which violates the index constraint
-// proptest! {
-//     #[test]
-//     fn test_property_based_operations_stable(operations in prop::collection::vec(operation_strategy(), 10..50)) {
-//         // Use fresh memory for each test to prevent cross-test contamination
-//         test_property_based_operations_on_backend("StableBTreeMap", Store::new_stable_test(), operations);
-//     }
-// }
-
-fn operation_strategy() -> impl Strategy<Value = Operation> {
-    prop_oneof![
-        // Create/Update operation - use simple ASCII IDs and unique principals
-        (simple_id_strategy(), unique_principal_strategy())
-            .prop_map(|(id, subject)| Operation::Upsert { id, subject }),
-        // Remove operation - use simple ASCII IDs
-        simple_id_strategy().prop_map(Operation::Remove),
-        // Read operation - use simple ASCII IDs
-        simple_id_strategy().prop_map(Operation::Read),
-        // Find by subject operation
-        unique_principal_strategy().prop_map(Operation::FindBySubject),
-    ]
-}
-
-fn simple_id_strategy() -> impl Strategy<Value = String> {
-    // Generate simple ASCII IDs to avoid Unicode issues
-    prop_oneof![
-        Just("test1".to_string()),
-        Just("test2".to_string()),
-        Just("test3".to_string()),
-        Just("test4".to_string()),
-        Just("test5".to_string()),
-        Just("id1".to_string()),
-        Just("id2".to_string()),
-        Just("id3".to_string()),
-        Just("capsule1".to_string()),
-        Just("capsule2".to_string()),
-    ]
-}
-
-fn unique_principal_strategy() -> impl Strategy<Value = Principal> {
-    // Generate unique principals for testing to avoid index conflicts
-    prop_oneof![
-        Just(Principal::from_text("2vxsx-fae").unwrap()),
-        Just(Principal::from_text("aaaaa-aa").unwrap()),
-        Just(Principal::from_text("w7x7r-cok77-xa").unwrap()),
-        Just(Principal::from_text("2ibo7-dia").unwrap()),
-    ]
-}
-
-fn principal_strategy() -> impl Strategy<Value = Principal> {
-    // Generate valid principals for testing
-    prop_oneof![
-        Just(Principal::from_text("2vxsx-fae").unwrap()),
-        Just(Principal::from_text("w7x7r-cok77-xa").unwrap()),
-        Just(Principal::from_text("aaaaa-aa").unwrap()),
-        Just(Principal::from_text("2ibo7-dia").unwrap()),
-    ]
-}
-
-#[derive(Debug, Clone)]
-enum Operation {
-    Upsert { id: String, subject: Principal },
-    Remove(String),
-    Read(String),
-    FindBySubject(Principal),
-}
-
-fn test_property_based_operations_on_backend(
-    backend_name: &str,
-    mut store: Store,
-    operations: Vec<Operation>,
-) {
-    println!(
-        "🧪 Property testing {} operations on {} backend...",
-        operations.len(),
-        backend_name
-    );
-
-    let mut ground_truth = std::collections::HashMap::new();
-
-    for operation in operations {
-        match operation {
-            Operation::Upsert { id, subject } => {
-                let capsule = create_test_capsule_with_principal(id.clone(), subject.clone());
-                store.upsert(id.clone(), capsule);
-                ground_truth.insert(id, subject);
-            }
-            Operation::Remove(id) => {
-                if ground_truth.contains_key(&id) {
-                    let removed = store.remove(&id);
-                    assert!(removed.is_some(), "Should remove existing capsule");
-                    ground_truth.remove(&id);
-                }
-            }
-            Operation::Read(id) => {
-                let store_result = store.get(&id);
-                let ground_truth_result = ground_truth.get(&id);
-
-                match (store_result, ground_truth_result) {
-                    (Some(capsule), Some(expected_subject)) => {
-                        assert_eq!(capsule.id, id, "Capsule ID should match");
-                        if let crate::types::PersonRef::Principal(subject_principal) =
-                            &capsule.subject
-                        {
-                            assert_eq!(
-                                subject_principal, expected_subject,
-                                "Subject should match ground truth"
-                            );
-                        }
-                    }
-                    (None, None) => {} // Both don't exist - correct
-                    (Some(_), None) => panic!("Store has capsule but ground truth doesn't: {}", id),
-                    (None, Some(_)) => panic!("Ground truth has capsule but store doesn't: {}", id),
-                }
-            }
-            Operation::FindBySubject(subject) => {
-                let person_ref = crate::types::PersonRef::Principal(subject.clone());
-                let found = store.find_by_subject(&person_ref);
-
-                // Check if any capsule in ground truth has this subject
-                let expected_ids: Vec<_> = ground_truth
-                    .iter()
-                    .filter(|(_, subj)| **subj == subject)
-                    .map(|(id, _)| id.clone())
-                    .collect();
-
-                if expected_ids.is_empty() {
-                    assert!(
-                        found.is_none(),
-                        "No capsules with subject, should not find any"
-                    );
-                } else {
-                    assert!(found.is_some(), "Should find capsule with subject");
-                    let capsule = found.unwrap();
-                    assert!(
-                        expected_ids.contains(&capsule.id),
-                        "Found capsule ID should be in expected list"
-                    );
-                    if let crate::types::PersonRef::Principal(subject_principal) = &capsule.subject
-                    {
-                        assert_eq!(
-                            subject_principal, &subject,
-                            "Found capsule should have correct subject"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    // Final consistency check
-    verify_property_consistency(&store, &ground_truth);
-    println!("✅ Property test passed for {} backend!", backend_name);
-}
-
-fn verify_full_consistency(
-    store: &Store,
-    ground_truth: &std::collections::HashMap<String, String>,
-    operation_count: usize,
-) {
-    // Verify all capsules in ground truth exist in store
-    for (id, _expected_subject) in ground_truth {
-        let capsule = store.get(id).expect("Capsule should exist in store");
-        assert_eq!(capsule.id, *id, "Capsule ID should match");
-
-        // Verify subject index
-        let found = store.find_by_subject(&capsule.subject);
-        assert!(found.is_some(), "Subject index should find capsule");
-        assert_eq!(
-            found.unwrap().id,
-            *id,
-            "Subject index should return correct capsule"
-        );
-
-        // Verify owner index (if capsule has owners)
-        if !capsule.owners.is_empty() {
-            for (owner_ref, _) in &capsule.owners {
-                let owner_capsules = store.list_by_owner(owner_ref);
-                assert!(
-                    owner_capsules.contains(id),
-                    "Owner index should include capsule"
-                );
-            }
-        }
-    }
-
-    // Verify store count matches ground truth
-    assert_eq!(
-        store.count() as usize,
-        ground_truth.len(),
-        "Store count should match ground truth after {} operations",
-        operation_count
-    );
-}
-
-fn verify_property_consistency(
-    store: &Store,
-    ground_truth: &std::collections::HashMap<String, Principal>,
-) {
-    // Verify all capsules in ground truth exist in store
-    for (id, _expected_subject) in ground_truth {
-        let capsule = store.get(id).expect("Capsule should exist in store");
-        assert_eq!(capsule.id, *id, "Capsule ID should match");
-
-        // Verify subject index
-        let found = store.find_by_subject(&capsule.subject);
-        assert!(found.is_some(), "Subject index should find capsule");
-        assert_eq!(
-            found.unwrap().id,
-            *id,
-            "Subject index should return correct capsule"
-        );
-    }
-
-    // Verify store count matches ground truth
-    assert_eq!(
-        store.count() as usize,
-        ground_truth.len(),
-        "Store count should match ground truth"
-    );
-}
+// All related functions have been removed to eliminate dead code warnings
 
 fn create_test_capsule_with_principal(
     id: String,
@@ -531,38 +308,6 @@ fn create_test_capsule_with_principal(
     }
 }
 
-fn create_test_capsule_with_subject(id: String, subject_principal: &str) -> crate::types::Capsule {
-    use crate::types::{Capsule, OwnerState, PersonRef};
-    use std::collections::HashMap;
-
-    let subject = PersonRef::Opaque(subject_principal.to_string());
-    let mut owners = HashMap::new();
-
-    // Add the subject as an owner too
-    let owner_principal = candid::Principal::from_text("2vxsx-fae").unwrap(); // Use valid principal
-    owners.insert(
-        PersonRef::Principal(owner_principal),
-        OwnerState {
-            since: 1234567890,
-            last_activity_at: 1234567890,
-        },
-    );
-
-    Capsule {
-        id,
-        subject,
-        owners,
-        controllers: HashMap::new(),
-        connections: HashMap::new(),
-        connection_groups: HashMap::new(),
-        memories: HashMap::new(),
-        galleries: HashMap::new(),
-        created_at: 1234567890,
-        updated_at: 1234567890,
-        bound_to_neon: false,
-        inline_bytes_used: 0,
-    }
-}
 
 fn create_test_capsule(id: CapsuleId) -> Capsule {
     let subject = PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap());
