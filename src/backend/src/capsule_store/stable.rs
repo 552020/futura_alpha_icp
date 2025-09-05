@@ -10,14 +10,14 @@
 //! - Storable implementation for Capsule serialization
 //! - Schema versioning for upgrade compatibility
 
-use super::{AlreadyExists, CapsuleId, CapsuleStore, Order, Page, UpdateError};
-use crate::types::Capsule;
+use super::{CapsuleId, CapsuleStore, Order, Page};
+use crate::memory::{MEM_CAPSULES, MEM_CAPSULES_IDX_OWNER, MEM_CAPSULES_IDX_SUBJECT, MM};
+use crate::types::{Capsule, Error};
 #[allow(unused_imports)]
 use candid::{Decode, Encode, Principal};
-use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
+use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::{storable::Bound, DefaultMemoryImpl, StableBTreeMap, Storable};
 use std::borrow::Cow;
-use std::cell::RefCell;
 
 /// Owner index key for sparse multimap: (owner_principal_bytes, capsule_id)
 ///
@@ -79,11 +79,6 @@ impl Storable for OwnerIndexKey {
     };
 }
 
-/// Memory ID reservations for different data types
-const MEM_CAPSULES: MemoryId = MemoryId::new(0);
-const MEM_IDX_SUBJECT: MemoryId = MemoryId::new(1);
-const MEM_IDX_OWNER: MemoryId = MemoryId::new(2);
-
 /// StableBTreeMap-based storage implementation for production
 pub struct StableStore {
     /// Main capsule storage
@@ -107,31 +102,28 @@ impl StableStore {
         Self::new_with_memory_manager()
     }
 
-    /// Create with thread-local memory manager (production default)
+    /// Create with global memory manager (production default)
     pub fn new_with_memory_manager() -> Self {
-        thread_local! {
-            static SHARED_MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
-                RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
-        }
-
-        SHARED_MEMORY_MANAGER.with(|mm| {
+        MM.with(|mm| {
             let mm = mm.borrow();
             Self {
                 capsules: StableBTreeMap::init(mm.get(MEM_CAPSULES)),
-                subject_index: StableBTreeMap::init(mm.get(MEM_IDX_SUBJECT)),
-                owner_index: StableBTreeMap::init(mm.get(MEM_IDX_OWNER)),
+                subject_index: StableBTreeMap::init(mm.get(MEM_CAPSULES_IDX_SUBJECT)),
+                owner_index: StableBTreeMap::init(mm.get(MEM_CAPSULES_IDX_OWNER)),
             }
         })
     }
 
     /// Create a new StableStore for testing (fresh memory each time)
     #[cfg(test)]
+    #[allow(dead_code)]
     pub fn new_test() -> Self {
-        let memory_manager = MemoryManager::init(DefaultMemoryImpl::default());
+        let memory_manager =
+            ic_stable_structures::memory_manager::MemoryManager::init(DefaultMemoryImpl::default());
         Self {
             capsules: StableBTreeMap::init(memory_manager.get(MEM_CAPSULES)),
-            subject_index: StableBTreeMap::init(memory_manager.get(MEM_IDX_SUBJECT)),
-            owner_index: StableBTreeMap::init(memory_manager.get(MEM_IDX_OWNER)),
+            subject_index: StableBTreeMap::init(memory_manager.get(MEM_CAPSULES_IDX_SUBJECT)),
+            owner_index: StableBTreeMap::init(memory_manager.get(MEM_CAPSULES_IDX_OWNER)),
         }
     }
 
@@ -182,9 +174,22 @@ impl StableStore {
             self.owner_index.len(),
         )
     }
+
+    /// Get capsule stable store memory statistics
+    /// Returns (capsules_count, subject_index_count, owner_index_count)
+    pub fn capsule_stable_store_memory_stats(&self) -> (u64, u64, u64) {
+        (
+            self.capsules.len(),
+            self.subject_index.len(),
+            self.owner_index.len(),
+        )
+    }
 }
 
 impl CapsuleStore for StableStore {
+    fn stats(&self) -> (u64, u64, u64) {
+        self.capsule_stable_store_memory_stats()
+    }
     fn exists(&self, id: &CapsuleId) -> bool {
         self.capsules.contains_key(id)
     }
@@ -211,7 +216,7 @@ impl CapsuleStore for StableStore {
         prev
     }
 
-    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> Result<(), AlreadyExists> {
+    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> Result<(), Error> {
         // Key-record coherence: store key must equal capsule.id
         debug_assert_eq!(id, capsule.id, "CapsuleId key must match Capsule.id");
 
@@ -221,14 +226,14 @@ impl CapsuleStore for StableStore {
         }
 
         if self.capsules.contains_key(&id) {
-            return Err(AlreadyExists::CapsuleExists(id));
+            return Err(Error::Conflict("capsule_already_exists".to_string()));
         }
         self.capsules.insert(id.clone(), capsule.clone());
         self.update_indexes(&id, &capsule);
         Ok(())
     }
 
-    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), UpdateError>
+    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), Error>
     where
         F: FnOnce(&mut Capsule),
     {
@@ -290,13 +295,13 @@ impl CapsuleStore for StableStore {
             self.capsules.insert(id.clone(), capsule);
             Ok(())
         } else {
-            Err(UpdateError::NotFound)
+            Err(Error::NotFound)
         }
     }
 
-    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, UpdateError>
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, Error>
     where
-        F: FnOnce(&mut Capsule) -> Result<R, crate::types::Error>,
+        F: FnOnce(&mut Capsule) -> Result<R, Error>,
     {
         if let Some(mut capsule) = self.capsules.get(id) {
             let old_subject = capsule.subject.principal().cloned();
@@ -356,7 +361,7 @@ impl CapsuleStore for StableStore {
             self.capsules.insert(id.clone(), capsule);
             Ok(result)
         } else {
-            Err(UpdateError::NotFound)
+            Err(Error::NotFound)
         }
     }
 

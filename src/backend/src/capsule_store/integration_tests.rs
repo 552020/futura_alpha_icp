@@ -15,10 +15,6 @@ use proptest::strategy::Just;
 
 #[test]
 fn test_store_enum_delegation() {
-    // Hash backend
-    let mut hash_store = Store::new_hash();
-    test_store_operations(&mut hash_store, "HashMap");
-
     // Stable backend (works off-chain with DefaultMemoryImpl)
     let mut stable_store = Store::new_stable_test();
     test_store_operations(&mut stable_store, "StableBTreeMap");
@@ -26,18 +22,17 @@ fn test_store_enum_delegation() {
 
 #[test]
 fn test_store_backend_identification() {
-    let hash_store = Store::new_hash();
-    assert_eq!(hash_store.backend_type(), "HashMap");
+    let stable_store = Store::new_stable_test();
+    assert_eq!(stable_store.backend_type(), "StableBTreeMap");
 
-    match &hash_store {
-        Store::Hash(_) => {}
-        Store::Stable(_) => panic!("Should be HashMap backend"),
+    match &stable_store {
+        Store::Stable(_) => {}
     }
 }
 
 #[test]
 fn test_store_api_completeness() {
-    let mut store = Store::new_hash();
+    let mut store = Store::new_stable_test();
 
     let id: CapsuleId = "test-complete-api".to_string();
     let capsule = create_test_capsule(id.clone());
@@ -85,67 +80,67 @@ fn test_store_api_completeness() {
 
 #[test]
 fn test_index_updates_on_upsert_and_update() {
-    // Run against both backends
-    for mut store in [Store::new_hash(), Store::new_stable_test()] {
-        // Insert capsule A
-        let id: CapsuleId = "cap-1".into();
-        let cap = create_test_capsule(id.clone());
-        let subj_a = cap.subject.clone();
-        store.put_if_absent(id.clone(), cap.clone()).unwrap();
+    // Run against stable backend
+    let mut store = Store::new_stable_test();
 
-        // Verify subject index → A
-        let got = store.find_by_subject(&subj_a).expect("found by subj A");
-        assert_eq!(got.id, id);
+    // Insert capsule A
+    let id: CapsuleId = "cap-1".into();
+    let cap = create_test_capsule(id.clone());
+    let subj_a = cap.subject.clone();
+    store.put_if_absent(id.clone(), cap.clone()).unwrap();
 
-        // Change subject via update: A -> B
-        let subj_b = PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap());
-        store
-            .update(&id, |c| {
-                c.subject = subj_b.clone();
-            })
-            .unwrap();
+    // Verify subject index → A
+    let got = store.find_by_subject(&subj_a).expect("found by subj A");
+    assert_eq!(got.id, id);
 
-        // Old subject should no longer resolve
-        assert!(store.find_by_subject(&subj_a).is_none());
+    // Change subject via update: A -> B
+    let subj_b = PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap());
+    store
+        .update(&id, |c| {
+            c.subject = subj_b.clone();
+        })
+        .unwrap();
 
-        // New subject resolves
-        let got_b = store.find_by_subject(&subj_b).expect("found by subj B");
-        assert_eq!(got_b.id, id);
+    // Old subject should no longer resolve
+    assert!(store.find_by_subject(&subj_a).is_none());
 
-        // Owner index should not duplicate entries after repeated upserts
-        let before = store.list_by_owner(&subj_b).len();
-        let cap2 = create_test_capsule(id.clone()); // same owners by default
-        let _ = store.upsert(id.clone(), cap2);
-        let after = store.list_by_owner(&subj_b).len();
-        assert_eq!(before, after, "owner index should not duplicate ids");
-    }
+    // New subject resolves
+    let got_b = store.find_by_subject(&subj_b).expect("found by subj B");
+    assert_eq!(got_b.id, id);
+
+    // Owner index should not duplicate entries after repeated upserts
+    let before = store.list_by_owner(&subj_b).len();
+    let cap2 = create_test_capsule(id.clone()); // same owners by default
+    let _ = store.upsert(id.clone(), cap2);
+    let after = store.list_by_owner(&subj_b).len();
+    assert_eq!(before, after, "owner index should not duplicate ids");
 }
 
 #[test]
 fn test_pagination_cursor_semantics() {
-    for mut store in [Store::new_hash(), Store::new_stable_test()] {
-        // Insert 5 items with deterministic ids
-        for i in 0..5 {
-            let id = format!("cap-{i}");
-            let cap = create_test_capsule(id.clone());
-            store.put_if_absent(id, cap).unwrap();
-        }
+    let mut store = Store::new_stable_test();
 
-        // Page size 2, Asc order
-        let p1 = store.paginate(None, 2, Order::Asc);
-        assert_eq!(p1.items.len(), 2);
-        let _c1 = p1.next_cursor.clone().expect("cursor after page 1");
-
-        // Page 2 starts strictly after c1 (exclusive)
-        let p2 = store.paginate(p1.next_cursor, 2, Order::Asc);
-        assert_eq!(p2.items.len(), 2);
-        let c2 = p2.next_cursor.clone().expect("cursor after page 2");
-
-        // Page 3 (last, possibly shorter)
-        let p3 = store.paginate(Some(c2), 2, Order::Asc);
-        assert_eq!(p3.items.len(), 1);
-        assert!(p3.next_cursor.is_none(), "no cursor at end");
+    // Insert 5 items with deterministic ids
+    for i in 0..5 {
+        let id = format!("cap-{i}");
+        let cap = create_test_capsule(id.clone());
+        store.put_if_absent(id, cap).unwrap();
     }
+
+    // Page size 2, Asc order
+    let p1 = store.paginate(None, 2, Order::Asc);
+    assert_eq!(p1.items.len(), 2);
+    let _c1 = p1.next_cursor.clone().expect("cursor after page 1");
+
+    // Page 2 starts strictly after c1 (exclusive)
+    let p2 = store.paginate(p1.next_cursor, 2, Order::Asc);
+    assert_eq!(p2.items.len(), 2);
+    let c2 = p2.next_cursor.clone().expect("cursor after page 2");
+
+    // Page 3 (last, possibly shorter)
+    let p3 = store.paginate(Some(c2), 2, Order::Asc);
+    assert_eq!(p3.items.len(), 1);
+    assert!(p3.next_cursor.is_none(), "no cursor at end");
 }
 
 fn test_store_operations(store: &mut Store, backend_name: &str) {
@@ -186,8 +181,7 @@ fn test_store_operations(store: &mut Store, backend_name: &str) {
 
 #[test]
 fn test_index_consistency_property_based() {
-    // Test both backends for index consistency
-    test_index_consistency_on_backend("HashMap", Store::new_hash());
+    // Test stable backend for index consistency
     test_index_consistency_on_backend("StableBTreeMap", Store::new_stable_test());
 }
 
@@ -280,11 +274,6 @@ fn test_index_consistency_on_backend(backend_name: &str, mut store: Store) {
 }
 
 proptest! {
-    #[test]
-    fn test_property_based_operations_hash(operations in prop::collection::vec(operation_strategy(), 10..50)) {
-        test_property_based_operations_on_backend("HashMap", Store::new_hash(), operations);
-    }
-
     #[test]
     fn test_property_based_operations_stable(operations in prop::collection::vec(operation_strategy(), 10..50)) {
         // Use fresh memory for each test to prevent cross-test contamination
@@ -412,7 +401,6 @@ fn test_property_based_operations_on_backend(
     println!("✅ Property test passed for {} backend!", backend_name);
 }
 
-#[allow(dead_code)]
 fn verify_full_consistency(
     store: &Store,
     ground_truth: &std::collections::HashMap<String, String>,
@@ -515,7 +503,6 @@ fn create_test_capsule_with_principal(
     }
 }
 
-#[allow(dead_code)]
 fn create_test_capsule_with_subject(id: String, subject_principal: &str) -> crate::types::Capsule {
     use crate::types::{Capsule, OwnerState, PersonRef};
     use std::collections::HashMap;

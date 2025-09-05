@@ -2,18 +2,15 @@ use crate::capsule_store::{CapsuleStore, Store};
 use crate::types::{CapsuleId, Error, Memory, MemoryId, MemoryMeta, PersonRef};
 use crate::upload::types::*;
 use crate::upload::{BlobStore, SessionStore};
+use candid::Principal;
 use sha2::{Digest, Sha256};
 
-/// Upload service using concrete Store enum (no trait objects)
-/// Provides both inline and chunked upload workflows
-#[cfg_attr(not(feature = "upload"), allow(dead_code))]
 pub struct UploadService<'a> {
     store: &'a mut Store,
     sessions: SessionStore,
     blobs: BlobStore,
 }
 
-#[cfg_attr(not(feature = "upload"), allow(dead_code))]
 impl<'a> UploadService<'a> {
     pub fn new(store: &'a mut Store) -> Self {
         Self {
@@ -21,6 +18,23 @@ impl<'a> UploadService<'a> {
             sessions: SessionStore::new(),
             blobs: BlobStore::new(),
         }
+    }
+
+    /// Check concurrent upload limit for user (max 3 per user per capsule)
+    pub fn check_upload_rate_limit(
+        &self,
+        caller: &Principal,
+        capsule_id: &CapsuleId,
+    ) -> Result<(), Error> {
+        const MAX_CONCURRENT_UPLOADS: usize = 3;
+
+        let active_sessions = self.sessions.count_active_for(capsule_id, caller);
+
+        if active_sessions >= MAX_CONCURRENT_UPLOADS {
+            return Err(Error::ResourceExhausted);
+        }
+
+        Ok(())
     }
 
     /// Inline-only endpoint - rejects large payloads at ingress

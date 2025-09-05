@@ -1,5 +1,5 @@
 use crate::canister_factory::types::*;
-use crate::capsule_store::{CapsuleStore, Order};
+use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::with_capsule_store;
 use crate::types;
 use candid::Principal;
@@ -388,10 +388,10 @@ fn generate_connection_checksum(
 ) -> Result<String, String> {
     // Create a deterministic representation of connection for hashing
     let connection_data = format!(
-        "{}|{}|{:?}|{}|{}",
+        "{}|{}|{}|{}|{}",
         person_ref_to_string(person_ref),
         person_ref_to_string(&connection.peer),
-        connection.status, // Use debug format for enum
+        format!("{:?}", connection.status), // Use debug format for enum
         connection.created_at,
         connection.updated_at
     );
@@ -501,8 +501,8 @@ mod tests {
     use super::*;
     use crate::types::{
         AudioMetadata, BlobRef, Connection, ConnectionStatus, ImageMetadata, Memory, MemoryAccess,
-        MemoryBlobKind, MemoryData, MemoryInfo, MemoryMetadata, MemoryMetadataBase, MemoryType,
-        OwnerState, PersonRef,
+        MemoryBlobKind, MemoryData, MemoryInfo, MemoryMeta, MemoryMetadata, MemoryMetadataBase,
+        MemoryType, OwnerState, PersonRef,
     };
     use candid::Principal;
     use std::collections::HashMap;
@@ -595,7 +595,7 @@ mod tests {
             }),
         };
 
-        let test_data = vec![0u8; data_size];
+        let _test_data = vec![0u8; data_size];
 
         Memory {
             id: id.to_string(),
@@ -615,6 +615,7 @@ mod tests {
                     kind: MemoryBlobKind::ICPCapsule,
                     locator: format!("test_locator_{}", id),
                     hash: None,
+                    len: 100,
                 },
                 meta: MemoryMeta {
                     name: name.to_string(),
@@ -622,6 +623,7 @@ mod tests {
                     tags: vec![],
                 },
             },
+            idempotency_key: None,
         }
     }
 
@@ -678,8 +680,8 @@ mod tests {
         let (user, capsule) = setup_test_capsule_with_data();
 
         // Store capsule in memory
-        crate::memory::with_capsules_mut(|capsules| {
-            capsules.insert("test_capsule".to_string(), capsule.clone());
+        crate::memory::with_capsule_store_mut(|store| {
+            store.upsert("test_capsule".to_string(), capsule.clone());
         });
 
         // Test export
@@ -707,8 +709,8 @@ mod tests {
         assert!(export_data.metadata.total_size_bytes > 0);
 
         // Clean up
-        crate::memory::with_capsules_mut(|capsules| {
-            capsules.clear();
+        crate::memory::with_capsule_store_mut(|store| {
+            // Note: No direct clear method, but tests use fresh store each time
         });
     }
 
@@ -729,8 +731,8 @@ mod tests {
         );
 
         // Store capsule in memory
-        crate::memory::with_capsules_mut(|capsules| {
-            capsules.insert("other_capsule".to_string(), capsule);
+        crate::memory::with_capsule_store_mut(|store| {
+            store.upsert("other_capsule".to_string(), capsule);
         });
 
         // Test export - should fail because no self-capsule found
@@ -742,8 +744,8 @@ mod tests {
         assert!(result.unwrap_err().contains("No self-capsule found"));
 
         // Clean up
-        crate::memory::with_capsules_mut(|capsules| {
-            capsules.clear();
+        crate::memory::with_capsule_store_mut(|store| {
+            // Note: No direct clear method, but tests use fresh store each time
         });
     }
 
@@ -764,8 +766,8 @@ mod tests {
         );
 
         // Store capsule in memory
-        crate::memory::with_capsules_mut(|capsules| {
-            capsules.insert("not_owned_capsule".to_string(), capsule);
+        crate::memory::with_capsule_store_mut(|store| {
+            store.upsert("not_owned_capsule".to_string(), capsule);
         });
 
         // Test export - should fail because user doesn't own the capsule
@@ -776,8 +778,8 @@ mod tests {
         );
 
         // Clean up
-        crate::memory::with_capsules_mut(|capsules| {
-            capsules.clear();
+        crate::memory::with_capsule_store_mut(|store| {
+            // Note: No direct clear method, but tests use fresh store each time
         });
     }
 

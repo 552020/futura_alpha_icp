@@ -1,8 +1,6 @@
-#![allow(dead_code)]
-
-use crate::capsule_store::{CapsuleStore, Order, Store};
+use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
-use crate::types::{CapsuleId, Error, MemoryData, MemoryId, MemoryMeta, PersonRef, Result};
+use crate::types::{CapsuleId, Error, MemoryData, MemoryId, PersonRef, Result};
 use crate::upload::blob_store::BlobStore;
 use crate::upload::types::{CAPSULE_INLINE_BUDGET, INLINE_MAX};
 use ic_cdk::api::time;
@@ -43,64 +41,50 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
             // 3) Single atomic pass: auth + budget + idempotency + insert
             with_capsule_store_mut(|store| {
                 // Use update_with for proper error propagation and atomicity
-                store
-                    .update_with(&capsule_id, |cap| {
-                        // First, check for existing memory with same content (idempotency)
-                        // Move this inside the closure for full atomicity
-                        if let Some(existing_id) =
-                            find_existing_memory_by_content_in_capsule(cap, &sha256, len_u64, &idem)
-                        {
-                            return Ok(existing_id); // Return existing memory ID
-                        }
-                        // Check authorization
-                        if !cap.owners.contains_key(&caller) && cap.subject != caller {
-                            return Err(crate::types::Error::Unauthorized);
-                        }
+                store.update_with(&capsule_id, |cap| {
+                    // First, check for existing memory with same content (idempotency)
+                    // Move this inside the closure for full atomicity
+                    if let Some(existing_id) =
+                        find_existing_memory_by_content_in_capsule(cap, &sha256, len_u64, &idem)
+                    {
+                        return Ok(existing_id); // Return existing memory ID
+                    }
+                    // Check authorization
+                    if !cap.owners.contains_key(&caller) && cap.subject != caller {
+                        return Err(crate::types::Error::Unauthorized);
+                    }
 
-                        // Check budget (use maintained counter)
-                        let used = cap.inline_bytes_used;
-                        if used.saturating_add(len_u64) > CAPSULE_INLINE_BUDGET {
-                            return Err(crate::types::Error::ResourceExhausted);
-                        }
+                    // Check budget (use maintained counter)
+                    let used = cap.inline_bytes_used;
+                    if used.saturating_add(len_u64) > CAPSULE_INLINE_BUDGET {
+                        return Err(crate::types::Error::ResourceExhausted);
+                    }
 
-                        // Pre-generate the ID
-                        let memory_id = generate_memory_id();
-                        let now = ic_cdk::api::time();
+                    // Pre-generate the ID
+                    let memory_id = generate_memory_id();
+                    let now = ic_cdk::api::time();
 
-                        // Use the BlobRef directly (no conversion needed)
-                        let types_blob = blob.clone();
+                    // Use the BlobRef directly (no conversion needed)
+                    let types_blob = blob.clone();
 
-                        // Insert the memory
-                        cap.insert_memory(
-                            &memory_id,
-                            types_blob.clone(),
-                            meta.clone(),
-                            now,
-                            Some(idem.clone()),
-                        )
-                        .map_err(|e| {
-                            crate::types::Error::Internal(format!("insert_memory: {e:?}"))
-                        })?;
+                    // Insert the memory
+                    cap.insert_memory(
+                        &memory_id,
+                        types_blob.clone(),
+                        meta.clone(),
+                        now,
+                        Some(idem.clone()),
+                    )
+                    .map_err(|e| crate::types::Error::Internal(format!("insert_memory: {e:?}")))?;
 
-                        // Update inline budget counter for inline uploads
-                        cap.inline_bytes_used = cap.inline_bytes_used.saturating_add(blob.len);
+                    // Update inline budget counter for inline uploads
+                    cap.inline_bytes_used = cap.inline_bytes_used.saturating_add(blob.len);
 
-                        cap.updated_at = now;
+                    cap.updated_at = now;
 
-                        // Return the generated ID
-                        Ok(memory_id)
-                    })
-                    .map_err(|e| match e {
-                        crate::capsule_store::UpdateError::NotFound => {
-                            crate::types::Error::NotFound
-                        }
-                        crate::capsule_store::UpdateError::Validation(msg) => {
-                            crate::types::Error::InvalidArgument(msg)
-                        }
-                        crate::capsule_store::UpdateError::Concurrency => {
-                            crate::types::Error::Internal("concurrency error".into())
-                        }
-                    })
+                    // Return the generated ID
+                    Ok(memory_id)
+                })
             })
         }
 
@@ -138,54 +122,40 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
 
             with_capsule_store_mut(|store| {
                 // Use update_with for proper error propagation and atomicity
-                store
-                    .update_with(&capsule_id, |cap| {
-                        // First, check for existing memory with same content (idempotency)
-                        // Use the actual blob length for proper deduplication
-                        if let Some(hash) = &blob.hash {
-                            if let Some(existing_id) = find_existing_memory_by_content_in_capsule(
-                                cap, hash, blob.len, &idem,
-                            ) {
-                                return Ok(existing_id); // Return existing memory ID
-                            }
+                store.update_with(&capsule_id, |cap| {
+                    // First, check for existing memory with same content (idempotency)
+                    // Use the actual blob length for proper deduplication
+                    if let Some(hash) = &blob.hash {
+                        if let Some(existing_id) =
+                            find_existing_memory_by_content_in_capsule(cap, hash, blob.len, &idem)
+                        {
+                            return Ok(existing_id); // Return existing memory ID
                         }
-                        // Check authorization
-                        if !cap.owners.contains_key(&caller) && cap.subject != caller {
-                            return Err(crate::types::Error::Unauthorized);
-                        }
+                    }
+                    // Check authorization
+                    if !cap.owners.contains_key(&caller) && cap.subject != caller {
+                        return Err(crate::types::Error::Unauthorized);
+                    }
 
-                        // Pre-generate the ID
-                        let memory_id = generate_memory_id();
-                        let now = ic_cdk::api::time();
+                    // Pre-generate the ID
+                    let memory_id = generate_memory_id();
+                    let now = ic_cdk::api::time();
 
-                        // For blob refs, we don't do budget checks since they're already persisted
-                        cap.insert_memory(
-                            &memory_id,
-                            blob.clone(),
-                            meta.clone(),
-                            now,
-                            Some(idem.clone()),
-                        )
-                        .map_err(|e| {
-                            crate::types::Error::Internal(format!("insert_memory: {e:?}"))
-                        })?;
+                    // For blob refs, we don't do budget checks since they're already persisted
+                    cap.insert_memory(
+                        &memory_id,
+                        blob.clone(),
+                        meta.clone(),
+                        now,
+                        Some(idem.clone()),
+                    )
+                    .map_err(|e| crate::types::Error::Internal(format!("insert_memory: {e:?}")))?;
 
-                        cap.updated_at = now;
+                    cap.updated_at = now;
 
-                        // Return the generated ID
-                        Ok(memory_id)
-                    })
-                    .map_err(|e| match e {
-                        crate::capsule_store::UpdateError::NotFound => {
-                            crate::types::Error::NotFound
-                        }
-                        crate::capsule_store::UpdateError::Validation(msg) => {
-                            crate::types::Error::InvalidArgument(msg)
-                        }
-                        crate::capsule_store::UpdateError::Concurrency => {
-                            crate::types::Error::Internal("concurrency error".into())
-                        }
-                    })
+                    // Return the generated ID
+                    Ok(memory_id)
+                })
             })
         }
     }
@@ -196,14 +166,7 @@ fn generate_memory_id() -> MemoryId {
     format!("mem_{}", ic_cdk::api::time())
 }
 
-/// Helper: Check if capsule access is authorized
-fn ensure_capsule_access(cap: &crate::types::Capsule, who: &PersonRef) -> Result<()> {
-    if cap.owners.contains_key(who) || cap.subject == *who {
-        Ok(())
-    } else {
-        Err(Error::Unauthorized)
-    }
-}
+// ensure_capsule_access helper removed - authorization logic is inline in create()
 
 /// Helper: Find existing memory by content hash, length, and idempotency key within a capsule
 /// This version works on a single capsule for use within update_with closures
@@ -242,116 +205,11 @@ fn find_existing_memory_by_content_in_capsule(
         .map(|memory| memory.id.clone())
 }
 
-/// Helper: Find existing memory by content hash, length, and idempotency key
-fn find_existing_memory_by_content(
-    store: &mut Store,
-    capsule_id: &CapsuleId,
-    sha256: &[u8; 32],
-    len: u64,
-    idem: &str,
-) -> Option<MemoryId> {
-    if let Some(capsule) = store.get(capsule_id) {
-        capsule
-            .memories
-            .values()
-            .find(|memory| {
-                // Check idempotency key first (most specific)
-                if let Some(ref memory_idem) = memory.idempotency_key {
-                    if memory_idem == idem {
-                        return true; // Same idempotency key = same request
-                    }
-                }
+// Legacy find_existing_memory_by_content function removed - using find_existing_memory_by_content_in_capsule instead
 
-                // Fallback to content-based deduplication
-                match &memory.data {
-                    MemoryData::Inline { bytes, .. } => {
-                        let memory_sha256 = compute_sha256(bytes);
-                        memory_sha256 == *sha256 && bytes.len() as u64 == len
-                    }
-                    MemoryData::BlobRef { blob: mem_blob, .. } => {
-                        // For existing blob refs, compare hash AND length
-                        if let Some(ref hash) = mem_blob.hash {
-                            *hash == *sha256 && mem_blob.len == len
-                        } else {
-                            false
-                        }
-                    }
-                }
-            })
-            .map(|memory| memory.id.clone())
-    } else {
-        None
-    }
-}
+// create_memory_from_blob helper removed - not used anywhere
 
-/// Create a memory structure from blob data
-fn create_memory_from_blob(
-    memory_id: MemoryId,
-    blob: crate::types::BlobRef,
-    meta: MemoryMeta,
-    now: u64,
-) -> crate::types::Memory {
-    use crate::types::{
-        ImageMetadata, Memory, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase,
-        MemoryType,
-    };
-
-    let memory_info = MemoryInfo {
-        memory_type: MemoryType::Image, // Default, can be updated later
-        name: meta.name.clone(),
-        content_type: "application/octet-stream".to_string(),
-        created_at: now,
-        updated_at: now,
-        uploaded_at: now,
-        date_of_memory: None,
-    };
-
-    let memory_metadata = MemoryMetadata::Image(ImageMetadata {
-        base: MemoryMetadataBase {
-            size: blob.len,
-            mime_type: "application/octet-stream".to_string(),
-            original_name: meta.name.clone(),
-            uploaded_at: now.to_string(),
-            date_of_memory: None,
-            people_in_memory: None,
-            format: None,
-            bound_to_neon: false,
-        },
-        dimensions: None,
-    });
-
-    let memory_access = MemoryAccess::Private;
-
-    // Use the BlobRef directly (no conversion needed)
-    let types_blob_ref = blob.clone();
-
-    let memory_data = MemoryData::BlobRef {
-        blob: types_blob_ref,
-        meta: meta.clone(),
-    };
-
-    Memory {
-        id: memory_id,
-        info: memory_info,
-        metadata: memory_metadata,
-        access: memory_access,
-        data: memory_data,
-        idempotency_key: None, // No idempotency key for helper function
-    }
-}
-
-pub fn read(memory_id: String) -> crate::types::Result<crate::types::Memory> {
-    let caller = PersonRef::from_caller();
-    with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.owners.contains_key(&caller) || capsule.subject == caller)
-            .and_then(|capsule| capsule.memories.get(&memory_id).cloned())
-            .ok_or(crate::types::Error::NotFound)
-    })
-}
+// read function removed - duplicate of memories_read in lib.rs
 
 pub fn update(
     memory_id: String,
@@ -483,25 +341,6 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
 
 // === Metadata & Presence ===
 
-pub fn upsert_metadata(
-    memory_id: String,
-    memory_type: crate::types::MemoryType,
-    metadata: crate::types::SimpleMemoryMetadata,
-    idempotency_key: String,
-) -> crate::types::Result<crate::types::MetadataResponse> {
-    crate::metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
-}
+// Wrapper functions removed - call crate::metadata::upsert_metadata and crate::metadata::memories_ping directly
 
-pub fn memories_ping(
-    memory_ids: Vec<String>,
-) -> crate::types::Result<Vec<crate::types::MemoryPresenceResult>> {
-    crate::metadata::memories_ping(memory_ids)
-}
-
-#[allow(dead_code)]
-fn finalize_new_memory(
-    _capsule_id: &str,
-    _memory: &crate::types::Memory,
-) -> crate::types::Result<crate::types::MemoryId> {
-    Ok("".to_string())
-}
+// finalize_new_memory helper removed - was just returning empty string

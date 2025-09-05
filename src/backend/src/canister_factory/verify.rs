@@ -292,14 +292,20 @@ mod tests {
                 tags: Some(vec!["test".to_string()]),
             }),
             access: types::MemoryAccess::Private,
-            data: types::MemoryData {
-                blob_ref: types::BlobRef {
+            data: types::MemoryData::BlobRef {
+                blob: types::BlobRef {
                     kind: types::MemoryBlobKind::ICPCapsule,
                     locator: format!("memory_{}", id),
                     hash: None,
+                    len: 100,
                 },
-                data: Some(format!("Content for memory {}", id).into_bytes()),
+                meta: types::MemoryMeta {
+                    name: format!("Memory {}", id),
+                    description: None,
+                    tags: vec![],
+                },
             },
+            idempotency_key: None,
         }
     }
 

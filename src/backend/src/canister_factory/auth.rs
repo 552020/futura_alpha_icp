@@ -1,5 +1,5 @@
 use crate::canister_factory::types::*;
-use crate::capsule_store::{CapsuleStore, Order};
+use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::with_capsule_store;
 use candid::Principal;
 

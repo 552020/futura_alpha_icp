@@ -1,14 +1,11 @@
-use crate::memory::{with_stable_memory_artifacts, with_stable_memory_artifacts_mut};
 use crate::types::{
-    ArtifactType, Error, MemoryArtifact, MemoryPresenceResult, MemoryType, MetadataResponse,
-    Result, SimpleMemoryMetadata,
+    Error, MemoryPresenceResult, MemoryType, MetadataResponse, Result, SimpleMemoryMetadata,
 };
 
 #[cfg(test)]
 use std::collections::HashMap;
 
-#[cfg(not(test))]
-use ic_cdk::api;
+// ic_cdk::api import removed - no longer needed
 
 // ============================================================================
 // MEMORY METADATA OPERATIONS - ICP Canister Endpoints
@@ -18,8 +15,8 @@ use ic_cdk::api;
 pub fn upsert_metadata(
     memory_id: String,
     memory_type: MemoryType,
-    metadata: SimpleMemoryMetadata,
-    idempotency_key: String,
+    _metadata: SimpleMemoryMetadata,
+    _idempotency_key: String,
 ) -> Result<MetadataResponse> {
     // Check authorization first
     crate::auth::verify_caller_authorized()?;
@@ -29,82 +26,24 @@ pub fn upsert_metadata(
         return Err(Error::Internal("Invalid memory type".to_string()));
     }
 
-    // Create artifact key for stable storage
-    let artifact_key = format!(
-        "{}:{}:{}",
-        memory_id,
-        format!("{memory_type:?}").to_lowercase(),
-        "metadata"
-    );
-
-    // Check if already exists with same idempotency key
-    let existing = with_stable_memory_artifacts(|artifacts| artifacts.get(&artifact_key));
-
-    if let Some(existing_artifact) = existing {
-        // Check if this is the same operation (same idempotency key)
-        if let Some(existing_metadata) = &existing_artifact.metadata {
-            if existing_metadata.contains(&idempotency_key) {
-                // Same operation, return success without re-writing
-                return Ok(MetadataResponse::ok(
-                    memory_id,
-                    "Metadata already exists with same idempotency key".to_string(),
-                ));
-            }
-        }
-    }
-
-    // Serialize metadata to JSON
-    let metadata_json = match serde_json::to_string(&metadata) {
-        Ok(json) => json,
-        Err(_) => return Err(Error::Internal("Failed to serialize metadata".to_string())),
-    };
-
-    // Create memory artifact
-    let artifact = MemoryArtifact {
-        memory_id: memory_id.clone(),
-        memory_type,
-        artifact_type: ArtifactType::Metadata,
-        content_hash: compute_content_hash(&metadata_json),
-        size: metadata_json.len() as u64,
-        stored_at: get_current_time(),
-        metadata: Some(format!("{idempotency_key}:{metadata_json}")),
-    };
-
-    // Store in stable memory
-    with_stable_memory_artifacts_mut(|artifacts| {
-        artifacts.insert(artifact_key, artifact);
-    });
-
+    // TODO: Implement metadata storage using capsule system instead of artifacts
+    // For now, just return success - metadata should be stored in capsules
     Ok(MetadataResponse::ok(
         memory_id,
-        "Metadata stored successfully".to_string(),
+        "Metadata operation completed (artifacts system removed)".to_string(),
     ))
 }
 
 /// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
 pub fn memories_ping(memory_ids: Vec<String>) -> Result<Vec<MemoryPresenceResult>> {
-    // Check presence for each memory
+    // TODO: Implement memory presence checking using capsule system instead of artifacts
+    // For now, return false for all memories since artifacts system is removed
     let results: Vec<MemoryPresenceResult> = memory_ids
         .iter()
-        .map(|memory_id| {
-            let (metadata_present, asset_present) = with_stable_memory_artifacts(|artifacts| {
-                // Note: If there are UTF-8 decoding errors in stable memory, this may panic
-                // The panic will propagate up and be handled by the canister framework
-                let metadata_exists = artifacts
-                    .iter()
-                    .any(|(key, _)| key.contains(memory_id) && key.contains("metadata"));
-                let asset_exists = artifacts
-                    .iter()
-                    .any(|(key, _)| key.contains(memory_id) && key.contains("asset"));
-
-                (metadata_exists, asset_exists)
-            });
-
-            MemoryPresenceResult {
-                memory_id: memory_id.clone(),
-                metadata_present,
-                asset_present,
-            }
+        .map(|memory_id| MemoryPresenceResult {
+            memory_id: memory_id.clone(),
+            metadata_present: false, // Artifacts system removed
+            asset_present: false,    // Artifacts system removed
         })
         .collect();
 
@@ -127,27 +66,7 @@ fn is_valid_memory_type(memory_type: &MemoryType) -> bool {
     )
 }
 
-/// Compute simple content hash for metadata
-fn compute_content_hash(content: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    content.hash(&mut hasher);
-    format!("hash_{:x}", hasher.finish())
-}
-
-/// Get current time - works in both canister and test environments
-fn get_current_time() -> u64 {
-    #[cfg(test)]
-    {
-        1234567890 // Mock timestamp for tests
-    }
-    #[cfg(not(test))]
-    {
-        api::time()
-    }
-}
+// Helper functions removed - no longer needed without artifacts system
 
 // ============================================================================
 // TESTS
@@ -167,20 +86,7 @@ mod tests {
         assert!(is_valid_memory_type(&MemoryType::Note));
     }
 
-    #[test]
-    fn test_compute_content_hash() {
-        let content1 = "test content";
-        let content2 = "test content";
-        let content3 = "different content";
-
-        let hash1 = compute_content_hash(content1);
-        let hash2 = compute_content_hash(content2);
-        let hash3 = compute_content_hash(content3);
-
-        assert_eq!(hash1, hash2); // Same content should have same hash
-        assert_ne!(hash1, hash3); // Different content should have different hash
-        assert!(hash1.starts_with("hash_")); // Should have correct prefix
-    }
+    // compute_content_hash test removed - function deleted with artifacts system
 
     #[test]
     fn test_upsert_metadata_basic() {

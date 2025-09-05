@@ -12,13 +12,12 @@ mod capsule;
 pub mod capsule_store;
 mod memories;
 mod memory;
-mod memory_manager;
 mod metadata;
 pub mod types;
 pub mod upload;
 
 // Import CapsuleStore trait for direct access to store methods
-use crate::capsule_store::{CapsuleStore, Order};
+use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 // memories.rs removed - functionality moved to capsule-based architecture
 
@@ -41,7 +40,7 @@ fn whoami() -> Principal {
 // ============================================================================
 #[ic_cdk::update]
 fn register() -> types::Result<()> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::types::PersonRef;
     use ic_cdk::api::time;
 
@@ -157,7 +156,7 @@ fn capsules_bind_neon(
     resource_id: String,
     bind: bool,
 ) -> types::Result<()> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store_mut;
     use crate::types::PersonRef;
     use ic_cdk::api::time;
@@ -230,7 +229,7 @@ fn capsules_bind_neon(
 // Capsule management endpoints
 #[ic_cdk::update]
 fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::{with_capsule_store, with_capsule_store_mut};
     use crate::types::PersonRef;
     use crate::types::{Capsule, CapsuleCreationResult};
@@ -297,7 +296,7 @@ fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationR
 
 #[ic_cdk::query]
 fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsule> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -329,7 +328,7 @@ fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsul
 
 #[ic_cdk::query]
 fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::CapsuleInfo> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -391,7 +390,7 @@ fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::Capsu
 
 #[ic_cdk::query]
 fn capsules_list() -> Vec<types::CapsuleHeader> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -414,7 +413,7 @@ fn capsules_list() -> Vec<types::CapsuleHeader> {
 // ============================================================================
 #[ic_cdk::update]
 async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::types::PersonRef;
     use crate::types::{GalleryStorageStatus, StoreGalleryResponse};
     use ic_cdk::api::time;
@@ -526,7 +525,7 @@ async fn galleries_create_with_memories(
     gallery_data: types::GalleryData,
     sync_memories: bool,
 ) -> types::StoreGalleryResponse {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::types::PersonRef;
     use crate::types::{GalleryStorageStatus, StoreGalleryResponse};
     use ic_cdk::api::time;
@@ -649,7 +648,7 @@ fn update_gallery_storage_status(
     gallery_id: String,
     new_status: types::GalleryStorageStatus,
 ) -> types::Result<()> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store_mut;
     use crate::types::PersonRef;
     use ic_cdk::api::time;
@@ -692,7 +691,7 @@ fn update_gallery_storage_status(
 
 #[ic_cdk::query]
 fn galleries_list() -> Vec<types::Gallery> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -712,7 +711,7 @@ fn galleries_list() -> Vec<types::Gallery> {
 
 #[ic_cdk::query]
 fn galleries_read(gallery_id: String) -> types::Result<types::Gallery> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -735,7 +734,7 @@ async fn galleries_update(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
 ) -> types::UpdateGalleryResponse {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::types::PersonRef;
     use crate::types::{Gallery, UpdateGalleryResponse};
     use ic_cdk::api::time;
@@ -816,7 +815,7 @@ async fn galleries_update(
 
 #[ic_cdk::update]
 async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::types::DeleteGalleryResponse;
     use crate::types::PersonRef;
     use ic_cdk::api::time;
@@ -890,7 +889,7 @@ async fn memories_create(
 
 #[ic_cdk::query]
 fn memories_read(memory_id: String) -> types::Result<types::Memory> {
-    use crate::capsule_store::Order;
+    use crate::capsule_store::types::PaginationOrder as Order;
     use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
@@ -1222,8 +1221,8 @@ fn clear_all_stable_memory() -> types::Result<()> {
 // OLD UPLOAD FUNCTIONS REMOVED - Migration to new hybrid architecture complete
 // All old upload functions have been removed and replaced with the new workflow:
 // - memories_create_inline (≤32KB files)
-// - memories_begin_upload + memories_put_chunk + memories_commit (large files)
-// - memories_abort (cancel uploads)
+// - uploads_begin + uploads_put_chunk + uploads_finish (large files)
+// - uploads_abort (cancel uploads)
 
 // ============================================================================
 // FILE UPLOAD & ASSET MANAGEMENT (5 functions)
@@ -1255,14 +1254,14 @@ fn uploads_begin(
     idem: String,
 ) -> types::Result<upload::types::SessionId> {
     with_capsule_store_mut(|store| {
-        let mut svc = upload::service::UploadService::new(store);
-        svc.begin_upload(capsule_id, meta, expected_chunks, idem)
+        let mut upload_service = upload::service::UploadService::new(store);
+        upload_service.begin_upload(capsule_id, meta, expected_chunks, idem)
     })
 }
 
 /// Upload a chunk for an active session
 #[ic_cdk::update]
-async fn memories_put_chunk(session_id: u64, chunk_idx: u32, bytes: Vec<u8>) -> types::Result<()> {
+async fn uploads_put_chunk(session_id: u64, chunk_idx: u32, bytes: Vec<u8>) -> types::Result<()> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);
@@ -1276,7 +1275,7 @@ async fn memories_put_chunk(session_id: u64, chunk_idx: u32, bytes: Vec<u8>) -> 
 
 /// Commit chunks to create final memory
 #[ic_cdk::update]
-async fn memories_commit(
+async fn uploads_finish(
     session_id: u64,
     expected_sha256: Vec<u8>,
     total_len: u64,
@@ -1299,7 +1298,7 @@ async fn memories_commit(
 
 /// Abort upload session and cleanup
 #[ic_cdk::update]
-async fn memories_abort(session_id: u64) -> types::Result<()> {
+async fn uploads_abort(session_id: u64) -> types::Result<()> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new(store);

@@ -1,4 +1,3 @@
-use crate::memory::with_stable_upload_sessions;
 use crate::types::Error;
 use candid::Principal;
 
@@ -19,31 +18,6 @@ pub fn verify_caller_authorized() -> Result<Principal, Error> {
     }
 
     Ok(caller)
-}
-
-/// Check concurrent upload limit for user (max 3 per user)
-#[allow(dead_code)]
-pub fn check_upload_rate_limit(caller: &Principal) -> Result<(), Error> {
-    const MAX_CONCURRENT_UPLOADS: usize = 3;
-
-    let active_sessions = with_stable_upload_sessions(|sessions| {
-        sessions
-            .iter()
-            .filter(|(_, session)| {
-                // For MVP, we'll use a simple heuristic: check if memory_id contains caller info
-                // In production, we'd store caller principal in the session
-                session.memory_id.contains(&caller.to_string())
-            })
-            .count()
-    });
-
-    if active_sessions >= MAX_CONCURRENT_UPLOADS {
-        return Err(Error::Internal(format!(
-            "Rate limit exceeded: {active_sessions} concurrent uploads (max {MAX_CONCURRENT_UPLOADS})"
-        )));
-    }
-
-    Ok(())
 }
 
 /// Get caller principal - works in both canister and test environments
@@ -75,12 +49,5 @@ mod tests {
 
         let caller = result.unwrap();
         assert_ne!(caller, Principal::anonymous());
-    }
-
-    #[test]
-    fn test_check_upload_rate_limit_no_sessions() {
-        let caller = Principal::from_slice(&[1, 2, 3, 4]);
-        let result = check_upload_rate_limit(&caller);
-        assert!(result.is_ok());
     }
 }

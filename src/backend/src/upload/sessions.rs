@@ -1,4 +1,4 @@
-use crate::memory_manager::{MEM_CHUNKS, MEM_SESSIONS, MEM_SESSION_COUNTER, MM};
+use crate::memory::{MEM_SESSIONS, MEM_SESSIONS_CHUNKS, MEM_SESSIONS_COUNTER, MM};
 use crate::types::{CapsuleId, Error};
 use crate::upload::types::{SessionId, SessionMeta};
 use ic_stable_structures::memory_manager::VirtualMemory;
@@ -14,11 +14,11 @@ thread_local! {
     );
 
     static STABLE_CHUNK_DATA: RefCell<StableBTreeMap<(u64, u32), Vec<u8>, Memory>> = RefCell::new(
-        StableBTreeMap::init(MM.with(|m| m.borrow().get(MEM_CHUNKS)))
+        StableBTreeMap::init(MM.with(|m| m.borrow().get(MEM_SESSIONS_CHUNKS)))
     );
 
     pub static STABLE_SESSION_COUNTER: RefCell<StableCell<u64, Memory>> = RefCell::new(
-        StableCell::init(MM.with(|m| m.borrow().get(MEM_SESSION_COUNTER)), 0)
+        StableCell::init(MM.with(|m| m.borrow().get(MEM_SESSIONS_COUNTER)), 0)
             .expect("Failed to init session counter")
     );
 }
@@ -28,10 +28,8 @@ thread_local! {
 // production paths. Silence "associated items are never used" locally,
 // but keep the code compiled and testable. Enable strictly when the
 // `upload` feature is on.
-#[cfg_attr(not(feature = "upload"), allow(dead_code))]
 pub struct SessionStore;
 
-#[cfg_attr(not(feature = "upload"), allow(dead_code))]
 impl Default for SessionStore {
     fn default() -> Self {
         Self::new()
@@ -174,15 +172,12 @@ impl SessionStore {
     }
 }
 
-/// Iterator for streaming chunks in order
-#[cfg_attr(not(feature = "upload"), allow(dead_code))]
 pub struct ChunkIterator {
     session_id: u64,
     chunk_count: u32,
     current_idx: u32,
 }
 
-#[cfg_attr(not(feature = "upload"), allow(dead_code))]
 impl Iterator for ChunkIterator {
     type Item = Vec<u8>;
 
@@ -199,7 +194,6 @@ impl Iterator for ChunkIterator {
     }
 }
 
-#[cfg_attr(not(feature = "upload"), allow(dead_code))]
 impl ExactSizeIterator for ChunkIterator {
     fn len(&self) -> usize {
         (self.chunk_count - self.current_idx) as usize

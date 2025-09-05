@@ -7,65 +7,11 @@
 //! - Enum-backed architecture (Store::{Hash,Stable}) — no trait objects
 //! - Subject → ID = 1:1 (sparse multimap fallback if 1:N ever needed)
 //! - Exclusive cursors for keyset pagination (id > after when Asc)
-//! - Validation happens after closure; errors returned as UpdateError::Validation
+//! - Validation happens after closure; errors returned as Error::InvalidArgument
 //! - Hash backend may scan/sort for pagination (test-only); Stable uses ordered map
 
-/// Frozen type alias for capsule identifiers throughout the system
-pub type CapsuleId = String;
-
-/// Pagination order for listing operations
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum Order {
-    /// Ascending order (default)
-    #[default]
-    Asc,
-    /// Descending order
-    Desc,
-}
-
-/// Pagination result containing items and optional cursor for next page
-#[derive(Debug, Clone)]
-pub struct Page<T> {
-    /// The items for this page
-    pub items: Vec<T>,
-    /// Cursor for the next page (None if no more items)
-    pub next_cursor: Option<CapsuleId>,
-}
-
-/// Error types for storage operations
-#[derive(Debug, Clone, PartialEq)]
-pub enum UpdateError {
-    /// Item not found
-    NotFound,
-    /// Validation failed with message
-    Validation(String),
-    /// Concurrency conflict (placeholder for future MVCC)
-    Concurrency,
-}
-
-/// Error type for put_if_absent operations
-#[derive(Debug, Clone, PartialEq)]
-pub enum AlreadyExists {
-    /// Capsule with this ID already exists
-    CapsuleExists(CapsuleId),
-}
-
-impl From<crate::types::Error> for UpdateError {
-    fn from(err: crate::types::Error) -> Self {
-        match err {
-            crate::types::Error::NotFound => UpdateError::NotFound,
-            crate::types::Error::Unauthorized => {
-                UpdateError::Validation("unauthorized".to_string())
-            }
-            crate::types::Error::InvalidArgument(msg) => UpdateError::Validation(msg),
-            crate::types::Error::Conflict(msg) => UpdateError::Validation(msg),
-            crate::types::Error::ResourceExhausted => {
-                UpdateError::Validation("resource exhausted".to_string())
-            }
-            crate::types::Error::Internal(msg) => UpdateError::Validation(msg),
-        }
-    }
-}
+// Import types from our types module
+use crate::capsule_store::types::{CapsuleId, Page, PaginationOrder as Order};
 
 /// FROZEN: The core storage trait that endpoints will use
 ///
@@ -93,7 +39,7 @@ pub trait CapsuleStore {
         &mut self,
         id: CapsuleId,
         capsule: crate::types::Capsule,
-    ) -> Result<(), AlreadyExists>;
+    ) -> Result<(), crate::types::Error>;
 
     /// Update a capsule with a closure (read-modify-write pattern)
     ///
@@ -102,9 +48,9 @@ pub trait CapsuleStore {
     /// - Provides atomic updates
     /// - Validation happens after the closure inside the store
     ///
-    /// Returns Ok(()) if successful, or UpdateError if the capsule wasn't found
+    /// Returns Ok(()) if successful, or Error if the capsule wasn't found
     /// or validation failed.
-    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), UpdateError>
+    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), crate::types::Error>
     where
         F: FnOnce(&mut crate::types::Capsule);
 
@@ -114,8 +60,8 @@ pub trait CapsuleStore {
     /// proper error propagation from within the update operation. This eliminates
     /// the need for silent early returns and provides better error handling.
     ///
-    /// Returns the result from the closure, or UpdateError if the capsule wasn't found.
-    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, UpdateError>
+    /// Returns the result from the closure, or Error if the capsule wasn't found.
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, crate::types::Error>
     where
         F: FnOnce(&mut crate::types::Capsule) -> Result<R, crate::types::Error>;
 
@@ -157,12 +103,17 @@ pub trait CapsuleStore {
 
     /// Get total count of capsules (for metrics and pagination metadata)
     fn count(&self) -> u64;
+
+    /// Get storage statistics
+    /// Returns (capsules_count, subject_index_count, owner_index_count)
+    fn stats(&self) -> (u64, u64, u64);
 }
 
 // Include the backend implementations
-pub mod hash;
+// pub mod hash;  // LEGACY - commented out, we only use StableStore now
 pub mod stable;
 pub mod store;
+pub mod types;
 
 #[cfg(test)]
 mod integration_tests;

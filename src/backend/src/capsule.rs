@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::capsule_store::{CapsuleStore, Order};
+use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::BlobRef;
 use crate::types::Result;
@@ -302,7 +302,7 @@ impl Capsule {
 /// Create a new capsule with optional subject
 /// If subject is None, creates a self-capsule (subject = caller)
 /// If subject is provided, creates a capsule for that subject
-#[allow(dead_code)]
+
 pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
     let caller = PersonRef::from_caller();
 
@@ -364,7 +364,7 @@ pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
 }
 
 /// Get capsule by ID (with read access check)
-#[allow(dead_code)]
+
 pub fn capsules_read(capsule_id: String) -> Result<Capsule> {
     let caller = PersonRef::from_caller();
 
@@ -378,7 +378,7 @@ pub fn capsules_read(capsule_id: String) -> Result<Capsule> {
 }
 
 /// Get capsule info by ID (basic version with read access check)
-#[allow(dead_code)]
+
 pub fn capsules_read_basic(capsule_id: String) -> Result<CapsuleInfo> {
     let caller = PersonRef::from_caller();
 
@@ -407,7 +407,7 @@ pub fn capsules_read_basic(capsule_id: String) -> Result<CapsuleInfo> {
 }
 
 /// Get caller's self-capsule (where caller is the subject)
-#[allow(dead_code)]
+
 pub fn capsule_read_self() -> Result<Capsule> {
     let caller = PersonRef::from_caller();
 
@@ -1095,7 +1095,7 @@ pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
     since = "0.7.0",
     note = "Use memories_create with capsule_id parameter instead"
 )]
-#[allow(dead_code)]
+
 pub fn add_memory_to_capsule(
     memory_id: String,
     memory_data: MemoryData,

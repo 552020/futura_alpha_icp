@@ -1,4 +1,4 @@
-use crate::memory_manager::{MEM_BLOBS, MEM_BLOB_COUNTER, MEM_BLOB_META, MM};
+use crate::memory::{MEM_BLOBS, MEM_BLOB_COUNTER, MEM_BLOB_META, MM};
 use crate::types::Error;
 use crate::upload::sessions::SessionStore;
 use crate::upload::types::{BlobId, BlobMeta};

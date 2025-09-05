@@ -1,4 +1,4 @@
-//! HashMap Backend Implementation
+/*! HashMap Backend Implementation - LEGACY CODE (COMMENTED OUT)
 //!
 //! This module provides a HashMap-based implementation of CapsuleStore
 //! for fast testing and development. It implements all the same operations
@@ -329,6 +329,11 @@ impl CapsuleStore for HashStore {
     fn count(&self) -> u64 {
         self.capsules.len() as u64
     }
+
+    fn stats(&self) -> (u64, u64, u64) {
+        // Hash store doesn't have separate indexes, so return (capsules, 0, 0)
+        (self.capsules.len() as u64, 0, 0)
+    }
 }
 
 #[cfg(test)]
@@ -559,3 +564,8 @@ mod tests {
         }
     }
 }
+*/
+
+// LEGACY CODE - COMMENTED OUT
+// This HashMap implementation is kept for reference but not used in production
+// We only use the StableStore implementation now

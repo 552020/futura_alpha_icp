@@ -1,31 +1,12 @@
-//! Store Enum - Backend Selection and Delegation Logic
-//!
-//! This module provides the main Store enum that can switch between
-//! HashMap (fast testing) and StableBTreeMap (production) backends.
-//!
-//! The enum delegates all operations to the appropriate backend implementation,
-//! providing a clean runtime switch between storage engines.
+use super::{CapsuleId, CapsuleStore, Order, Page};
+use crate::types::{Capsule, Error};
 
-use super::{AlreadyExists, CapsuleId, CapsuleStore, Order, Page, UpdateError};
-use crate::types::Capsule;
-
-/// Main storage enum that can switch between backends at runtime
-///
-/// This enum provides runtime polymorphism without trait objects,
-/// allowing the same code to work with different storage backends.
 pub enum Store {
-    /// HashMap backend (fast for testing)
-    Hash(crate::capsule_store::hash::HashStore),
     /// StableBTreeMap backend (persistent production storage)
     Stable(crate::capsule_store::stable::StableStore),
 }
 
 impl Store {
-    /// Create a new HashMap store (for testing)
-    pub fn new_hash() -> Self {
-        Store::Hash(crate::capsule_store::hash::HashStore::new())
-    }
-
     /// Create a new Stable store (for production)
     pub fn new_stable() -> Self {
         Store::Stable(crate::capsule_store::stable::StableStore::new())
@@ -40,7 +21,6 @@ impl Store {
     /// Get the current backend type (for debugging/testing)
     pub fn backend_type(&self) -> &'static str {
         match self {
-            Store::Hash(_) => "HashMap",
             Store::Stable(_) => "StableBTreeMap",
         }
     }
@@ -50,91 +30,85 @@ impl Store {
 impl CapsuleStore for Store {
     fn exists(&self, id: &CapsuleId) -> bool {
         match self {
-            Store::Hash(store) => store.exists(id),
             Store::Stable(store) => store.exists(id),
         }
     }
 
     fn get(&self, id: &CapsuleId) -> Option<Capsule> {
         match self {
-            Store::Hash(store) => store.get(id),
             Store::Stable(store) => store.get(id),
         }
     }
 
     fn upsert(&mut self, id: CapsuleId, capsule: Capsule) -> Option<Capsule> {
         match self {
-            Store::Hash(store) => store.upsert(id, capsule),
             Store::Stable(store) => store.upsert(id, capsule),
         }
     }
 
-    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> Result<(), AlreadyExists> {
+    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> Result<(), Error> {
         match self {
-            Store::Hash(store) => store.put_if_absent(id, capsule),
             Store::Stable(store) => store.put_if_absent(id, capsule),
         }
     }
 
-    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), UpdateError>
+    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), Error>
     where
         F: FnOnce(&mut Capsule),
     {
         match self {
-            Store::Hash(store) => store.update(id, f),
             Store::Stable(store) => store.update(id, f),
         }
     }
 
-    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, UpdateError>
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, Error>
     where
-        F: FnOnce(&mut Capsule) -> Result<R, crate::types::Error>,
+        F: FnOnce(&mut Capsule) -> Result<R, Error>,
     {
         match self {
-            Store::Hash(store) => store.update_with(id, f),
             Store::Stable(store) => store.update_with(id, f),
         }
     }
 
     fn remove(&mut self, id: &CapsuleId) -> Option<Capsule> {
         match self {
-            Store::Hash(store) => store.remove(id),
             Store::Stable(store) => store.remove(id),
         }
     }
 
     fn find_by_subject(&self, subject: &crate::types::PersonRef) -> Option<Capsule> {
         match self {
-            Store::Hash(store) => store.find_by_subject(subject),
             Store::Stable(store) => store.find_by_subject(subject),
         }
     }
 
     fn list_by_owner(&self, owner: &crate::types::PersonRef) -> Vec<CapsuleId> {
         match self {
-            Store::Hash(store) => store.list_by_owner(owner),
             Store::Stable(store) => store.list_by_owner(owner),
         }
     }
 
     fn get_many(&self, ids: &[CapsuleId]) -> Vec<Capsule> {
         match self {
-            Store::Hash(store) => store.get_many(ids),
             Store::Stable(store) => store.get_many(ids),
         }
     }
 
     fn paginate(&self, after: Option<CapsuleId>, limit: u32, order: Order) -> Page<Capsule> {
         match self {
-            Store::Hash(store) => store.paginate(after, limit, order),
             Store::Stable(store) => store.paginate(after, limit, order),
         }
     }
 
     fn count(&self) -> u64 {
         match self {
-            Store::Hash(store) => store.count(),
             Store::Stable(store) => store.count(),
+        }
+    }
+
+    fn stats(&self) -> (u64, u64, u64) {
+        match self {
+            Store::Stable(store) => store.stats(),
         }
     }
 }
@@ -146,16 +120,13 @@ mod tests {
 
     #[test]
     fn test_store_backend_type() {
-        let hash_store = Store::new_hash();
-        assert_eq!(hash_store.backend_type(), "HashMap");
-
-        // Note: Stable store creation would require IC environment
-        // We'll test it in integration tests
+        let stable_store = Store::new_stable_test();
+        assert_eq!(stable_store.backend_type(), "StableBTreeMap");
     }
 
     #[test]
-    fn test_store_delegation_hash() {
-        let mut store = Store::new_hash();
+    fn test_store_delegation_stable() {
+        let mut store = Store::new_stable_test();
 
         // Test basic operations delegate correctly
         let id = "test-123".to_string();
@@ -171,8 +142,8 @@ mod tests {
     }
 
     #[test]
-    fn test_subject_index_hash_backend() {
-        let mut store = Store::new_hash();
+    fn test_subject_index_stable_backend() {
+        let mut store = Store::new_stable_test();
 
         // Create a test capsule
         let capsule_id = "test_subject_capsule".to_string();
@@ -203,7 +174,7 @@ mod tests {
 
     #[test]
     #[ignore] // Ignore in normal test runs since it requires IC environment
-    fn test_subject_index_stable_backend() {
+    fn test_subject_index_stable_backend_production() {
         // This test can only run in IC environment, but let's document what we expect
         let mut store = Store::new_stable();
 

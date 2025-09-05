@@ -17,8 +17,8 @@ pub mod verify;
 pub mod integration_tests;
 
 // Re-export commonly used types
-pub use types::*;
 use crate::types::Result;
+pub use types::*;
 
 // Re-export only the functions that are actually used
 pub use orchestrator::{
@@ -61,16 +61,12 @@ pub fn get_detailed_creation_status() -> Option<DetailedCreationStatus> {
     None
 }
 
-pub fn get_user_creation_status(
-    _user: Principal,
-) -> Result<Option<DetailedCreationStatus>> {
+pub fn get_user_creation_status(_user: Principal) -> Result<Option<DetailedCreationStatus>> {
     Ok(None)
 }
 
 // Legacy function for backward compatibility
-pub fn get_user_migration_status(
-    user: Principal,
-) -> Result<Option<DetailedCreationStatus>> {
+pub fn get_user_migration_status(user: Principal) -> Result<Option<DetailedCreationStatus>> {
     get_user_creation_status(user)
 }
 
