@@ -705,19 +705,39 @@ mod tests {
         let cap2 = create_test_capsule("cap2".to_string());
         let cap3 = create_test_capsule("cap3".to_string());
 
-        // Modify subjects to be unique
-        let cap1 = Capsule {
-            subject: PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap()),
-            ..cap1
-        };
-        let cap2 = Capsule {
-            subject: PersonRef::Principal(Principal::from_text("2vxsx-fab").unwrap()),
-            ..cap2
-        };
-        let cap3 = Capsule {
-            subject: PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap()),
-            ..cap3
-        };
+        // Modify subjects and owners to be unique
+        let mut cap1 = cap1;
+        cap1.subject = PersonRef::Principal(Principal::from_text("2vxsx-fae").unwrap());
+        cap1.owners.clear();
+        cap1.owners.insert(
+            cap1.subject.clone(),
+            OwnerState {
+                since: 1234567890,
+                last_activity_at: 1234567890,
+            },
+        );
+
+        let mut cap2 = cap2;
+        cap2.subject = PersonRef::Principal(Principal::from_text("w7x7r-cok77-xa").unwrap());
+        cap2.owners.clear();
+        cap2.owners.insert(
+            cap2.subject.clone(),
+            OwnerState {
+                since: 1234567890,
+                last_activity_at: 1234567890,
+            },
+        );
+
+        let mut cap3 = cap3;
+        cap3.subject = PersonRef::Principal(Principal::from_text("2ibo7-dia").unwrap());
+        cap3.owners.clear();
+        cap3.owners.insert(
+            cap3.subject.clone(),
+            OwnerState {
+                since: 1234567890,
+                last_activity_at: 1234567890,
+            },
+        );
 
         let caps = vec![cap1, cap2, cap3];
 

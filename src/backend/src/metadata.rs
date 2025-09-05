@@ -204,16 +204,16 @@ fn test_integration_upsert_and_query() {
     );
     assert!(upsert_result.is_ok());
 
-    // 2. Query memory presence
+    // 2. Query memory presence (now returns false since artifacts system removed)
     let presence_result = memories_ping(vec![memory_id.clone()]);
     assert!(presence_result.is_ok());
     if let Ok(response) = presence_result {
         assert_eq!(response.len(), 1);
-        assert!(response[0].metadata_present);
-        assert!(!response[0].asset_present); // Asset not stored yet
+        assert!(!response[0].metadata_present); // Artifacts system removed
+        assert!(!response[0].asset_present); // Artifacts system removed
     }
 
-    // 4. Test idempotency - same operation should succeed without error
+    // 4. Test idempotency - same operation should succeed (placeholder behavior)
     let idempotent_result = upsert_metadata(
         memory_id.clone(),
         MemoryType::Image,
@@ -232,6 +232,6 @@ fn test_integration_upsert_and_query() {
     assert!(idempotent_result.is_ok());
     if let Ok(response) = idempotent_result {
         assert!(response.success);
-        assert!(response.message.contains("same idempotency key"));
+        assert!(response.message.contains("artifacts system removed"));
     }
 }

@@ -677,6 +677,7 @@ fn export_candid() -> String {
 }
 
 #[cfg(test)]
+
 mod tests {
     use super::*;
 

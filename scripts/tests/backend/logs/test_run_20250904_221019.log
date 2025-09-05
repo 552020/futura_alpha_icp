@@ -1,0 +1,10 @@
+==========================================
+🚀 BACKEND INTEGRATION TEST SUITE
+==========================================
+
+[0;34mℹ️  Starting test run from test 12 to 25[0m
+[0;34mℹ️  Total tests to run: 14[0m
+[0;34mℹ️  🚀 Running Test 12: test_gallery_crud.sh[0m
+[0;34mℹ️     Test gallery CRUD operations[0m
+[0;34mℹ️     Path: shared-capsule/galleries/test_gallery_crud.sh[0m
+[0;31m❌ Test 12 FAILED (took 23s)[0m
