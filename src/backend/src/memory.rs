@@ -1,6 +1,5 @@
-#[cfg(feature = "migration")]
 use crate::canister_factory::PersonalCanisterCreationStateData;
-use crate::capsule_store::{stable::StableStore, Store};
+use crate::capsule_store::Store;
 use crate::types::{Capsule, ChunkData, MemoryArtifact, UploadSession};
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
@@ -16,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
 // Memory IDs for different data types
+#[allow(dead_code)]
 const CAPSULES_MEMORY_ID: MemoryId = MemoryId::new(0);
 const UPLOAD_SESSIONS_MEMORY_ID: MemoryId = MemoryId::new(1);
 const MEMORY_ARTIFACTS_MEMORY_ID: MemoryId = MemoryId::new(2);
@@ -74,6 +74,7 @@ thread_local! {
 // ============================================================================
 
 // Stable capsule storage functions
+#[allow(dead_code)]
 pub fn with_stable_capsules<F, R>(f: F) -> R
 where
     F: FnOnce(&StableBTreeMap<String, Capsule, Memory>) -> R,
@@ -81,6 +82,7 @@ where
     STABLE_CAPSULES.with(|capsules| f(&capsules.borrow()))
 }
 
+#[allow(dead_code)]
 pub fn with_stable_capsules_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StableBTreeMap<String, Capsule, Memory>) -> R,
@@ -96,6 +98,7 @@ where
     STABLE_UPLOAD_SESSIONS.with(|sessions| f(&sessions.borrow()))
 }
 
+#[allow(dead_code)]
 pub fn with_stable_upload_sessions_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StableBTreeMap<String, UploadSession, Memory>) -> R,
@@ -119,6 +122,7 @@ where
 }
 
 // Stable chunk data storage functions
+#[allow(dead_code)]
 pub fn with_stable_chunk_data<F, R>(f: F) -> R
 where
     F: FnOnce(&StableBTreeMap<String, ChunkData, Memory>) -> R,
@@ -126,6 +130,7 @@ where
     STABLE_CHUNK_DATA.with(|chunks| f(&chunks.borrow()))
 }
 
+#[allow(dead_code)]
 pub fn with_stable_chunk_data_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut StableBTreeMap<String, ChunkData, Memory>) -> R,
@@ -162,16 +167,19 @@ where
 // ============================================================================
 
 /// Get virtual memory for capsules from global memory manager
+#[allow(dead_code)]
 pub fn get_capsules_memory() -> VirtualMemory<DefaultMemoryImpl> {
     MEMORY_MANAGER.with(|m| m.borrow().get(CAPSULES_MEMORY_ID))
 }
 
 /// Get virtual memory for subject index from global memory manager
+#[allow(dead_code)]
 pub fn get_subject_index_memory() -> VirtualMemory<DefaultMemoryImpl> {
     MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(1))) // Subject index
 }
 
 /// Get virtual memory for owner index from global memory manager
+#[allow(dead_code)]
 pub fn get_owner_index_memory() -> VirtualMemory<DefaultMemoryImpl> {
     MEMORY_MANAGER.with(|m| m.borrow().get(MemoryId::new(2))) // Owner index
 }
@@ -318,6 +326,7 @@ pub fn migrate_capsules_to_stable() -> Result<u32, String> {
 }
 
 // Helper to check stable memory health
+#[allow(dead_code)]
 pub fn get_stable_memory_stats() -> (u64, u64, u64) {
     let capsule_count = with_capsules(|capsules| capsules.len());
     let session_count = with_stable_upload_sessions(|sessions| sessions.len());
@@ -460,6 +469,7 @@ mod stable_memory_tests {
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         };
 
         // Test insert

@@ -22,9 +22,9 @@ mod tests {
         // Test that our constants are properly defined
         use crate::upload::types::{CAPSULE_INLINE_BUDGET, CHUNK_SIZE, INLINE_MAX};
 
-        assert_eq!(INLINE_MAX, 32 * 1024); // 32KB
+        assert_eq!(INLINE_MAX, (32 * 1024) as u64); // 32KB
         assert_eq!(CHUNK_SIZE, 64 * 1024); // 64KB
-        assert_eq!(CAPSULE_INLINE_BUDGET, 32 * 1024); // 32KB
+        assert_eq!(CAPSULE_INLINE_BUDGET, (32 * 1024) as u64); // 32KB
     }
 
     #[test]

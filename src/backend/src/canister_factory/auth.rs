@@ -176,6 +176,7 @@ mod tests {
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         }
     }
 

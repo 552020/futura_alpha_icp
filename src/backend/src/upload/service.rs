@@ -77,14 +77,24 @@ impl<'a> UploadService<'a> {
         Ok(memory_id)
     }
 
-    /// Begin chunked upload for large files
     pub fn begin_upload(
         &mut self,
         capsule_id: CapsuleId,
         meta: MemoryMeta,
         expected_chunks: u32,
+        idem: String, // ← add this
     ) -> Result<SessionId, Error> {
-        // Verify caller has write access
+        // 0) validate input early
+        if expected_chunks == 0 {
+            return Err(Error::InvalidArgument("expected_chunks_zero".into()));
+        }
+        // optional sane cap to avoid abuse (tune as needed)
+        const MAX_CHUNKS: u32 = 16_384;
+        if expected_chunks > MAX_CHUNKS {
+            return Err(Error::InvalidArgument("expected_chunks_too_large".into()));
+        }
+
+        // 1) auth
         let caller = ic_cdk::api::msg_caller();
         let person_ref = PersonRef::Principal(caller);
         if let Some(capsule) = self.store.get(&capsule_id) {
@@ -95,6 +105,18 @@ impl<'a> UploadService<'a> {
             return Err(Error::NotFound);
         }
 
+        // 2) idempotency: if a pending session with same (capsule, caller, idem) exists, return it
+        if let Some(existing) = self.sessions.find_pending(&capsule_id, &caller, &idem) {
+            return Ok(existing);
+        }
+
+        // 3) back-pressure: cap concurrent sessions per caller/capsule
+        const MAX_ACTIVE_PER_CALLER: usize = 3;
+        if self.sessions.count_active_for(&capsule_id, &caller) >= MAX_ACTIVE_PER_CALLER {
+            return Err(Error::ResourceExhausted); // “too many active uploads”
+        }
+
+        // 4) create session
         let session_id = SessionId::new();
         let provisional_memory_id = MemoryId::new();
 
@@ -103,15 +125,27 @@ impl<'a> UploadService<'a> {
             provisional_memory_id,
             caller,
             chunk_count: expected_chunks,
-            expected_len: None,
-            expected_hash: None,
+            expected_len: None,  // fine for MVP if you don’t know length upfront
+            expected_hash: None, // ditto; you can verify on finish
             status: SessionStatus::Pending,
             created_at: ic_cdk::api::time(),
             meta,
+            idem, // ← persist for idempotency
         };
 
         self.sessions.create(session_id.clone(), session_meta)?;
         Ok(session_id)
+    }
+
+    /// Begin chunked upload for large files (legacy method - use begin_upload instead)
+    pub fn begin_upload_chunked(
+        &mut self,
+        capsule_id: CapsuleId,
+        meta: MemoryMeta,
+        expected_chunks: u32,
+    ) -> Result<SessionId, Error> {
+        // Use the main begin_upload method with empty idem for backward compatibility
+        self.begin_upload(capsule_id, meta, expected_chunks, "".to_string())
     }
 
     /// Upload chunk with authorization and bounds checking

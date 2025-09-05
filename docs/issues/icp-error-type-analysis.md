@@ -402,21 +402,48 @@ impl From<anyhow::Error> for Error { ... }
 #### **1.5 Update Tests**
 
 - [x] **Update test files**:
-  - [x] **FIXED 9/11 Backend Integration Tests** ✅
-    - [x] `test_capsules_list.sh` - Fixed principal and expectations ✅
-    - [x] `test_capsules_read.sh` - Fixed Result<T, Error> expectations ✅
-    - [x] `test_memories_ping.sh` - Fixed panic handling and expectations ✅
-    - [x] `test_galleries_list.sh` - Working correctly ✅
-    - [x] `test_galleries_create.sh` - Fixed principal and bound_to_neon field ✅
-    - [x] `test_galleries_delete.sh` - Fixed principal and bound_to_neon field ✅
-    - [x] `test_galleries_update.sh` - Fixed principal and bound_to_neon field ✅
-    - [x] `test_capsules_create.sh` - Working correctly ✅
-    - [x] `test_capsules_bind_neon.sh` - Fixed expectations for Result<(), Error> ✅
-  - [ ] **Remaining Tests**:
-    - [ ] `test_store_gallery_forever_with_memories.sh` - Old endpoint (being replaced)
-    - [ ] `test_sync_gallery_memories.sh` - Needs testing
 
-#st ## **Phase 2: Candid Interface & Frontend (Medium Priority)**
+  - [x] **FIXED 9/23 Backend Integration Tests** ✅
+
+    - [x] **General Tests (9/11 completed)**:
+
+      - [x] `test_capsules_list.sh` - Fixed principal and expectations ✅
+      - [x] `test_capsules_read.sh` - Fixed Result<T, Error> expectations ✅
+      - [x] `test_memories_ping.sh` - Fixed panic handling and expectations ✅
+      - [x] `test_galleries_list.sh` - Working correctly ✅
+      - [x] `test_galleries_create.sh` - Fixed principal and bound_to_neon field ✅
+      - [x] `test_galleries_delete.sh` - Fixed principal and bound_to_neon field ✅
+      - [x] `test_galleries_update.sh` - Fixed principal and bound_to_neon field ✅
+      - [x] `test_capsules_create.sh` - Working correctly ✅
+      - [x] `test_capsules_bind_neon.sh` - Fixed expectations for Result<(), Error> ✅
+      - [ ] `test_store_gallery_forever_with_memories.sh` - Old endpoint (being replaced)
+      - [ ] `test_sync_gallery_memories.sh` - Needs testing
+
+    - [ ] **Shared-Capsule Tests (0/12 tested)**:
+
+      - [ ] **Galleries (4 tests)**:
+        - [ ] `test_gallery_crud.sh`
+        - [ ] `test_gallery_upload.sh`
+        - [ ] `test_uuid_mapping.sh`
+        - [ ] `run_all_gallery_tests.sh`
+      - [ ] **Memories (7 tests)**:
+        - [ ] `test_authorization.sh`
+        - [ ] `test_chunked_upload.sh`
+        - [ ] `test_memories_advanced.sh`
+        - [ ] `test_memories_create.sh`
+        - [ ] `test_memories_delete.sh`
+        - [ ] `test_memories_list.sh`
+        - [ ] `test_memories_read.sh`
+        - [ ] `test_memories_update.sh`
+        - [ ] `test_memory_crud.sh`
+        - [ ] `run_all_memory_tests.sh`
+      - [ ] **General (1 test)**:
+        - [ ] `test_shared_capsule.sh`
+
+    - [ ] **Canister-Capsule Tests (0/1 tested)**:
+      - [ ] `test_canister_capsule.sh`
+
+### **Phase 2: Candid Interface & Frontend (Medium Priority)**
 
 #### **2.1 Update Candid Interface**
 
@@ -446,7 +473,7 @@ impl From<anyhow::Error> for Error { ... }
 - [x] **Verify compilation**:
   - [x] Run `cargo check` in backend ✅ SUCCESSFUL
   - [x] Run `npm run build` in frontend ✅ SUCCESSFUL
-  - [x] **Backend Integration Tests**: ✅ 9/11 TESTS FIXED AND PASSING
+  - [x] **Backend Integration Tests**: ✅ 9/23 TESTS FIXED AND PASSING (9/11 general, 0/12 shared-capsule)
   - [x] **Rust Unit Tests**: ⚠️ 8 TESTS FAILED (unrelated stable memory issues)
 
 #### **3.2 CI Integration**

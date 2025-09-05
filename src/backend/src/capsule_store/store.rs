@@ -86,6 +86,16 @@ impl CapsuleStore for Store {
         }
     }
 
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, UpdateError>
+    where
+        F: FnOnce(&mut Capsule) -> Result<R, crate::types::Error>,
+    {
+        match self {
+            Store::Hash(store) => store.update_with(id, f),
+            Store::Stable(store) => store.update_with(id, f),
+        }
+    }
+
     fn remove(&mut self, id: &CapsuleId) -> Option<Capsule> {
         match self {
             Store::Hash(store) => store.remove(id),
@@ -255,6 +265,7 @@ mod tests {
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         }
     }
 }

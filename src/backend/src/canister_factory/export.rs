@@ -110,8 +110,8 @@ fn calculate_export_data_size(
         total_size += 512; // Memory metadata estimate
 
         // Memory blob data if stored inline
-        if let Some(ref data) = memory.data.data {
-            total_size += data.len() as u64;
+        if let types::MemoryData::Inline { bytes, .. } = &memory.data {
+            total_size += bytes.len() as u64;
         }
 
         // Memory metadata specific sizes
@@ -333,8 +333,10 @@ fn validate_memory_data(memory: &types::Memory) -> Result<(), String> {
     }
 
     // Validate blob reference
-    if memory.data.blob_ref.locator.is_empty() {
-        return Err(format!("Memory '{}' has empty blob locator", memory.id));
+    if let types::MemoryData::BlobRef { blob, .. } = &memory.data {
+        if blob.locator.is_empty() {
+            return Err(format!("Memory '{}' has empty blob locator", memory.id));
+        }
     }
 
     Ok(())
@@ -360,6 +362,11 @@ fn generate_capsule_checksum(capsule: &types::Capsule) -> Result<String, String>
 /// Generate checksum for memory data
 fn generate_memory_checksum(memory_id: &str, memory: &types::Memory) -> Result<String, String> {
     // Create a deterministic representation of memory for hashing
+    let (locator, data_len) = match &memory.data {
+        types::MemoryData::Inline { bytes, .. } => ("inline".to_string(), bytes.len()),
+        types::MemoryData::BlobRef { blob, .. } => (blob.locator.clone(), 0),
+    };
+
     let memory_data = format!(
         "{}|{}|{}|{}|{}|{}|{}",
         memory_id,
@@ -367,8 +374,8 @@ fn generate_memory_checksum(memory_id: &str, memory: &types::Memory) -> Result<S
         memory.info.content_type,
         memory.info.created_at,
         memory.info.uploaded_at,
-        memory.data.blob_ref.locator,
-        memory.data.data.as_ref().map_or(0, |d| d.len())
+        locator,
+        data_len
     );
 
     Ok(simple_hash(&memory_data))
@@ -381,10 +388,10 @@ fn generate_connection_checksum(
 ) -> Result<String, String> {
     // Create a deterministic representation of connection for hashing
     let connection_data = format!(
-        "{}|{}|{}|{}|{}",
+        "{}|{}|{:?}|{}|{}",
         person_ref_to_string(person_ref),
         person_ref_to_string(&connection.peer),
-        format!("{:?}", connection.status), // Use debug format for enum
+        connection.status, // Use debug format for enum
         connection.created_at,
         connection.updated_at
     );
@@ -546,6 +553,7 @@ mod tests {
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         }
     }
 
@@ -602,13 +610,17 @@ mod tests {
             },
             metadata,
             access: MemoryAccess::Private,
-            data: MemoryData {
-                blob_ref: BlobRef {
+            data: MemoryData::BlobRef {
+                blob: BlobRef {
                     kind: MemoryBlobKind::ICPCapsule,
                     locator: format!("test_locator_{}", id),
                     hash: None,
                 },
-                data: Some(test_data),
+                meta: MemoryMeta {
+                    name: name.to_string(),
+                    description: None,
+                    tags: vec![],
+                },
             },
         }
     }
@@ -1452,7 +1464,11 @@ mod tests {
             "image/jpeg",
             1024,
         );
-        memory.data.blob_ref.locator = "".to_string();
+
+        // Modify the blob locator to be empty
+        if let MemoryData::BlobRef { blob, .. } = &mut memory.data {
+            blob.locator = "".to_string();
+        }
 
         let result = validate_memory_data(&memory);
         assert!(

@@ -184,6 +184,63 @@ impl CapsuleStore for HashStore {
         }
     }
 
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, UpdateError>
+    where
+        F: FnOnce(&mut Capsule) -> Result<R, crate::types::Error>,
+    {
+        if let Some(capsule) = self.capsules.get_mut(id) {
+            let old_subject = capsule.subject.principal().cloned();
+            let old_owners: Vec<_> = capsule
+                .owners
+                .keys()
+                .filter_map(Self::principal_from_person_ref)
+                .cloned()
+                .collect();
+
+            let result = f(capsule)?;
+
+            // Update indexes if subject or owners changed
+            let new_subject = capsule.subject.principal().cloned();
+            let new_owners: Vec<_> = capsule
+                .owners
+                .keys()
+                .filter_map(Self::principal_from_person_ref)
+                .cloned()
+                .collect();
+
+            // Update subject index if changed
+            if old_subject != new_subject {
+                if let Some(old_principal) = old_subject {
+                    self.subject_index.remove(&old_principal);
+                }
+                if let Some(new_principal) = &new_subject {
+                    self.subject_index.insert(*new_principal, id.clone());
+                }
+            }
+
+            // Update owner index for added/removed owners
+            for owner in &old_owners {
+                if !new_owners.contains(owner) {
+                    if let Some(owner_capsules) = self.owner_index.get_mut(owner) {
+                        owner_capsules.retain(|capsule_id| capsule_id != id);
+                        if owner_capsules.is_empty() {
+                            self.owner_index.remove(owner);
+                        }
+                    }
+                }
+            }
+            for owner in &new_owners {
+                if !old_owners.contains(owner) {
+                    self.owner_index.entry(*owner).or_default().push(id.clone());
+                }
+            }
+
+            Ok(result)
+        } else {
+            Err(UpdateError::NotFound)
+        }
+    }
+
     fn remove(&mut self, id: &CapsuleId) -> Option<Capsule> {
         if let Some(capsule) = self.capsules.remove(id) {
             self.remove_from_indexes(id, &capsule);
@@ -393,6 +450,7 @@ mod tests {
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         };
 
         // Upsert with new subject
@@ -456,6 +514,7 @@ mod tests {
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         };
 
         // Upsert with new owner
@@ -496,6 +555,7 @@ mod tests {
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         }
     }
 }

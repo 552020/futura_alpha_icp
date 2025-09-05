@@ -13,6 +13,12 @@ pub const CAPSULE_INLINE_BUDGET: u64 = 32 * 1024; // Max inline bytes per capsul
 #[derive(Clone, Debug, CandidType, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SessionId(pub u64);
 
+impl Default for SessionId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionId {
     pub fn new() -> Self {
         use crate::upload::sessions::STABLE_SESSION_COUNTER;
@@ -49,6 +55,12 @@ impl Storable for SessionId {
 /// Blob identifier using u64 for efficient storage
 #[derive(Clone, Debug, CandidType, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlobId(pub u64);
+
+impl Default for BlobId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl BlobId {
     pub fn new() -> Self {
@@ -102,6 +114,7 @@ pub struct SessionMeta {
     pub status: SessionStatus,
     pub created_at: u64,
     pub meta: MemoryMeta,
+    pub idem: String,
 }
 
 impl Storable for SessionMeta {

@@ -22,9 +22,7 @@ pub fn upsert_metadata(
     idempotency_key: String,
 ) -> Result<MetadataResponse> {
     // Check authorization first
-    if let Err(auth_error) = crate::auth::verify_caller_authorized() {
-        return Err(auth_error);
-    }
+    crate::auth::verify_caller_authorized()?;
 
     // Validate memory type
     if !is_valid_memory_type(&memory_type) {

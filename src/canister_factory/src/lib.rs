@@ -17,7 +17,6 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// ===== Configuration Constants =====
-
 const MAX_CHUNK_SIZE: usize = 2_000_000; // 2MB per chunk
 const DEFAULT_UPLOAD_TTL_NS: u64 = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
 const DEFAULT_MAX_UPLOAD_SIZE: u64 = 50_000_000; // 50MB max WASM size
@@ -142,7 +141,6 @@ thread_local! {
 }
 
 /// ===== Helpers =====
-
 fn must_allowed(caller: Principal) -> Result<(), String> {
     STATE.with(|s| {
         let st = s.borrow();
@@ -343,8 +341,7 @@ async fn put_chunk(upload_id: u64, chunk: Vec<u8>) -> Result<u64, String> {
 
         if new_total > max_size {
             return Err(format!(
-                "Upload too large: {} bytes (max {})",
-                new_total, max_size
+                "Upload too large: {new_total} bytes (max {max_size})"
             ));
         }
 
@@ -459,7 +456,7 @@ async fn create_and_install_with(
 
     let res = Call::unbounded_wait(Principal::management_canister(), "create_canister")
         .with_arg(&create_args)
-        .with_cycles(req.cycles.try_into().unwrap())
+        .with_cycles(req.cycles)
         .await
         .map_err(|e| format!("create_canister failed: {e:?}"))?;
 
@@ -667,7 +664,7 @@ fn health_check() -> String {
     if balance > min_balance {
         "Healthy".to_string()
     } else {
-        format!("Low cycles: {} (min {})", balance, min_balance)
+        format!("Low cycles: {balance} (min {min_balance})")
     }
 }
 

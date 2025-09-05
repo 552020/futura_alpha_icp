@@ -15,7 +15,6 @@ pub type CapsuleId = String;
 pub type MemoryId = String;
 
 /// Type alias for unified error handling - see Error enum below
-
 /// Simplified metadata for memory creation
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryMeta {
@@ -56,18 +55,20 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 // Result<T> removed - using canonical Result<T> = std::result::Result<T, Error>
 
-impl Error {
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Unauthorized => "unauthorized access".to_string(),
-            Error::NotFound => "resource not found".to_string(),
-            Error::InvalidArgument(msg) => format!("invalid argument: {}", msg.to_lowercase()),
-            Error::Conflict(msg) => format!("conflict: {}", msg.to_lowercase()),
-            Error::ResourceExhausted => "resource exhausted".to_string(),
-            Error::Internal(msg) => format!("internal error: {}", msg.to_lowercase()),
+            Error::Unauthorized => write!(f, "unauthorized access"),
+            Error::NotFound => write!(f, "resource not found"),
+            Error::InvalidArgument(msg) => write!(f, "invalid argument: {}", msg.to_lowercase()),
+            Error::Conflict(msg) => write!(f, "conflict: {}", msg.to_lowercase()),
+            Error::ResourceExhausted => write!(f, "resource exhausted"),
+            Error::Internal(msg) => write!(f, "internal error: {}", msg.to_lowercase()),
         }
     }
+}
 
+impl Error {
     pub fn code(&self) -> u16 {
         match self {
             Error::Unauthorized => 401,

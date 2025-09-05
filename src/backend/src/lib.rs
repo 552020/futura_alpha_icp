@@ -10,6 +10,7 @@ mod auth;
 mod canister_factory;
 mod capsule;
 pub mod capsule_store;
+mod memories;
 mod memory;
 mod memory_manager;
 mod metadata;
@@ -17,7 +18,8 @@ pub mod types;
 pub mod upload;
 
 // Import CapsuleStore trait for direct access to store methods
-use crate::capsule_store::CapsuleStore;
+use crate::capsule_store::{CapsuleStore, Order};
+use crate::memory::{with_capsule_store, with_capsule_store_mut};
 // memories.rs removed - functionality moved to capsule-based architecture
 
 // ============================================================================
@@ -39,7 +41,8 @@ fn whoami() -> Principal {
 // ============================================================================
 #[ic_cdk::update]
 fn register() -> types::Result<()> {
-    use crate::capsule_store::{Order, PersonRef};
+    use crate::capsule_store::Order;
+    use crate::types::PersonRef;
     use ic_cdk::api::time;
 
     let caller_ref = PersonRef::from_caller();
@@ -155,7 +158,7 @@ fn capsules_bind_neon(
     bind: bool,
 ) -> types::Result<()> {
     use crate::capsule_store::Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store_mut;
     use crate::types::PersonRef;
     use ic_cdk::api::time;
 
@@ -192,7 +195,7 @@ fn capsules_bind_neon(
 
                 for capsule in all_capsules.items {
                     if capsule.owners.contains_key(&caller_ref) {
-                        if let Some(gallery) = capsule.galleries.get(&resource_id) {
+                        if let Some(_gallery) = capsule.galleries.get(&resource_id) {
                             // Update gallery binding
                             let update_result = store.update(&capsule.id, |capsule| {
                                 if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
@@ -295,7 +298,7 @@ fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationR
 #[ic_cdk::query]
 fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsule> {
     use crate::capsule_store::Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
@@ -327,7 +330,7 @@ fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsul
 #[ic_cdk::query]
 fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::CapsuleInfo> {
     use crate::capsule_store::Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
@@ -389,7 +392,7 @@ fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::Capsu
 #[ic_cdk::query]
 fn capsules_list() -> Vec<types::CapsuleHeader> {
     use crate::capsule_store::Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
@@ -411,10 +414,9 @@ fn capsules_list() -> Vec<types::CapsuleHeader> {
 // ============================================================================
 #[ic_cdk::update]
 async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
-    use crate::capsule_store::{Order, PersonRef};
-    use crate::types::{
-        Gallery, GalleryStorageStatus, PersonRef as TypesPersonRef, StoreGalleryResponse,
-    };
+    use crate::capsule_store::Order;
+    use crate::types::PersonRef;
+    use crate::types::{GalleryStorageStatus, StoreGalleryResponse};
     use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
@@ -524,8 +526,9 @@ async fn galleries_create_with_memories(
     gallery_data: types::GalleryData,
     sync_memories: bool,
 ) -> types::StoreGalleryResponse {
-    use crate::capsule_store::{Order, PersonRef};
-    use crate::types::{Gallery, GalleryStorageStatus, StoreGalleryResponse};
+    use crate::capsule_store::Order;
+    use crate::types::PersonRef;
+    use crate::types::{GalleryStorageStatus, StoreGalleryResponse};
     use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
@@ -647,7 +650,7 @@ fn update_gallery_storage_status(
     new_status: types::GalleryStorageStatus,
 ) -> types::Result<()> {
     use crate::capsule_store::Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store_mut;
     use crate::types::PersonRef;
     use ic_cdk::api::time;
 
@@ -690,7 +693,7 @@ fn update_gallery_storage_status(
 #[ic_cdk::query]
 fn galleries_list() -> Vec<types::Gallery> {
     use crate::capsule_store::Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
@@ -710,7 +713,7 @@ fn galleries_list() -> Vec<types::Gallery> {
 #[ic_cdk::query]
 fn galleries_read(gallery_id: String) -> types::Result<types::Gallery> {
     use crate::capsule_store::Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
@@ -732,7 +735,8 @@ async fn galleries_update(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
 ) -> types::UpdateGalleryResponse {
-    use crate::capsule_store::{Order, PersonRef};
+    use crate::capsule_store::Order;
+    use crate::types::PersonRef;
     use crate::types::{Gallery, UpdateGalleryResponse};
     use ic_cdk::api::time;
 
@@ -812,8 +816,9 @@ async fn galleries_update(
 
 #[ic_cdk::update]
 async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
-    use crate::capsule_store::{Order, PersonRef};
+    use crate::capsule_store::Order;
     use crate::types::DeleteGalleryResponse;
+    use crate::types::PersonRef;
     use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
@@ -870,117 +875,23 @@ async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
 }
 
 // ============================================================================
-// MEMORY MANAGEMENT (5 functions)
+// MEMORIES
 // ============================================================================
+
+// === Core ===
 #[ic_cdk::update]
 async fn memories_create(
-    capsule_id: String,
+    capsule_id: types::CapsuleId,
     memory_data: types::MemoryData,
-) -> types::MemoryOperationResponse {
-    use crate::capsule_store::PersonRef;
-    use crate::types::{
-        ImageMetadata, Memory, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase,
-        MemoryOperationResponse, MemoryType,
-    };
-    use ic_cdk::api::time;
-
-    let caller = PersonRef::from_caller();
-
-    // Find the specified capsule
-    let capsule = with_capsule_store(|store| {
-        store.get(&capsule_id).and_then(|capsule| {
-            // Check if caller has access to this capsule
-            if capsule.owners.contains_key(&caller) || capsule.subject == caller {
-                Some(capsule)
-            } else {
-                None
-            }
-        })
-    });
-
-    match capsule {
-        Some(mut capsule) => {
-            // Extract memory ID from the data or generate one
-            let memory_id = memory_data.blob_ref.locator.clone();
-
-            // Check if memory already exists with this UUID (idempotency)
-            if capsule.memories.contains_key(&memory_id) {
-                return MemoryOperationResponse {
-                    success: true,
-                    memory_id: Some(memory_id),
-                    message: "Memory already exists with this UUID".to_string(),
-                };
-            }
-
-            // Create memory info
-            let now = time();
-            let memory_info = MemoryInfo {
-                memory_type: MemoryType::Image, // Default type, can be updated later
-                name: format!("Memory {memory_id}"),
-                content_type: "application/octet-stream".to_string(),
-                created_at: now,
-                updated_at: now,
-                uploaded_at: now,
-                date_of_memory: None,
-            };
-
-            // Create memory metadata (default to Image type)
-            let memory_metadata = MemoryMetadata::Image(ImageMetadata {
-                base: MemoryMetadataBase {
-                    size: memory_data
-                        .data
-                        .as_ref()
-                        .map(|d| d.len() as u64)
-                        .unwrap_or(0),
-                    mime_type: "application/octet-stream".to_string(),
-                    original_name: format!("Memory {memory_id}"),
-                    uploaded_at: now.to_string(),
-                    date_of_memory: None,
-                    people_in_memory: None,
-                    format: None,
-                    bound_to_neon: false,
-                },
-                dimensions: None,
-            });
-
-            // Create memory access (default to private)
-            let memory_access = MemoryAccess::Private;
-
-            // Create the memory
-            let memory = Memory {
-                id: memory_id.clone(),
-                info: memory_info,
-                metadata: memory_metadata,
-                access: memory_access,
-                data: memory_data,
-            };
-
-            // Store memory in capsule
-            capsule.memories.insert(memory_id.clone(), memory);
-            capsule.updated_at = time(); // Update capsule timestamp
-
-            // Save updated capsule
-            with_capsule_store_mut(|store| {
-                store.upsert(capsule_id.clone(), capsule);
-            });
-
-            MemoryOperationResponse {
-                success: true,
-                memory_id: Some(memory_id),
-                message: "Memory created successfully in capsule".to_string(),
-            }
-        }
-        None => MemoryOperationResponse {
-            success: false,
-            memory_id: None,
-            message: "Capsule not found or access denied".to_string(),
-        },
-    }
+    idem: String,
+) -> types::Result<types::MemoryId> {
+    crate::memories::create(capsule_id, memory_data, idem)
 }
 
 #[ic_cdk::query]
 fn memories_read(memory_id: String) -> types::Result<types::Memory> {
-    use crate::capsule_store::{Order, PersonRef};
+    use crate::capsule_store::Order;
+    use crate::types::PersonRef;
 
     let caller = PersonRef::from_caller();
 
@@ -1004,169 +915,36 @@ async fn memories_update(
     memory_id: String,
     updates: types::MemoryUpdateData,
 ) -> types::MemoryOperationResponse {
-    use crate::capsule_store::{Order, PersonRef};
-    use ic_cdk::api::time;
-
-    let caller = PersonRef::from_caller();
-    let memory_id_clone = memory_id.clone();
-
-    // Find and update memory across caller's accessible capsules
-    let mut capsule_found = false;
-    let mut memory_found = false;
-
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-        // Find the capsule containing the memory
-        if let Some(capsule) = all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.owners.contains_key(&caller) || capsule.subject == caller)
-            .filter(|capsule| capsule.memories.contains_key(&memory_id))
-        {
-            capsule_found = true;
-            let capsule_id = capsule.id.clone();
-
-            // Update the capsule with the modified memory
-            let update_result = store.update(&capsule_id, |capsule| {
-                if let Some(memory) = capsule.memories.get(&memory_id) {
-                    memory_found = true;
-
-                    // Update memory fields
-                    let mut updated_memory = memory.clone();
-                    if let Some(name) = updates.name.clone() {
-                        updated_memory.info.name = name;
-                    }
-                    if let Some(metadata) = updates.metadata.clone() {
-                        updated_memory.metadata = metadata;
-                    }
-                    if let Some(access) = updates.access.clone() {
-                        updated_memory.access = access;
-                    }
-
-                    updated_memory.info.updated_at = time();
-
-                    // Store updated memory
-                    capsule.memories.insert(memory_id, updated_memory);
-                    capsule.updated_at = time(); // Update capsule timestamp
-                }
-            });
-
-            if update_result.is_err() {
-                capsule_found = false;
-            }
-        }
-    });
-
-    if !capsule_found {
-        return types::MemoryOperationResponse {
-            success: false,
-            memory_id: None,
-            message: "No accessible capsule found for caller".to_string(),
-        };
-    }
-
-    if !memory_found {
-        return types::MemoryOperationResponse {
-            success: false,
-            memory_id: None,
-            message: "Memory not found in any accessible capsule".to_string(),
-        };
-    }
-
-    types::MemoryOperationResponse {
-        success: true,
-        memory_id: Some(memory_id_clone),
-        message: "Memory updated successfully".to_string(),
-    }
+    crate::memories::update(memory_id, updates)
 }
 
 #[ic_cdk::update]
 async fn memories_delete(memory_id: String) -> types::MemoryOperationResponse {
-    use crate::capsule_store::{Order, PersonRef};
-    use ic_cdk::api::time;
-
-    let caller = PersonRef::from_caller();
-    let memory_id_clone = memory_id.clone();
-
-    // Search across all capsules the caller has access to
-    let mut memory_found = false;
-    let mut capsule_found = false;
-
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-        // Find the capsule containing the memory
-        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
-            capsule.has_write_access(&caller) && capsule.memories.contains_key(&memory_id)
-        }) {
-            capsule_found = true;
-            let capsule_id = capsule.id.clone();
-
-            // Update the capsule to remove the memory
-            let update_result = store.update(&capsule_id, |capsule| {
-                if capsule.memories.contains_key(&memory_id) {
-                    capsule.memories.remove(&memory_id);
-                    capsule.updated_at = time(); // Update capsule timestamp
-                    memory_found = true;
-                }
-            });
-
-            if update_result.is_err() {
-                capsule_found = false;
-            }
-        }
-    });
-
-    if !capsule_found {
-        return types::MemoryOperationResponse {
-            success: false,
-            memory_id: None,
-            message: "No accessible capsule found for caller".to_string(),
-        };
-    }
-
-    if !memory_found {
-        return types::MemoryOperationResponse {
-            success: false,
-            memory_id: None,
-            message: "Memory not found in any accessible capsule".to_string(),
-        };
-    }
-
-    types::MemoryOperationResponse {
-        success: true,
-        memory_id: Some(memory_id_clone),
-        message: "Memory deleted successfully".to_string(),
-    }
+    crate::memories::delete(memory_id)
 }
 
 #[ic_cdk::query]
 fn memories_list(capsule_id: String) -> types::MemoryListResponse {
-    use crate::capsule_store::PersonRef;
+    crate::memories::list(capsule_id)
+}
 
-    let caller = PersonRef::from_caller();
+// === Metadata & Presence ===
 
-    // Get memories from specified capsule
-    let memories = with_capsule_store(|store| {
-        store
-            .get(&capsule_id)
-            .and_then(|capsule| {
-                // Check if caller has access to this capsule
-                if capsule.owners.contains_key(&caller) || capsule.subject == caller {
-                    Some(capsule.memories.values().cloned().collect::<Vec<_>>())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default()
-    });
+/// Store memory metadata on ICP with idempotency support
+#[ic_cdk::update]
+fn upsert_metadata(
+    memory_id: String,
+    memory_type: types::MemoryType,
+    metadata: types::SimpleMemoryMetadata,
+    idempotency_key: String,
+) -> types::Result<types::MetadataResponse> {
+    metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
+}
 
-    types::MemoryListResponse {
-        success: true,
-        memories,
-        message: "Memories retrieved successfully".to_string(),
-    }
+/// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
+#[ic_cdk::query]
+fn memories_ping(memory_ids: Vec<String>) -> types::Result<Vec<types::MemoryPresenceResult>> {
+    metadata::memories_ping(memory_ids)
 }
 
 // Note: User principal management is handled through capsule registration
@@ -1420,23 +1198,6 @@ fn post_upgrade() {
 // MEMORY METADATA & PRESENCE (2 functions)
 // ============================================================================
 
-/// Store memory metadata on ICP with idempotency support
-#[ic_cdk::update]
-fn upsert_metadata(
-    memory_id: String,
-    memory_type: types::MemoryType,
-    metadata: types::SimpleMemoryMetadata,
-    idempotency_key: String,
-) -> types::Result<types::MetadataResponse> {
-    metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
-}
-
-/// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-#[ic_cdk::query]
-fn memories_ping(memory_ids: Vec<String>) -> types::Result<Vec<types::MemoryPresenceResult>> {
-    metadata::memories_ping(memory_ids)
-}
-
 // ============================================================================
 // EMERGENCY RECOVERY ENDPOINTS (Admin Only)
 // ============================================================================
@@ -1446,12 +1207,12 @@ fn memories_ping(memory_ids: Vec<String>) -> types::Result<Vec<types::MemoryPres
 #[ic_cdk::update]
 fn clear_all_stable_memory() -> types::Result<()> {
     // Only allow admin to call this
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::msg_caller();
     if !admin::is_admin(&caller) {
         return Err(types::Error::Unauthorized);
     }
 
-    memory::clear_all_stable_memory().map_err(|e| types::Error::Internal(e))
+    memory::clear_all_stable_memory().map_err(types::Error::Internal)
 }
 
 // ============================================================================
@@ -1487,18 +1248,15 @@ async fn memories_create_inline(
 
 /// Begin chunked upload for large files
 #[ic_cdk::update]
-async fn memories_begin_upload(
+fn uploads_begin(
     capsule_id: types::CapsuleId,
-    metadata: types::MemoryMeta,
+    meta: types::MemoryMeta,
     expected_chunks: u32,
-) -> types::Result<u64> {
-    // Use real UploadService with actual store integration
-    memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        match upload_service.begin_upload(capsule_id, metadata, expected_chunks) {
-            Ok(session_id) => Ok(session_id.0),
-            Err(err) => Err(err),
-        }
+    idem: String,
+) -> types::Result<upload::types::SessionId> {
+    with_capsule_store_mut(|store| {
+        let mut svc = upload::service::UploadService::new(store);
+        svc.begin_upload(capsule_id, meta, expected_chunks, idem)
     })
 }
 

@@ -31,6 +31,12 @@ thread_local! {
 pub struct BlobStore;
 
 #[cfg_attr(not(feature = "upload"), allow(dead_code))]
+impl Default for BlobStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BlobStore {
     pub fn new() -> Self {
         BlobStore

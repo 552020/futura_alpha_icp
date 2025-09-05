@@ -1,5 +1,5 @@
 use crate::memory_manager::{MEM_CHUNKS, MEM_SESSIONS, MEM_SESSION_COUNTER, MM};
-use crate::types::Error;
+use crate::types::{CapsuleId, Error};
 use crate::upload::types::{SessionId, SessionMeta};
 use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::DefaultMemoryImpl;
@@ -32,6 +32,12 @@ thread_local! {
 pub struct SessionStore;
 
 #[cfg_attr(not(feature = "upload"), allow(dead_code))]
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionStore {
     pub fn new() -> Self {
         SessionStore
@@ -128,6 +134,43 @@ impl SessionStore {
             chunk_count,
             current_idx: 0,
         }
+    }
+
+    /// Find pending session by capsule, caller, and idempotency key
+    pub fn find_pending(
+        &self,
+        capsule_id: &CapsuleId,
+        caller: &candid::Principal,
+        idem: &str,
+    ) -> Option<SessionId> {
+        STABLE_UPLOAD_SESSIONS.with(|sessions| {
+            sessions.borrow().iter().find_map(|(sid, session)| {
+                if &session.capsule_id == capsule_id
+                    && &session.caller == caller
+                    && session.idem == idem
+                    && matches!(session.status, crate::upload::types::SessionStatus::Pending)
+                {
+                    Some(SessionId(sid))
+                } else {
+                    None
+                }
+            })
+        })
+    }
+
+    /// Count active sessions for a caller/capsule combination
+    pub fn count_active_for(&self, capsule_id: &CapsuleId, caller: &candid::Principal) -> usize {
+        STABLE_UPLOAD_SESSIONS.with(|sessions| {
+            sessions
+                .borrow()
+                .iter()
+                .filter(|(_, session)| {
+                    &session.capsule_id == capsule_id
+                        && &session.caller == caller
+                        && matches!(session.status, crate::upload::types::SessionStatus::Pending)
+                })
+                .count()
+        })
     }
 }
 

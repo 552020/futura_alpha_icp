@@ -50,6 +50,23 @@ pub enum AlreadyExists {
     CapsuleExists(CapsuleId),
 }
 
+impl From<crate::types::Error> for UpdateError {
+    fn from(err: crate::types::Error) -> Self {
+        match err {
+            crate::types::Error::NotFound => UpdateError::NotFound,
+            crate::types::Error::Unauthorized => {
+                UpdateError::Validation("unauthorized".to_string())
+            }
+            crate::types::Error::InvalidArgument(msg) => UpdateError::Validation(msg),
+            crate::types::Error::Conflict(msg) => UpdateError::Validation(msg),
+            crate::types::Error::ResourceExhausted => {
+                UpdateError::Validation("resource exhausted".to_string())
+            }
+            crate::types::Error::Internal(msg) => UpdateError::Validation(msg),
+        }
+    }
+}
+
 /// FROZEN: The core storage trait that endpoints will use
 ///
 /// This trait provides a clean abstraction over persistence that:
@@ -90,6 +107,17 @@ pub trait CapsuleStore {
     fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), UpdateError>
     where
         F: FnOnce(&mut crate::types::Capsule);
+
+    /// Update a capsule with a closure that returns a result
+    ///
+    /// This method allows the closure to return a `Result<R, Error>`, enabling
+    /// proper error propagation from within the update operation. This eliminates
+    /// the need for silent early returns and provides better error handling.
+    ///
+    /// Returns the result from the closure, or UpdateError if the capsule wasn't found.
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, UpdateError>
+    where
+        F: FnOnce(&mut crate::types::Capsule) -> Result<R, crate::types::Error>;
 
     /// Remove a capsule by ID
     fn remove(&mut self, id: &CapsuleId) -> Option<crate::types::Capsule>;

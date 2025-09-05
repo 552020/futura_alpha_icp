@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::capsule_store::{CapsuleStore, Order, Store};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{CapsuleId, Error, MemoryData, MemoryId, MemoryMeta, PersonRef, Result};
@@ -22,8 +24,7 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
             let len_u64 = bytes.len() as u64;
             if len_u64 > INLINE_MAX {
                 return Err(Error::InvalidArgument(format!(
-                    "inline_too_large: {} > {}",
-                    len_u64, INLINE_MAX
+                    "inline_too_large: {len_u64} > {INLINE_MAX}"
                 )));
             }
 
@@ -32,7 +33,7 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
             let blob_store = BlobStore::new();
             let blob = blob_store
                 .put_inline(&bytes)
-                .map_err(|e| Error::Internal(format!("blob_store_put_inline: {:?}", e)))?;
+                .map_err(|e| Error::Internal(format!("blob_store_put_inline: {e:?}")))?;
 
             // Use the hash and length from blob store directly
             let sha256 = blob
@@ -78,7 +79,7 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
                             Some(idem.clone()),
                         )
                         .map_err(|e| {
-                            crate::types::Error::Internal(format!("insert_memory: {:?}", e))
+                            crate::types::Error::Internal(format!("insert_memory: {e:?}"))
                         })?;
 
                         // Update inline budget counter for inline uploads
@@ -166,7 +167,7 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
                             Some(idem.clone()),
                         )
                         .map_err(|e| {
-                            crate::types::Error::Internal(format!("insert_memory: {:?}", e))
+                            crate::types::Error::Internal(format!("insert_memory: {e:?}"))
                         })?;
 
                         cap.updated_at = now;
@@ -492,11 +493,6 @@ pub fn upsert_metadata(
 }
 
 pub fn memories_ping(
-    memory_ids: Vec<String>,
-) -> crate::types::Result<Vec<crate::types::MemoryPresenceResult>> {
-    crate::metadata::memories_ping(memory_ids)
-}
-pub fn memories_presence(
     memory_ids: Vec<String>,
 ) -> crate::types::Result<Vec<crate::types::MemoryPresenceResult>> {
     crate::metadata::memories_ping(memory_ids)

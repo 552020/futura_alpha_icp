@@ -12,6 +12,7 @@
 
 use super::{AlreadyExists, CapsuleId, CapsuleStore, Order, Page, UpdateError};
 use crate::types::Capsule;
+#[allow(unused_imports)]
 use candid::{Decode, Encode, Principal};
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager, VirtualMemory};
 use ic_stable_structures::{storable::Bound, DefaultMemoryImpl, StableBTreeMap, Storable};
@@ -293,6 +294,72 @@ impl CapsuleStore for StableStore {
         }
     }
 
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, UpdateError>
+    where
+        F: FnOnce(&mut Capsule) -> Result<R, crate::types::Error>,
+    {
+        if let Some(mut capsule) = self.capsules.get(id) {
+            let old_subject = capsule.subject.principal().cloned();
+            let old_owners: Vec<_> = capsule
+                .owners
+                .keys()
+                .filter_map(|person_ref| match person_ref {
+                    crate::types::PersonRef::Principal(p) => Some(*p),
+                    crate::types::PersonRef::Opaque(_) => None,
+                })
+                .collect();
+
+            let result = f(&mut capsule)?;
+
+            // Update indexes if subject or owners changed
+            let new_subject = capsule.subject.principal().cloned();
+            let new_owners: Vec<_> = capsule
+                .owners
+                .keys()
+                .filter_map(|person_ref| match person_ref {
+                    crate::types::PersonRef::Principal(p) => Some(*p),
+                    crate::types::PersonRef::Opaque(_) => None,
+                })
+                .collect();
+
+            // Update subject index if changed
+            if old_subject != new_subject {
+                if let Some(old_principal) = old_subject {
+                    let old_key = old_principal.as_slice().to_vec();
+                    self.subject_index.remove(&old_key);
+                }
+                if let Some(new_principal) = &new_subject {
+                    let new_key = new_principal.as_slice().to_vec();
+                    self.subject_index.insert(new_key, id.clone());
+                }
+            }
+
+            // Update owner index for added/removed owners (sparse multimap)
+            // Remove old owner relationships
+            for owner in &old_owners {
+                if !new_owners.contains(owner) {
+                    let owner_key = owner.as_slice().to_vec();
+                    let key = OwnerIndexKey::new(owner_key, id.clone());
+                    self.owner_index.remove(&key);
+                }
+            }
+            // Add new owner relationships
+            for owner in &new_owners {
+                if !old_owners.contains(owner) {
+                    let owner_key = owner.as_slice().to_vec();
+                    let key = OwnerIndexKey::new(owner_key, id.clone());
+                    self.owner_index.insert(key, ());
+                }
+            }
+
+            // Save the updated capsule
+            self.capsules.insert(id.clone(), capsule);
+            Ok(result)
+        } else {
+            Err(UpdateError::NotFound)
+        }
+    }
+
     fn remove(&mut self, id: &CapsuleId) -> Option<Capsule> {
         if let Some(capsule) = self.capsules.remove(id) {
             self.remove_from_indexes(id, &capsule);
@@ -484,6 +551,7 @@ mod tests {
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
+            inline_bytes_used: 0,
         }
     }
 
@@ -656,31 +724,44 @@ mod tests {
         // Validate subject index consistency
         for cap in &caps {
             let found = store.find_by_subject(&cap.subject).unwrap();
-            assert_eq!(found.id, cap.id, "Subject index should return correct capsule");
+            assert_eq!(
+                found.id, cap.id,
+                "Subject index should return correct capsule"
+            );
         }
 
         // Validate owner index consistency
         for cap in &caps {
             let owner_capsules = store.list_by_owner(&cap.subject);
-            assert!(owner_capsules.contains(&cap.id), "Owner index should contain capsule");
+            assert!(
+                owner_capsules.contains(&cap.id),
+                "Owner index should contain capsule"
+            );
         }
 
         // Test index cleanup on update (change subject)
         let old_subject = caps[0].subject.clone();
         let new_subject = PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap());
 
-        store.update(&caps[0].id, |c| {
-            c.subject = new_subject.clone();
-        }).unwrap();
+        store
+            .update(&caps[0].id, |c| {
+                c.subject = new_subject.clone();
+            })
+            .unwrap();
 
         // Old subject should no longer find this capsule
         let old_found = store.find_by_subject(&old_subject);
-        assert!(old_found.is_none() || old_found.unwrap().id != caps[0].id,
-                "Old subject should not return updated capsule");
+        assert!(
+            old_found.is_none() || old_found.unwrap().id != caps[0].id,
+            "Old subject should not return updated capsule"
+        );
 
         // New subject should find this capsule
         let new_found = store.find_by_subject(&new_subject).unwrap();
-        assert_eq!(new_found.id, caps[0].id, "New subject should return updated capsule");
+        assert_eq!(
+            new_found.id, caps[0].id,
+            "New subject should return updated capsule"
+        );
 
         // Validate final state
         let final_count = store.count();
