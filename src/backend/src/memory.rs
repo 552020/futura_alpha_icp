@@ -1,10 +1,8 @@
 use crate::canister_factory::PersonalCanisterCreationStateData;
 use crate::capsule_store::Store;
-use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager};
 use ic_stable_structures::DefaultMemoryImpl;
 use std::cell::RefCell;
-use std::collections::HashMap;
 
 // ============================================================================
 // STABLE MEMORY INFRASTRUCTURE - MVP Implementation
@@ -40,8 +38,6 @@ thread_local! {
     pub static MM: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
-    // Nonce proof storage for II authentication
-    static NONCE_PROOFS: std::cell::RefCell<HashMap<String, (Principal, u64)>> = std::cell::RefCell::new(HashMap::new());
 
     // Migration state storage (only available with migration feature)
     #[cfg(feature = "migration")]
@@ -98,18 +94,6 @@ where
 // ============================================================================
 // BACKWARD COMPATIBILITY ALIASES
 // ============================================================================
-
-// Nonce proof functions for II authentication
-pub fn store_nonce_proof(nonce: String, principal: Principal, timestamp: u64) -> bool {
-    NONCE_PROOFS.with(|proofs| {
-        proofs.borrow_mut().insert(nonce, (principal, timestamp));
-    });
-    true
-}
-
-pub fn get_nonce_proof(nonce: String) -> Option<Principal> {
-    NONCE_PROOFS.with(|proofs| proofs.borrow().get(&nonce).map(|(principal, _)| *principal))
-}
 
 // Migration state access functions (only available with migration feature)
 #[cfg(feature = "migration")]

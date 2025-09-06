@@ -13,7 +13,7 @@
 //
 // ============================================================================
 
-use crate::memory;
+use crate::auth;
 use crate::types::{self, PersonRef};
 use ic_cdk::api::time;
 
@@ -35,7 +35,7 @@ pub fn store_nonce_proof_utility(nonce: String, caller: &PersonRef) -> types::Re
         }
     };
 
-    memory::store_nonce_proof(nonce, *principal, timestamp);
+    auth::store_nonce_proof(nonce, *principal, timestamp);
     Ok(())
 }
 

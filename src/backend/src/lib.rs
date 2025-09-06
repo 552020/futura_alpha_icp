@@ -49,7 +49,7 @@ fn register_with_nonce(nonce: String) -> types::Result<()> {
 #[ic_cdk::query]
 fn verify_nonce(nonce: String) -> types::Result<Principal> {
     // Verify and return the principal who proved this nonce
-    match memory::get_nonce_proof(nonce) {
+    match auth::get_nonce_proof(nonce) {
         Some(principal) => Ok(principal),
         None => Err(types::Error::NotFound),
     }
@@ -176,7 +176,7 @@ fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationR
             if capsule::update_capsule_activity(&capsule.id, &caller).is_ok() {
                 return CapsuleCreationResult {
                     success: true,
-                    capsule_id: Some(capsule.tid),
+                    capsule_id: Some(capsule.id),
                     message: "Welcome back! Your capsule is ready.".to_string(),
                 };
             }
