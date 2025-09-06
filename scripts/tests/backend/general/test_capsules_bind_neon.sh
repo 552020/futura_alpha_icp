@@ -3,48 +3,18 @@
 # Test script for capsules_bind_neon function
 # Tests binding/unbinding capsules, galleries, and memories to Neon database
 
-# Source test utilities
-source ../test_config.sh
-
-# Define our own logging functions (don't use test_utils.sh)
-echo_info() {
-    echo "[INFO] $1"
-}
-
-echo_success() {
-    echo "[SUCCESS] $1"
-}
-
-echo_error() {
-    echo "[ERROR] $1"
-}
-
-echo_header() {
-    echo ""
-    echo "=========================================="
-    echo "$1"
-    echo "=========================================="
-    echo ""
-}
-
-# Define our own run_test function (don't use the one from test_utils.sh)
-run_test() {
-    local test_name="$1"
-    local test_function="$2"
-    
-    echo_info "Running: $test_name"
-    if $test_function; then
-        echo_success "✅ $test_name PASSED"
-        return 0
-    else
-        echo_error "❌ $test_name FAILED"
-        return 1
-    fi
-}
+# Load test configuration and utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../test_config.sh"
+source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/capsule_test_utils.sh"
 
 # Test configuration
-TEST_NAME="capsules_bind_neon"
-TEST_DESCRIPTION="Test the flexible resource binding function for Neon database"
+TEST_NAME="Capsules Bind Neon Tests"
+TOTAL_TESTS=0
+PASSED_TESTS=0
+FAILED_TESTS=0
+
 
 # ============================================================================
 # TEST FUNCTIONS
@@ -55,19 +25,23 @@ test_capsules_bind_neon_basic() {
     
     # First create a capsule for the caller
     local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-    if ! echo "$create_result" | grep -q "capsule_id = opt"; then
+    if ! is_success "$create_result"; then
         echo_error "Failed to create test capsule"
         return 1
     fi
     
     # Extract capsule ID
-    local capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//;s/"//')
+    local capsule_id=$(extract_capsule_id "$create_result")
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "Failed to extract capsule ID from creation response"
+        return 1
+    fi
     echo_info "Created test capsule: $capsule_id"
     
     # Test binding capsule to Neon
     local bind_result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"$capsule_id\", true)" 2>&1)
     echo_info "Bind result: '$bind_result'"
-    if ! echo "$bind_result" | grep -q "Ok"; then
+    if ! is_success "$bind_result"; then
         echo_error "Failed to bind capsule to Neon: $bind_result"
         return 1
     fi
@@ -76,7 +50,7 @@ test_capsules_bind_neon_basic() {
     # Test unbinding capsule from Neon
     local unbind_result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"$capsule_id\", false)" 2>&1)
     echo_info "Unbind result: '$unbind_result'"
-    if ! echo "$unbind_result" | grep -q "Ok"; then
+    if ! is_success "$unbind_result"; then
         echo_error "Failed to unbind capsule from Neon: $unbind_result"
         return 1
     fi
@@ -266,68 +240,25 @@ test_capsules_bind_neon_edge_cases() {
     return 0
 }
 
-# ============================================================================
-# MAIN TEST EXECUTION
-# ============================================================================
-
-run_test() {
-    local test_name="$1"
-    local test_function="$2"
-    
-    echo_info "Running: $test_name"
-    if $test_function; then
-        echo_success "✅ $test_name PASSED"
-        return 0
-    else
-        echo_error "❌ $test_name FAILED"
-        return 1
-    fi
-}
-
+# Main test execution
 main() {
-    echo_header "🧪 $TEST_NAME - $TEST_DESCRIPTION"
+    echo_info "Starting $TEST_NAME"
+    echo_info "=================================="
     
-    local total_tests=0
-    local passed_tests=0
+    # Setup
+    setup_user_and_capsule
     
-    # Run all tests
-    echo_info "=== Testing Basic Functionality ==="
-    run_test "Basic capsule binding/unbinding" "test_capsules_bind_neon_basic" && ((passed_tests++))
-    ((total_tests++))
+    # Run tests
+    run_capsule_test "Basic capsule binding/unbinding" test_capsules_bind_neon_basic
+    run_capsule_test "Gallery binding/unbinding" test_capsules_bind_neon_gallery
+    run_capsule_test "Memory binding/unbinding" test_capsules_bind_neon_memory
+    run_capsule_test "Invalid resource ID handling" test_capsules_bind_neon_invalid_resource
+    run_capsule_test "Nonexistent resource handling" test_capsules_bind_neon_nonexistent_resource
+    run_capsule_test "Unauthorized access handling" test_capsules_bind_neon_unauthorized
+    run_capsule_test "Edge case handling" test_capsules_bind_neon_edge_cases
     
-    run_test "Gallery binding/unbinding" "test_capsules_bind_neon_gallery" && ((passed_tests++))
-    ((total_tests++))
-    
-    run_test "Memory binding/unbinding" "test_capsules_bind_neon_memory" && ((passed_tests++))
-    ((total_tests++))
-    
-    echo_info "=== Testing Error Handling ==="
-    run_test "Invalid resource ID handling" "test_capsules_bind_neon_invalid_resource" && ((passed_tests++))
-    ((total_tests++))
-    
-    run_test "Nonexistent resource handling" "test_capsules_bind_neon_nonexistent_resource" && ((passed_tests++))
-    ((total_tests++))
-    
-    run_test "Unauthorized access handling" "test_capsules_bind_neon_unauthorized" && ((passed_tests++))
-    ((total_tests++))
-    
-    echo_info "=== Testing Edge Cases ==="
-    run_test "Edge case handling" "test_capsules_bind_neon_edge_cases" && ((passed_tests++))
-    ((total_tests++))
-    
-    # Summary
-    echo_header "📊 TEST SUMMARY"
-    echo_info "Total tests: $total_tests"
-    echo_info "Passed: $passed_tests"
-    echo_info "Failed: $((total_tests - passed_tests))"
-    
-    if [ $passed_tests -eq $total_tests ]; then
-        echo_success "🎉 ALL TESTS PASSED!"
-        return 0
-    else
-        echo_error "❌ SOME TESTS FAILED!"
-        return 1
-    fi
+    # Test summary
+    print_test_summary
 }
 
 # Run main function

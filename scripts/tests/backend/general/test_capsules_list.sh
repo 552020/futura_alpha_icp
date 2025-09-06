@@ -7,6 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
 source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/capsule_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Capsules List Tests"
@@ -14,69 +15,10 @@ TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 
-# Helper function to check if response contains capsule data
-has_capsules() {
-    local response="$1"
-    echo "$response" | grep -q "record {"
-}
-
-# Helper function to check if response is empty (no capsules)
-is_empty_response() {
-    local response="$1"
-    echo "$response" | grep -q "vec {}"
-}
-
-# Helper function to check if response contains expected field hashes
-has_expected_fields() {
-    local response="$1"
-    # Check for common Candid field hashes that indicate a valid capsule
-    # These are the hash values from the actual response
-    echo "$response" | grep -q "id = " && \
-    echo "$response" | grep -q "subject = " && \
-    echo "$response" | grep -q "owner_count = "
-}
-
 # Helper function to extract capsule count from response
 extract_capsule_count() {
     local response="$1"
     echo "$response" | grep -o "vec { [^}]* }" | tr -cd ';' | wc -c
-}
-
-# Helper function to increment test counters
-run_test() {
-    local test_name="$1"
-    local test_command="$2"
-    
-    echo_info "Running: $test_name"
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
-    if eval "$test_command"; then
-        echo_pass "$test_name"
-        PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-        echo_fail "$test_name"
-        FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    echo ""
-}
-
-# Test setup - ensure user is registered and has a capsule
-test_setup_user_and_capsule() {
-    echo_info "Setting up test user and capsule..."
-    
-    # Register user
-    local register_result=$(dfx canister call backend register 2>/dev/null)
-    if ! echo "$register_result" | grep -q "true"; then
-        echo_warn "User registration failed, continuing with existing user..."
-    fi
-    
-    # Mark capsule as bound to Web2
-    local bind_result=$(dfx canister call backend 'capsules_bind_neon("Capsule", "", true)' 2>/dev/null)
-    if ! echo "$bind_result" | grep -q "true"; then
-        echo_warn "Capsule binding failed, continuing..."
-    fi
-    
-    echo_info "Setup complete"
 }
 
 # Test 1: Basic capsules_list call
@@ -121,11 +63,11 @@ test_data_structure() {
     if echo "$response" | grep -q "vec {}"; then
         echo_pass "Empty response is valid for user with no capsules"
         return 0
-    elif has_expected_fields "$response"; then
-        echo_pass "Response contains expected capsule fields"
+    elif has_expected_capsule_header_fields "$response"; then
+        echo_pass "Response contains expected capsule header fields"
         return 0
     else
-        echo_fail "Response missing expected capsule fields"
+        echo_fail "Response missing expected capsule header fields"
         echo_info "Response: $response"
         return 1
     fi
@@ -158,11 +100,11 @@ test_response_structure() {
     
     # Check if response contains expected fields (if not empty)
     if ! is_empty_response "$response"; then
-        if has_expected_fields "$response"; then
-            echo_pass "Response contains expected capsule fields"
+        if has_expected_capsule_header_fields "$response"; then
+            echo_pass "Response contains expected capsule header fields"
             return 0
         else
-            echo_fail "Response missing expected capsule fields"
+            echo_fail "Response missing expected capsule header fields"
             return 1
         fi
     else
@@ -177,29 +119,17 @@ main() {
     echo_info "=================================="
     
     # Setup
-    test_setup_user_and_capsule
+    setup_user_and_capsule
     
     # Run tests
-    run_test "Basic capsules_list call" test_basic_capsules_list
-    run_test "Response format validation" test_response_format
-    run_test "Data structure validation" test_data_structure
-    run_test "Authenticated user access" test_authenticated_user
-    run_test "Response structure validation" test_response_structure
+    run_capsule_test "Basic capsules_list call" test_basic_capsules_list
+    run_capsule_test "Response format validation" test_response_format
+    run_capsule_test "Data structure validation" test_data_structure
+    run_capsule_test "Authenticated user access" test_authenticated_user
+    run_capsule_test "Response structure validation" test_response_structure
     
     # Test summary
-    echo_info "=================================="
-    echo_info "Test Summary:"
-    echo_info "Total tests: $TOTAL_TESTS"
-    echo_info "Passed: $PASSED_TESTS"
-    echo_info "Failed: $FAILED_TESTS"
-    
-    if [ $FAILED_TESTS -eq 0 ]; then
-        echo_pass "All tests passed!"
-        exit 0
-    else
-        echo_fail "Some tests failed!"
-        exit 1
-    fi
+    print_test_summary
 }
 
 # Run main function
