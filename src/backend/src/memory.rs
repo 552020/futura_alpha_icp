@@ -1,11 +1,10 @@
 use crate::canister_factory::PersonalCanisterCreationStateData;
 use crate::capsule_store::Store;
-use crate::types::Capsule;
 use candid::Principal;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager};
 use ic_stable_structures::DefaultMemoryImpl;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 // ============================================================================
 // STABLE MEMORY INFRASTRUCTURE - MVP Implementation
@@ -32,33 +31,14 @@ pub const MEM_BLOBS: MemoryId = MemoryId::new(6);
 pub const MEM_BLOB_META: MemoryId = MemoryId::new(7);
 pub const MEM_BLOB_COUNTER: MemoryId = MemoryId::new(8);
 
-// Reserved for future use (9-15)
-// Add new MemoryIds here to maintain sequential allocation
+// Admin storage
+pub const MEM_ADMINS: MemoryId = MemoryId::new(9);
 
-// Legacy constants removed - using active memory IDs in capsule_store and upload modules
-// MEMORY_ARTIFACTS_MEMORY_ID removed - artifacts system deleted
-// CHUNK_DATA_MEMORY_ID removed - using active chunk storage in upload/sessions.rs
-// Stable storage structures
 thread_local! {
     /// Global memory manager for all stable structures
     /// This ensures no MemoryId collisions across modules
     pub static MM: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
-
-
-
-    // STABLE_MEMORY_ARTIFACTS removed - artifacts system deleted
-
-    // STABLE_CHUNK_DATA removed - using active chunk storage in upload/sessions.rs
-}
-
-// Legacy thread_local storage (kept for backward compatibility during MVP transition)
-thread_local! {
-    // Admin storage - auto-bootstrap first caller as admin
-    static ADMINS: std::cell::RefCell<HashSet<Principal>> = std::cell::RefCell::new(HashSet::new());
-
-    // Capsule storage (centralized data storage) - will be migrated to stable storage
-    static CAPSULES: std::cell::RefCell<HashMap<String, Capsule>> = std::cell::RefCell::new(HashMap::new());
 
     // Nonce proof storage for II authentication
     static NONCE_PROOFS: std::cell::RefCell<HashMap<String, (Principal, u64)>> = std::cell::RefCell::new(HashMap::new());
@@ -118,20 +98,6 @@ where
 // ============================================================================
 // BACKWARD COMPATIBILITY ALIASES
 // ============================================================================
-
-pub fn with_admins_mut<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut HashSet<Principal>) -> R,
-{
-    ADMINS.with(|admins| f(&mut admins.borrow_mut()))
-}
-
-pub fn with_admins<F, R>(f: F) -> R
-where
-    F: FnOnce(&HashSet<Principal>) -> R,
-{
-    ADMINS.with(|admins| f(&admins.borrow()))
-}
 
 // Nonce proof functions for II authentication
 pub fn store_nonce_proof(nonce: String, principal: Principal, timestamp: u64) -> bool {

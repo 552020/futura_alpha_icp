@@ -332,10 +332,6 @@ service : {
   list_all_creation_states : () -> (Result_5) query;
   list_all_migration_states : () -> (Result_5) query;
   list_superadmins : () -> (vec principal) query;
-  // Abort upload session and cleanup
-  memories_abort : (nat64) -> (Result);
-  // Commit chunks to create final memory
-  memories_commit : (nat64, blob, nat64) -> (Result_8);
   memories_create : (text, MemoryData, text) -> (Result_8);
   // Create memory with inline data (≤32KB only)
   memories_create_inline : (text, blob, MemoryMeta) -> (Result_8);
@@ -343,20 +339,22 @@ service : {
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
   memories_ping : (vec text) -> (Result_9) query;
-  // Upload a chunk for an active session
-  memories_put_chunk : (nat64, nat32, blob) -> (Result);
   memories_read : (text) -> (Result_10) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
-  prove_nonce : (text) -> (Result);
-  register : () -> (Result);
   register_with_nonce : (text) -> (Result);
   remove_admin : (principal) -> (Result);
   set_migration_enabled : (bool) -> (Result);
   set_personal_canister_creation_enabled : (bool) -> (Result);
   update_gallery_storage_status : (text, GalleryStorageStatus) -> (Result);
+  // Abort upload session and cleanup
+  uploads_abort : (nat64) -> (Result);
   // Begin chunked upload for large files
   uploads_begin : (text, MemoryMeta, nat32, text) -> (Result_11);
+  // Commit chunks to create final memory
+  uploads_finish : (nat64, blob, nat64) -> (Result_8);
+  // Upload a chunk for an active session
+  uploads_put_chunk : (nat64, nat32, blob) -> (Result);
   // Store memory metadata on ICP with idempotency support
   upsert_metadata : (text, MemoryType, SimpleMemoryMetadata, text) -> (
       Result_12,

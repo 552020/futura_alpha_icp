@@ -15,6 +15,7 @@ mod memory;
 mod metadata;
 pub mod types;
 pub mod upload;
+mod user;
 
 // Import CapsuleStore trait for direct access to store methods
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
@@ -38,81 +39,11 @@ fn whoami() -> Principal {
 // ============================================================================
 // AUTHENTICATION & USER MANAGEMENT (6 functions)
 // ============================================================================
-#[ic_cdk::update]
-fn register() -> types::Result<()> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::types::PersonRef;
-    use ic_cdk::api::time;
-
-    let caller_ref = PersonRef::from_caller();
-    let now = time();
-
-    // Check if user already has a self-capsule
-    let all_capsules = with_capsule_store(|store| store.paginate(None, u32::MAX, Order::Asc));
-
-    let existing_self_capsule = all_capsules
-        .items
-        .into_iter()
-        .find(|capsule| capsule.subject == caller_ref && capsule.owners.contains_key(&caller_ref));
-
-    match existing_self_capsule {
-        Some(capsule) => {
-            // Update activity timestamp using store.update()
-            let capsule_id = capsule.id.clone();
-            let update_result = with_capsule_store_mut(|store| {
-                store.update(&capsule_id, |capsule| {
-                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                        owner_state.last_activity_at = now;
-                    }
-                    capsule.updated_at = now;
-                })
-            });
-            if update_result.is_ok() {
-                Ok(())
-            } else {
-                Err(types::Error::Internal(
-                    "Failed to update capsule activity".to_string(),
-                ))
-            }
-        }
-        None => {
-            // Create new self-capsule with basic info
-            match capsules_create(None) {
-                types::CapsuleCreationResult { success: true, .. } => Ok(()),
-                types::CapsuleCreationResult { success: false, .. } => Err(types::Error::Internal(
-                    "Failed to create capsule".to_string(),
-                )),
-            }
-        }
-    }
-}
-
 // Register user and prove nonce in one call (optimized for II auth flow)
 #[ic_cdk::update]
 fn register_with_nonce(nonce: String) -> types::Result<()> {
-    let caller = ic_cdk::api::msg_caller();
-    let timestamp = ic_cdk::api::time();
-
-    // Register the user
-    register()?;
-
-    // Store nonce proof
-    memory::store_nonce_proof(nonce, caller, timestamp);
-
-    Ok(())
-}
-
-// Nonce proof for II authentication (kept for backward compatibility)
-#[ic_cdk::update]
-fn prove_nonce(nonce: String) -> types::Result<()> {
-    // Store the nonce proof with the caller's principal and timestamp
-    let caller = ic_cdk::api::msg_caller();
-    let timestamp = ic_cdk::api::time();
-
-    // Store in memory (we'll implement this in memory.rs)
-    memory::store_nonce_proof(nonce, caller, timestamp);
-
-    Ok(())
+    // Delegate to user module (frontend adapter)
+    user::register_user_with_nonce(nonce)
 }
 
 #[ic_cdk::query]
@@ -229,11 +160,9 @@ fn capsules_bind_neon(
 // Capsule management endpoints
 #[ic_cdk::update]
 fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::memory::{with_capsule_store, with_capsule_store_mut};
+    use crate::memory::with_capsule_store_mut;
     use crate::types::PersonRef;
     use crate::types::{Capsule, CapsuleCreationResult};
-    use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
 
@@ -242,31 +171,12 @@ fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationR
 
     if is_self_capsule {
         // Check if caller already has a self-capsule
-        let all_capsules = with_capsule_store(|store| store.paginate(None, u32::MAX, Order::Asc));
-
-        let existing_self_capsule = all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller));
-
-        if let Some(capsule) = existing_self_capsule {
+        if let Some(capsule) = capsule::find_self_capsule(&caller) {
             // Update existing self-capsule activity
-            let capsule_id = capsule.id.clone();
-            let update_result = with_capsule_store_mut(|store| {
-                store.update(&capsule_id, |capsule| {
-                    let now = time();
-                    capsule.updated_at = now;
-
-                    if let Some(owner_state) = capsule.owners.get_mut(&caller) {
-                        owner_state.last_activity_at = now;
-                    }
-                })
-            });
-
-            if update_result.is_ok() {
+            if capsule::update_capsule_activity(&capsule.id, &caller).is_ok() {
                 return CapsuleCreationResult {
                     success: true,
-                    capsule_id: Some(capsule_id),
+                    capsule_id: Some(capsule.tid),
                     message: "Welcome back! Your capsule is ready.".to_string(),
                 };
             }

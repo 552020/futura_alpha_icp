@@ -213,9 +213,10 @@ mod tests {
         let admin1 = test_principal(10);
         let admin2 = test_principal(11);
 
-        crate::memory::with_admins_mut(|admins| {
-            admins.insert(admin1);
-            admins.insert(admin2);
+        // Directly add admins to the store for testing
+        crate::admin::AdminStore::with_admins_mut(|admins| {
+            admins.insert(admin1, ());
+            admins.insert(admin2, ());
         });
     }
 
@@ -224,8 +225,13 @@ mod tests {
         crate::memory::with_capsule_store_mut(|_capsules| {
             // Clear is not available on Store - just continue
         });
-        crate::memory::with_admins_mut(|admins| {
-            admins.clear();
+
+        // Clear all admins for testing
+        crate::admin::AdminStore::with_admins_mut(|admins| {
+            let keys_to_remove: Vec<Principal> = admins.iter().map(|(k, _)| k).collect();
+            for key in keys_to_remove {
+                admins.remove(&key);
+            }
         });
     }
 

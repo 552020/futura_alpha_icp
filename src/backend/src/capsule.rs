@@ -1446,3 +1446,35 @@ mod gallery_tests {
         }
     }
 }
+
+// ============================================================================
+// CAPSULE HELPER FUNCTIONS
+// ============================================================================
+
+/// Find a self-capsule (where subject == owner == caller)
+pub fn find_self_capsule(caller: &PersonRef) -> Option<Capsule> {
+    use crate::capsule_store::types::PaginationOrder as Order;
+    use crate::memory::with_capsule_store;
+
+    let all_capsules = with_capsule_store(|store| store.paginate(None, u32::MAX, Order::Asc));
+    all_capsules
+        .items
+        .into_iter()
+        .find(|capsule| capsule.subject == *caller && capsule.owners.contains_key(caller))
+}
+
+/// Update a capsule's activity timestamp for a specific owner
+pub fn update_capsule_activity(capsule_id: &str, caller: &PersonRef) -> crate::types::Result<()> {
+    let now = ic_cdk::api::time();
+    use crate::memory::with_capsule_store_mut;
+
+    with_capsule_store_mut(|store| {
+        store.update(&capsule_id.to_string(), |capsule| {
+            if let Some(owner_state) = capsule.owners.get_mut(caller) {
+                owner_state.last_activity_at = now;
+            }
+            capsule.updated_at = now;
+        })
+    })
+    .map_err(|_| crate::types::Error::Internal("Failed to update capsule activity".to_string()))
+}
