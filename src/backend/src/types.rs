@@ -493,14 +493,6 @@ pub struct Capsule {
     pub inline_bytes_used: u64, // Track inline storage consumption
 }
 
-// Capsule creation result
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct CapsuleCreationResult {
-    pub success: bool,
-    pub capsule_id: Option<String>,
-    pub message: String,
-}
-
 // Capsule registration result (minimal response for user registration)
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct CapsuleRegistrationResult {
@@ -538,6 +530,35 @@ pub struct CapsuleHeader {
     pub memory_count: u32,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+// Capsule update data for partial updates
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct CapsuleUpdateData {
+    pub bound_to_neon: Option<bool>, // Update binding status
+                                     // Note: Most capsule fields (id, subject, owners, etc.) are immutable
+                                     // Only binding status and timestamps can be updated
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct MemoryHeader {
+    pub id: String,
+    pub name: String,
+    pub memory_type: MemoryType,
+    pub size: u64,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub access: MemoryAccess,
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct GalleryHeader {
+    pub id: String,
+    pub name: String,
+    pub memory_count: u32,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub storage_location: GalleryStorageLocation,
 }
 
 // New unified memory system
@@ -793,6 +814,24 @@ impl Memory {
             idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
+
+    /// Get memory header for listing
+    pub fn to_header(&self) -> MemoryHeader {
+        let size = match &self.data {
+            MemoryData::Inline { bytes, .. } => bytes.len() as u64,
+            MemoryData::BlobRef { blob, .. } => blob.len,
+        };
+
+        MemoryHeader {
+            id: self.id.clone(),
+            name: self.info.name.clone(),
+            memory_type: self.info.memory_type.clone(),
+            size,
+            created_at: self.info.created_at,
+            updated_at: self.info.updated_at,
+            access: self.access.clone(),
+        }
+    }
 }
 
 // ============================================================================
@@ -823,16 +862,16 @@ pub struct GalleryMemoryEntry {
 // Main gallery structure with embedded memory entries
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Gallery {
-    pub id: String,                              // unique gallery identifier
-    pub owner_principal: Principal,              // who owns this gallery
-    pub title: String,                           // gallery title
-    pub description: Option<String>,             // gallery description
-    pub is_public: bool,                         // whether gallery is publicly accessible
-    pub created_at: u64,                         // creation timestamp (nanoseconds)
-    pub updated_at: u64,                         // last update timestamp (nanoseconds)
-    pub storage_location: GalleryStorageLocation,    // where this gallery is stored
-    pub memory_entries: Vec<GalleryMemoryEntry>, // minimal extra data for each memory
-    pub bound_to_neon: bool,                     // whether linked to Neon database
+    pub id: String,                               // unique gallery identifier
+    pub owner_principal: Principal,               // who owns this gallery
+    pub title: String,                            // gallery title
+    pub description: Option<String>,              // gallery description
+    pub is_public: bool,                          // whether gallery is publicly accessible
+    pub created_at: u64,                          // creation timestamp (nanoseconds)
+    pub updated_at: u64,                          // last update timestamp (nanoseconds)
+    pub storage_location: GalleryStorageLocation, // where this gallery is stored
+    pub memory_entries: Vec<GalleryMemoryEntry>,  // minimal extra data for each memory
+    pub bound_to_neon: bool,                      // whether linked to Neon database
 }
 
 // Gallery creation result
@@ -842,7 +881,6 @@ pub struct GalleryCreationResult {
     pub gallery_id: Option<String>,
     pub message: String,
 }
-
 
 // Gallery data for storage operations
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
@@ -916,7 +954,7 @@ pub struct MemoryUpdateData {
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct MemoryListResponse {
     pub success: bool,
-    pub memories: Vec<Memory>,
+    pub memories: Vec<MemoryHeader>,
     pub message: String,
 }
 
@@ -995,6 +1033,18 @@ impl Gallery {
 
     fn nanoseconds_to_timestamp(nanoseconds: u64) -> u64 {
         nanoseconds / 1_000_000_000 // Convert nanoseconds to seconds
+    }
+
+    /// Get gallery header for listing
+    pub fn to_header(&self) -> GalleryHeader {
+        GalleryHeader {
+            id: self.id.clone(),
+            name: self.title.clone(),
+            memory_count: self.memory_entries.len() as u32,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            storage_location: self.storage_location.clone(),
+        }
     }
 }
 

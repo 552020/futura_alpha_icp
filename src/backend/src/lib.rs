@@ -13,7 +13,7 @@ pub mod capsule_store;
 mod gallery;
 mod memories;
 mod memory;
-mod metadata;
+mod person;
 mod state;
 pub mod types;
 pub mod upload;
@@ -100,7 +100,7 @@ fn capsules_bind_neon(
 
 // Capsule management endpoints
 #[ic_cdk::update]
-fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
+fn capsules_create(subject: Option<types::PersonRef>) -> types::Result<types::Capsule> {
     // Delegate to capsule module (thin facade)
     capsule::capsules_create(subject)
 }
@@ -127,6 +127,18 @@ fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::Capsu
 fn capsules_list() -> Vec<types::CapsuleHeader> {
     // Delegate to capsule module (thin facade)
     capsule::capsules_list()
+}
+
+#[ic_cdk::update]
+fn capsules_update(capsule_id: String, updates: types::CapsuleUpdateData) -> types::Result<types::Capsule> {
+    // Delegate to capsule module (thin facade)
+    capsule::capsules_update(capsule_id, updates)
+}
+
+#[ic_cdk::update]
+fn capsules_delete(capsule_id: String) -> types::Result<()> {
+    // Delegate to capsule module (thin facade)
+    capsule::capsules_delete(capsule_id)
 }
 
 // ============================================================================
@@ -157,23 +169,9 @@ fn update_gallery_storage_location(
 }
 
 #[ic_cdk::query]
-fn galleries_list() -> types::Result<Vec<types::Gallery>> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::memory::with_capsule_store;
-    use crate::types::PersonRef;
-
-    let caller = PersonRef::from_caller();
-
-    // List all galleries from caller's self-capsule
-    Ok(with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .filter(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
-            .collect()
-    }))
+fn galleries_list() -> Vec<types::GalleryHeader> {
+    // Delegate to gallery module (thin facade)
+    gallery::galleries_list()
 }
 
 #[ic_cdk::query]
@@ -277,65 +275,26 @@ fn memories_list(capsule_id: String) -> types::MemoryListResponse {
     crate::memories::list(capsule_id)
 }
 
-// === Metadata & Presence ===
+// === Presence ===
 
-/// Store memory metadata on ICP with idempotency support
-#[ic_cdk::update]
-fn upsert_metadata(
-    memory_id: String,
-    memory_type: types::MemoryType,
-    metadata: types::SimpleMemoryMetadata,
-    idempotency_key: String,
-) -> types::Result<types::MetadataResponse> {
-    metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
+/// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
+#[ic_cdk::query]
+fn memories_ping(memory_ids: Vec<String>) -> types::Result<Vec<types::MemoryPresenceResult>> {
+    crate::memories::ping(memory_ids)
 }
 
-// ============================================================================
-// EMERGENCY RECOVERY ENDPOINTS (Admin Only)
-// ============================================================================
+// === Upload ===
 
-/// Emergency function to clear all stable memory data
-/// WARNING: This will delete all stored data and should only be used for recovery
-#[ic_cdk::update]
-fn clear_all_stable_memory() -> types::Result<()> {
-    // Only allow admin to call this
-    let caller = ic_cdk::api::msg_caller();
-    if !admin::is_admin(&caller) {
-        return Err(types::Error::Unauthorized);
+/// Get upload configuration for TypeScript client discoverability
+#[ic_cdk::query]
+fn upload_config() -> types::UploadConfig {
+    use crate::upload::types::{CAPSULE_INLINE_BUDGET, CHUNK_SIZE, INLINE_MAX};
+
+    types::UploadConfig {
+        inline_max: INLINE_MAX as u32,
+        chunk_size: CHUNK_SIZE as u32,
+        inline_budget_per_capsule: CAPSULE_INLINE_BUDGET as u32,
     }
-
-    memory::clear_all_stable_memory().map_err(types::Error::Internal)
-}
-
-// ============================================================================
-// CHUNKED ASSET UPLOAD ENDPOINTS - ICP Canister API
-// ============================================================================
-
-// OLD UPLOAD FUNCTIONS REMOVED - Migration to new hybrid architecture complete
-// All old upload functions have been removed and replaced with the new workflow:
-// - memories_create_inline (≤32KB files)
-// - uploads_begin + uploads_put_chunk + uploads_finish (large files)
-// - uploads_abort (cancel uploads)
-
-// ============================================================================
-// FILE UPLOAD & ASSET MANAGEMENT (5 functions)
-// ============================================================================
-
-/// Create memory with inline data (≤32KB only)
-#[ic_cdk::update]
-async fn memories_create_inline(
-    capsule_id: types::CapsuleId,
-    file_data: Vec<u8>,
-    metadata: types::MemoryMeta,
-) -> types::Result<types::MemoryId> {
-    // Use real UploadService with actual store integration
-    memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        match upload_service.create_inline(&capsule_id, file_data, metadata) {
-            Ok(memory_id) => Ok(memory_id),
-            Err(err) => Err(err),
-        }
-    })
 }
 
 /// Begin chunked upload for large files
@@ -403,11 +362,33 @@ async fn uploads_abort(session_id: u64) -> types::Result<()> {
     })
 }
 
-/// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-#[ic_cdk::query]
-fn memories_ping(memory_ids: Vec<String>) -> types::Result<Vec<types::MemoryPresenceResult>> {
-    metadata::memories_ping(memory_ids)
+// ============================================================================
+// EMERGENCY RECOVERY ENDPOINTS (Admin Only)
+// ============================================================================
+
+/// Emergency function to clear all stable memory data
+/// WARNING: This will delete all stored data and should only be used for recovery
+#[ic_cdk::update]
+fn clear_all_stable_memory() -> types::Result<()> {
+    // Only allow admin to call this
+    let caller = ic_cdk::api::msg_caller();
+    if !admin::is_admin(&caller) {
+        return Err(types::Error::Unauthorized);
+    }
+
+    memory::clear_all_stable_memory().map_err(types::Error::Internal)
 }
+
+// ============================================================================
+// CHUNKED ASSET UPLOAD ENDPOINTS - ICP Canister API
+// ============================================================================
+
+// OLD UPLOAD FUNCTIONS REMOVED - Migration to new hybrid architecture complete
+// All old upload functions have been removed and replaced with the new workflow:
+// - memories_create_inline (≤32KB files)
+// - uploads_begin + uploads_put_chunk + uploads_finish (large files)
+// - uploads_abort (cancel uploads)
+// All upload endpoints are now organized under the MEMORIES section above.
 
 // ============================================================================
 // PERSONAL CANISTER MANAGEMENT (22 functions)

@@ -1,6 +1,9 @@
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
-use crate::types::{CapsuleId, Error, MemoryData, MemoryId, PersonRef, Result};
+use crate::types::{
+    BlobRef, CapsuleId, Error, Memory, MemoryData, MemoryId, MemoryMeta, MemoryType, PersonRef,
+    Result,
+};
 use crate::upload::blob_store::BlobStore;
 use crate::upload::types::{CAPSULE_INLINE_BUDGET, INLINE_MAX};
 use ic_cdk::api::time;
@@ -11,6 +14,60 @@ fn compute_sha256(data: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(data);
     hasher.finalize().into()
+}
+
+/// Create a Memory object from the given parameters
+/// This function handles all the memory construction logic
+pub fn create_memory_object(
+    memory_id: &str,
+    blob: BlobRef,
+    meta: MemoryMeta,
+    now: u64,
+    idempotency_key: Option<String>,
+) -> Memory {
+    use crate::types::{
+        ImageMetadata, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase,
+    };
+
+    let memory_info = MemoryInfo {
+        memory_type: MemoryType::Image, // Default, can be updated later
+        name: meta.name.clone(),
+        content_type: "application/octet-stream".to_string(),
+        created_at: now,
+        updated_at: now,
+        uploaded_at: now,
+        date_of_memory: None,
+    };
+
+    let memory_metadata = MemoryMetadata::Image(ImageMetadata {
+        base: MemoryMetadataBase {
+            size: blob.hash.map_or(0, |_| 32), // Use hash length as size indicator, or calculate properly
+            mime_type: "application/octet-stream".to_string(),
+            original_name: meta.name.clone(),
+            uploaded_at: now.to_string(),
+            date_of_memory: None,
+            people_in_memory: None,
+            format: None,
+            bound_to_neon: false,
+        },
+        dimensions: None,
+    });
+
+    let memory_access = MemoryAccess::Private;
+
+    let memory_data = MemoryData::BlobRef {
+        blob,
+        meta: meta.clone(),
+    };
+
+    Memory {
+        id: memory_id.to_string(),
+        info: memory_info,
+        metadata: memory_metadata,
+        access: memory_access,
+        data: memory_data,
+        idempotency_key,
+    }
 }
 
 pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Result<MemoryId> {
@@ -64,18 +121,17 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
                     let memory_id = generate_memory_id();
                     let now = ic_cdk::api::time();
 
-                    // Use the BlobRef directly (no conversion needed)
-                    let types_blob = blob.clone();
-
-                    // Insert the memory
-                    cap.insert_memory(
+                    // Create the memory object
+                    let memory = create_memory_object(
                         &memory_id,
-                        types_blob.clone(),
+                        blob.clone(),
                         meta.clone(),
                         now,
                         Some(idem.clone()),
-                    )
-                    .map_err(|e| crate::types::Error::Internal(format!("insert_memory: {e:?}")))?;
+                    );
+
+                    // Insert the memory into the capsule
+                    cap.memories.insert(memory_id.clone(), memory);
 
                     // Update inline budget counter for inline uploads
                     cap.inline_bytes_used = cap.inline_bytes_used.saturating_add(blob.len);
@@ -141,15 +197,17 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
                     let memory_id = generate_memory_id();
                     let now = ic_cdk::api::time();
 
-                    // For blob refs, we don't do budget checks since they're already persisted
-                    cap.insert_memory(
+                    // Create the memory object
+                    let memory = create_memory_object(
                         &memory_id,
                         blob.clone(),
                         meta.clone(),
                         now,
                         Some(idem.clone()),
-                    )
-                    .map_err(|e| crate::types::Error::Internal(format!("insert_memory: {e:?}")))?;
+                    );
+
+                    // Insert the memory into the capsule
+                    cap.memories.insert(memory_id.clone(), memory);
 
                     cap.updated_at = now;
 
@@ -159,6 +217,107 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
             })
         }
     }
+}
+
+/// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
+pub fn ping(memory_ids: Vec<String>) -> Result<Vec<crate::types::MemoryPresenceResult>> {
+    // TODO: Implement memory presence checking using capsule system instead of artifacts
+    // For now, return false for all memories since artifacts system is removed
+    let results: Vec<crate::types::MemoryPresenceResult> = memory_ids
+        .iter()
+        .map(|memory_id| crate::types::MemoryPresenceResult {
+            memory_id: memory_id.clone(),
+            metadata_present: false, // Artifacts system removed
+            asset_present: false,    // Artifacts system removed
+        })
+        .collect();
+
+    Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_valid_memory_type() {
+        assert!(is_valid_memory_type(&MemoryType::Image));
+        assert!(is_valid_memory_type(&MemoryType::Video));
+        assert!(is_valid_memory_type(&MemoryType::Audio));
+        assert!(is_valid_memory_type(&MemoryType::Document));
+        assert!(is_valid_memory_type(&MemoryType::Note));
+    }
+
+    #[test]
+    fn test_memories_ping_not_found() {
+        let memory_id = "nonexistent_memory".to_string();
+        let result = ping(vec![memory_id]);
+
+        assert!(result.is_ok());
+        if let Ok(response) = result {
+            assert_eq!(response.len(), 1);
+            assert!(!response[0].metadata_present);
+            assert!(!response[0].asset_present);
+        }
+    }
+
+    #[test]
+    fn test_memories_ping_empty() {
+        let memory_ids = vec![];
+        let result = ping(memory_ids);
+
+        assert!(result.is_ok());
+        if let Ok(response) = result {
+            assert_eq!(response.len(), 0);
+        }
+    }
+
+    #[test]
+    fn test_memories_ping_multiple() {
+        let memory_ids = vec![
+            "mem1".to_string(),
+            "mem2".to_string(),
+            "mem3".to_string(),
+            "mem4".to_string(),
+            "mem5".to_string(),
+        ];
+
+        let result = ping(memory_ids);
+        assert!(result.is_ok());
+        if let Ok(response) = result {
+            assert_eq!(response.len(), 5);
+            // All memories should not be present (nonexistent)
+            for memory_presence in response {
+                assert!(!memory_presence.metadata_present);
+                assert!(!memory_presence.asset_present);
+            }
+        }
+    }
+
+    #[test]
+    fn test_memories_ping_single() {
+        let memory_ids = vec!["mem1".to_string()];
+
+        let result = ping(memory_ids);
+        assert!(result.is_ok());
+        if let Ok(response) = result {
+            assert_eq!(response.len(), 1);
+            assert!(!response[0].metadata_present);
+            assert!(!response[0].asset_present);
+        }
+    }
+}
+
+/// Validate memory type
+fn is_valid_memory_type(memory_type: &MemoryType) -> bool {
+    matches!(
+        memory_type,
+        MemoryType::Image
+            | MemoryType::Video
+            | MemoryType::Audio
+            | MemoryType::Document
+            | MemoryType::Note
+    )
 }
 
 /// Generate a new unique memory ID
@@ -325,7 +484,13 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
             .get(&capsule_id)
             .and_then(|capsule| {
                 if capsule.owners.contains_key(&caller) || capsule.subject == caller {
-                    Some(capsule.memories.values().cloned().collect::<Vec<_>>())
+                    Some(
+                        capsule
+                            .memories
+                            .values()
+                            .map(|memory| memory.to_header())
+                            .collect::<Vec<_>>(),
+                    )
                 } else {
                     None
                 }

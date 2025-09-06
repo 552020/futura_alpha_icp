@@ -6,8 +6,8 @@ use crate::capsule::capsules_create;
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
-    CapsuleCreationResult, Error, Gallery, GalleryData, GalleryStorageLocation, GalleryUpdateData,
-    PersonRef, Result,
+    Error, Gallery, GalleryData, GalleryHeader, GalleryStorageLocation,
+    GalleryUpdateData, PersonRef, Result,
 };
 
 /// Create a gallery in the caller's capsule (replaces store_gallery_forever)
@@ -29,22 +29,10 @@ pub fn galleries_create(gallery_data: GalleryData) -> Result<Gallery> {
         None => {
             // No capsule found - create one automatically for first-time users
             match capsules_create(None) {
-                CapsuleCreationResult { success: true, .. } => {
-                    // MIGRATED: Now get the newly created capsule
-                    with_capsule_store(|store| {
-                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                        all_capsules.items.into_iter().find(|capsule| {
-                            capsule.subject == caller && capsule.owners.contains_key(&caller)
-                        })
-                    })
-                }
-                CapsuleCreationResult {
-                    success: false,
-                    message,
-                    ..
-                } => {
+                Ok(capsule) => Some(capsule),
+                Err(e) => {
                     return Err(Error::Internal(format!(
-                        "Failed to create capsule: {message}"
+                        "Failed to create capsule: {e}"
                     )));
                 }
             }
@@ -111,22 +99,10 @@ pub fn galleries_create_with_memories(
         None => {
             // No capsule found - create one automatically for first-time users
             match capsules_create(None) {
-                CapsuleCreationResult { success: true, .. } => {
-                    // MIGRATED: Now get the newly created capsule
-                    with_capsule_store(|store| {
-                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                        all_capsules.items.into_iter().find(|capsule| {
-                            capsule.subject == caller && capsule.owners.contains_key(&caller)
-                        })
-                    })
-                }
-                CapsuleCreationResult {
-                    success: false,
-                    message,
-                    ..
-                } => {
+                Ok(capsule) => Some(capsule),
+                Err(e) => {
                     return Err(Error::Internal(format!(
-                        "Failed to create capsule: {message}"
+                        "Failed to create capsule: {e}"
                     )));
                 }
             }
@@ -178,19 +154,25 @@ pub fn galleries_create_with_memories(
 }
 
 /// Get all galleries for the caller (replaces get_user_galleries)
-pub fn galleries_list() -> Result<Vec<Gallery>> {
+pub fn galleries_list() -> Vec<GalleryHeader> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: List all galleries from caller's self-capsule
-    Ok(with_capsule_store(|store| {
+    with_capsule_store(|store| {
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
         all_capsules
             .items
             .into_iter()
             .filter(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
+            .flat_map(|capsule| {
+                capsule
+                    .galleries
+                    .values()
+                    .map(|gallery| gallery.to_header())
+                    .collect::<Vec<_>>()
+            })
             .collect()
-    }))
+    })
 }
 
 /// Get gallery by ID from caller's capsule (replaces get_gallery_by_id)
@@ -431,4 +413,78 @@ pub struct GallerySizeInfo {
     pub estimated_memory_entries_size: u64,
     pub is_over_limit: bool,
     pub over_limit_by: u64,
+}
+
+#[cfg(test)]
+mod gallery_tests {
+    use super::*;
+    use crate::types::GalleryMemoryEntry;
+
+    #[test]
+    fn test_gallery_storage_location_logic() {
+        // Test the logic for different storage status values
+        // This test doesn't call the actual functions to avoid canister time() calls
+
+        // Test storage status enum values
+        let location_icp = GalleryStorageLocation::ICPOnly;
+        let location_both = GalleryStorageLocation::Both;
+        let location_web2 = GalleryStorageLocation::Web2Only;
+        let location_failed = GalleryStorageLocation::Failed;
+
+        // Verify enum values are different
+        assert_ne!(location_icp, location_both);
+        assert_ne!(location_web2, location_failed);
+        assert_ne!(location_icp, location_web2);
+    }
+
+    #[test]
+    fn test_gallery_data_structure() {
+        // Test that we can create gallery data structures correctly
+        let gallery_data = create_test_gallery_data();
+
+        assert_eq!(gallery_data.gallery.title, "Test Gallery");
+        assert_eq!(
+            gallery_data.gallery.storage_location,
+            GalleryStorageLocation::Web2Only
+        );
+        assert!(!gallery_data.gallery.is_public);
+        assert!(gallery_data.gallery.memory_entries.is_empty());
+    }
+
+    #[test]
+    fn test_gallery_memory_entry_structure() {
+        // Test gallery memory entry structure
+        let entry = GalleryMemoryEntry {
+            memory_id: "test_memory_123".to_string(),
+            position: 1,
+            gallery_caption: Some("Test Caption".to_string()),
+            is_featured: true,
+            gallery_metadata: "{}".to_string(),
+        };
+
+        assert_eq!(entry.memory_id, "test_memory_123");
+        assert_eq!(entry.position, 1);
+        assert!(entry.is_featured);
+        assert_eq!(entry.gallery_caption, Some("Test Caption".to_string()));
+    }
+
+    // Helper function to create test gallery data
+    fn create_test_gallery_data() -> GalleryData {
+        let mock_time = 1234567890u64; // Mock timestamp for tests
+        GalleryData {
+            gallery: Gallery {
+                id: format!("test_gallery_{}", mock_time),
+                owner_principal: candid::Principal::anonymous(),
+                title: "Test Gallery".to_string(),
+                description: Some("Test Description".to_string()),
+                is_public: false,
+                created_at: mock_time,
+                updated_at: mock_time,
+                storage_location: GalleryStorageLocation::Web2Only,
+                memory_entries: vec![],
+                bound_to_neon: false,
+            },
+            owner_principal: candid::Principal::anonymous(),
+        }
+    }
 }

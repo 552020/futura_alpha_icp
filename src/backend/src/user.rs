@@ -58,10 +58,10 @@ pub fn register_user_with_nonce(nonce: String) -> types::Result<()> {
         // Frontend perspective: "Create new user"
         // Backend reality: "Create new self-capsule"
         match crate::capsules_create(None) {
-            types::CapsuleCreationResult { success: true, .. } => {}
-            types::CapsuleCreationResult { success: false, .. } => {
+            Ok(_) => {}
+            Err(e) => {
                 return Err(types::Error::Internal(
-                    "Failed to create user capsule".to_string(),
+                    format!("Failed to create user capsule: {e}"),
                 ))
             }
         }
