@@ -7,7 +7,8 @@ set -e
 
 # Source test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Galleries Delete Tests"
@@ -22,33 +23,19 @@ GALLERY_DESCRIPTION="A test gallery for delete operations"
 test_galleries_delete_basic() {
     echo_info "Testing galleries_delete with basic gallery data..."
     
-    # First create a gallery to delete
-    local gallery_data="(record {
-        gallery = record {
-            id = \"$GALLERY_ID\";
-            title = \"$GALLERY_NAME\";
-            description = opt \"$GALLERY_DESCRIPTION\";
-            is_public = true;
-            created_at = 0;
-            updated_at = 0;
-            owner_principal = principal \"$(dfx identity get-principal)\";
-            storage_status = variant { Web2Only };
-            memory_entries = vec {};
-            bound_to_neon = false;
-        };
-        owner_principal = principal \"$(dfx identity get-principal)\";
-    })"
+    # First create a gallery to delete using shared utilities
+    local gallery_data=$(create_basic_gallery_data "$GALLERY_ID" "$GALLERY_NAME" "$GALLERY_DESCRIPTION" "true" "Web2Only")
     
     # Create the gallery
     local create_result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
-    if ! echo "$create_result" | grep -q "success = true"; then
+    if ! is_success "$create_result"; then
         echo_error "Failed to create gallery for delete test"
         return 1
     fi
     
     # Verify gallery exists in list
     local list_result=$(dfx canister call backend galleries_list 2>/dev/null)
-    if ! echo "$list_result" | grep -q "\"$GALLERY_ID\""; then
+    if ! is_success "$list_result" || ! echo "$list_result" | grep -q "\"$GALLERY_ID\""; then
         echo_error "Gallery not found in list after creation"
         return 1
     fi
@@ -56,20 +43,11 @@ test_galleries_delete_basic() {
     # Now delete the gallery
     local result=$(dfx canister call backend galleries_delete "(\"$GALLERY_ID\")" 2>/dev/null)
     
-    # Verify response structure
-    if echo "$result" | grep -q "success = true"; then
-        echo_success "galleries_delete returned success = true"
+    # Verify response structure (Result<T, Error> format)
+    if is_success "$result"; then
+        echo_success "galleries_delete returned success"
     else
         echo_error "galleries_delete failed or returned unexpected response"
-        echo_debug "Response: $result"
-        return 1
-    fi
-    
-    # Verify success message
-    if echo "$result" | grep -q "Gallery deleted successfully"; then
-        echo_success "galleries_delete returned correct success message"
-    else
-        echo_error "galleries_delete did not return expected success message"
         echo_debug "Response: $result"
         return 1
     fi
@@ -83,8 +61,8 @@ test_galleries_delete_verification() {
     # Get galleries list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
     
-    # Check if our deleted gallery is NOT in the list
-    if echo "$result" | grep -q "\"$GALLERY_ID\""; then
+    # Check if our deleted gallery is NOT in the list (Result<Vec<Gallery>, Error> format)
+    if is_success "$result" && echo "$result" | grep -q "\"$GALLERY_ID\""; then
         echo_error "Gallery still found in galleries_list after deletion"
         echo_debug "galleries_list response: $result"
         return 1
@@ -101,13 +79,9 @@ test_galleries_delete_nonexistent() {
     # Try to delete a gallery that doesn't exist
     local result=$(dfx canister call backend galleries_delete "(\"non-existent-gallery-123\")" 2>/dev/null)
     
-    # Should return failure
-    if echo "$result" | grep -q "success = false"; then
-        if echo "$result" | grep -q "Gallery not found"; then
-            echo_success "galleries_delete correctly handled non-existent gallery"
-        else
-            echo_warning "galleries_delete returned failure but unexpected message"
-        fi
+    # Should return failure (Result<T, Error> format)
+    if is_failure "$result"; then
+        echo_success "galleries_delete correctly handled non-existent gallery"
     else
         echo_error "galleries_delete should have failed for non-existent gallery"
         echo_debug "Response: $result"
@@ -123,13 +97,9 @@ test_galleries_delete_idempotency() {
     # Try to delete the same gallery again
     local result=$(dfx canister call backend galleries_delete "(\"$GALLERY_ID\")" 2>/dev/null)
     
-    # Should return failure with "Gallery not found" message
-    if echo "$result" | grep -q "success = false"; then
-        if echo "$result" | grep -q "Gallery not found"; then
-            echo_success "galleries_delete correctly handled duplicate deletion (idempotency)"
-        else
-            echo_warning "galleries_delete returned failure but unexpected message"
-        fi
+    # Should return failure (Result<T, Error> format)
+    if is_failure "$result"; then
+        echo_success "galleries_delete correctly handled duplicate deletion (idempotency)"
     else
         echo_error "galleries_delete should have failed for already deleted gallery"
         echo_debug "Response: $result"

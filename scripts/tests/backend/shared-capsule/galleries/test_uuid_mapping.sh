@@ -7,6 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../test_config.sh"
 source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="UUID Mapping Tests"
@@ -55,7 +56,7 @@ test_gallery_uuid_preservation() {
     is_public = true;
     created_at = $timestamp;
     updated_at = $timestamp;
-    storage_status = variant { ICPOnly };
+    storage_location = variant { ICPOnly };
     memory_entries = vec {};
   };
   owner_principal = principal "$(dfx identity get-principal)";
@@ -165,7 +166,7 @@ test_gallery_idempotency() {
     is_public = true;
     created_at = $timestamp;
     updated_at = $timestamp;
-    storage_status = variant { ICPOnly };
+    storage_location = variant { ICPOnly };
     memory_entries = vec {};
   };
   owner_principal = principal "$(dfx identity get-principal)";
@@ -266,7 +267,7 @@ test_gallery_retrieval_by_uuid() {
     is_public = true;
     created_at = $timestamp;
     updated_at = $timestamp;
-    storage_status = variant { ICPOnly };
+    storage_location = variant { ICPOnly };
     memory_entries = vec {};
   };
   owner_principal = principal "$(dfx identity get-principal)";

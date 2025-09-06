@@ -7,6 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../test_config.sh"
 source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Gallery CRUD Operations Tests"
@@ -14,122 +15,12 @@ TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 
-# Helper function to check if response indicates success (Result<T, Error> format)
-is_success() {
-    local response="$1"
-    echo "$response" | grep -q "Ok"
-}
-
-# Helper function to check if response indicates failure (Result<T, Error> format)
-is_failure() {
-    local response="$1"
-    echo "$response" | grep -q "Err"
-}
-
-# Helper function to check if response indicates success (old ICPResult format)
-is_success_icp() {
-    local response="$1"
-    echo "$response" | grep -q "success = true"
-}
-
-# Helper function to check if response indicates failure (old ICPResult format)
-is_failure_icp() {
-    local response="$1"
-    echo "$response" | grep -q "success = false"
-}
-
-# Helper function to increment test counters
+# Use run_gallery_test from shared utilities
 run_test() {
-    local test_name="$1"
-    local test_command="$2"
-    
-    echo_info "Running: $test_name"
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
-    if eval "$test_command"; then
-        echo_pass "$test_name"
-        PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-        echo_fail "$test_name"
-        FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    echo ""
+    run_gallery_test "$1" "$2"
 }
 
-# Helper function to create test memory data
-create_test_memory_data() {
-    local content="$1"
-    local name="$2"
-    
-    # Convert text to base64 for binary data
-    local encoded_content=$(echo -n "$content" | base64)
-    
-    cat << EOF
-(variant {
-  Inline = record {
-    bytes = blob "$encoded_content";
-    meta = record {
-      name = "test_${name}.txt";
-      description = opt "Test memory for gallery testing";
-      tags = vec { "test"; "gallery"; };
-    };
-  }
-})
-EOF
-}
-
-# Helper function to upload a test memory and return its ID
-upload_test_memory() {
-    local content="$1"
-    local name="$2"
-    
-    # Generate a unique idempotency key
-    local timestamp=$(date +%s)
-    local idem="gallery_test_${timestamp}_${RANDOM}_${name}"
-    
-    local memory_data=$(create_test_memory_data "$content" "$name")
-    local capsule_id=$(get_test_capsule_id)
-    
-    if [[ -z "$capsule_id" ]]; then
-        return 1
-    fi
-    
-    # Use the correct API format: memories_create(capsule_id, memory_data, idem)
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
-
-    # Check for successful Result<MemoryId, Error> response
-    if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
-        local memory_id=$(echo "$result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
-        echo "$memory_id"
-        return 0
-    else
-        echo ""
-        return 1
-    fi
-}
-
-# Helper function to get a capsule ID for testing
-get_test_capsule_id() {
-    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
-    local capsule_id=""
-
-    if echo "$capsule_result" | grep -q "Err"; then
-        echo_info "No capsule found, creating one first..."
-        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-        if echo "$create_result" | grep -q "Ok"; then
-            capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//' | head -1)
-        fi
-    elif echo "$capsule_result" | grep -q "Ok"; then
-        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//' | head -1)
-    fi
-
-    if [[ -z "$capsule_id" ]]; then
-        echo_error "Failed to get capsule ID for testing"
-        return 1
-    fi
-
-    echo "$capsule_id"
-}
+# Helper functions are now available from gallery_test_utils.sh
 
 # Helper function to create and store a test gallery, returning its ID
 create_test_gallery() {
@@ -140,38 +31,14 @@ create_test_gallery() {
     local timestamp=$(date +%s)000000000
     local gallery_id="gallery_${timestamp}_${RANDOM}"
     
-    local gallery_data=$(cat << EOF
-(record {
-  gallery = record {
-    id = "$gallery_id";
-    owner_principal = principal "$(dfx identity get-principal)";
-    title = "Test Gallery for CRUD";
-    description = opt "Gallery created for CRUD testing";
-    is_public = true;
-    created_at = $timestamp;
-    updated_at = $timestamp;
-    storage_status = variant { ICPOnly };
-    memory_entries = vec {
-      record {
-        memory_id = "$memory_id";
-        position = 1;
-        gallery_caption = opt "Test memory in gallery";
-        is_featured = false;
-        gallery_metadata = "{}";
-      };
-    };
-    bound_to_neon = false;
-  };
-  owner_principal = principal "$(dfx identity get-principal)";
-})
-EOF
-)
+    # Use shared utilities to create gallery data with memories
+    local gallery_data=$(create_gallery_data_with_memories "$gallery_id" "Test Gallery for CRUD" "Gallery created for CRUD testing" "true" "$memory_id" "" "ICPOnly")
     
     local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
 
-    if is_success_icp "$result"; then
-        # Extract gallery ID from the response, not from our generated ID
-        local returned_gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+    if is_success "$result"; then
+        # Extract gallery ID from the response (Result<Gallery, Error> format)
+        local returned_gallery_id=$(extract_gallery_id "$result")
         if [ -n "$returned_gallery_id" ]; then
             echo "$returned_gallery_id"
         else
@@ -206,7 +73,7 @@ test_update_gallery_title() {
     local update_data='(record { title = opt "Updated Gallery Title"; description = null; is_public = null; memory_entries = null; })'
     local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
 
-    if is_success_icp "$result"; then
+    if is_success "$result"; then
         echo_info "Gallery title update successful for ID: $gallery_id"
         return 0
     else
@@ -235,7 +102,7 @@ test_update_gallery_description() {
     local update_data='(record { title = null; description = opt "Updated description for testing"; is_public = null; memory_entries = null; })'
     local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
 
-    if is_success_icp "$result"; then
+    if is_success "$result"; then
         echo_info "Gallery description update successful for ID: $gallery_id"
         return 0
     else
@@ -264,7 +131,7 @@ test_update_gallery_visibility() {
     local update_data='(record { title = null; description = null; is_public = opt false; memory_entries = null; })'
     local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
 
-    if is_success_icp "$result"; then
+    if is_success "$result"; then
         echo_info "Gallery visibility update successful for ID: $gallery_id"
         return 0
     else
@@ -318,7 +185,7 @@ EOF
     
     local result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
 
-    if is_success_icp "$result"; then
+    if is_success "$result"; then
         echo_info "Gallery memory entries update successful for ID: $gallery_id"
         return 0
     else
@@ -334,7 +201,7 @@ test_update_nonexistent_gallery() {
     local result=$(dfx canister call backend galleries_update "(\"$fake_id\", $update_data)" 2>/dev/null)
     
     # Should fail with appropriate error
-    if is_failure_icp "$result"; then
+    if is_failure "$result"; then
         echo_info "Correctly failed to update non-existent gallery"
         return 0
     else
@@ -364,7 +231,7 @@ test_delete_existing_gallery() {
     # Delete the gallery
     local result=$(dfx canister call backend galleries_delete "(\"$gallery_id\")" 2>/dev/null)
 
-    if is_success_icp "$result"; then
+    if is_success "$result"; then
         echo_info "Gallery deletion successful for ID: $gallery_id"
         return 0
     else
@@ -379,7 +246,7 @@ test_delete_nonexistent_gallery() {
     local result=$(dfx canister call backend galleries_delete "(\"$fake_id\")" 2>/dev/null)
     
     # Should fail with appropriate error
-    if is_failure_icp "$result"; then
+    if is_failure "$result"; then
         echo_info "Correctly failed to delete non-existent gallery"
         return 0
     else
@@ -407,7 +274,7 @@ test_galleries_delete_verify_removal() {
     # Delete the gallery
     local delete_result=$(dfx canister call backend galleries_delete "(\"$gallery_id\")" 2>/dev/null)
 
-    if ! is_success_icp "$delete_result"; then
+    if ! is_success "$delete_result"; then
         echo_info "Failed to delete gallery for verification test"
         return 1
     fi
@@ -430,8 +297,8 @@ test_get_my_galleries_empty() {
     # This test checks the structure when user has no galleries or few galleries
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return a vector (empty or with galleries)
-    if echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"; then
+    # Should return a vector (empty or with galleries) - Result<Vec<Gallery>, Error> format
+    if is_success "$result" && (echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"); then
         echo_info "galleries_list query successful - returned vector structure"
         return 0
     else
@@ -459,8 +326,8 @@ test_get_my_galleries_with_data() {
     # Query my galleries
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return a vector with gallery data
-    if echo "$result" | grep -q "vec {" && echo "$result" | grep -q "record {"; then
+    # Should return a vector with gallery data - Result<Vec<Gallery>, Error> format
+    if is_success "$result" && echo "$result" | grep -q "vec {" && echo "$result" | grep -q "record {"; then
         echo_info "galleries_list returned galleries successfully"
         return 0
     else
@@ -490,8 +357,8 @@ test_get_user_galleries_self() {
     # Query galleries for current user using galleries_list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return a vector with gallery data
-    if echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"; then
+    # Should return a vector with gallery data - Result<Vec<Gallery>, Error> format
+    if is_success "$result" && (echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"); then
         echo_info "galleries_list returned galleries successfully for self"
         return 0
     else
@@ -504,8 +371,8 @@ test_get_user_galleries_nonexistent_user() {
     # Since get_user_galleries was removed, test that galleries_list works correctly
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return empty or populated vector - galleries_list always succeeds
-    if echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{" || echo "$result" | grep -q "(vec {})" || echo "$result" | grep -q "(vec{})" || [ -z "$result" ]; then
+    # Should return empty or populated vector - galleries_list always succeeds - Result<Vec<Gallery>, Error> format
+    if is_success "$result" && (echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{" || echo "$result" | grep -q "(vec {})" || echo "$result" | grep -q "(vec{})"); then
         echo_info "galleries_list correctly returned result"
         return 0
     else
@@ -535,7 +402,7 @@ test_gallery_crud_consistency() {
     local update_data='(record { title = opt "CRUD Test Updated"; description = null; is_public = null; memory_entries = null; })'
     local update_result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
     
-    if ! is_success_icp "$update_result"; then
+    if ! is_success "$update_result"; then
         echo_info "Failed to update gallery in CRUD consistency test"
         return 1
     fi
@@ -551,7 +418,7 @@ test_gallery_crud_consistency() {
     # Delete gallery
     local delete_result=$(dfx canister call backend galleries_delete "(\"$gallery_id\")" 2>/dev/null)
     
-    if ! is_success_icp "$delete_result"; then
+    if ! is_success "$delete_result"; then
         echo_info "Failed to delete gallery in CRUD consistency test"
         return 1
     fi

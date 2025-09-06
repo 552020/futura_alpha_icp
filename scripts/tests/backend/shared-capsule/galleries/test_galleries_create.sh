@@ -7,7 +7,8 @@ set -e
 
 # Source test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Galleries Create Tests"
@@ -22,29 +23,15 @@ GALLERY_DESCRIPTION="A test gallery created via galleries_create endpoint"
 test_galleries_create_basic() {
     echo_info "Testing galleries_create with basic gallery data..."
     
-    # Create gallery data
-    local gallery_data="(record {
-        gallery = record {
-            id = \"$GALLERY_ID\";
-            title = \"$GALLERY_NAME\";
-            description = opt \"$GALLERY_DESCRIPTION\";
-            is_public = true;
-            created_at = 0;
-            updated_at = 0;
-            owner_principal = principal \"$(dfx identity get-principal)\";
-            storage_status = variant { Web2Only };
-            memory_entries = vec {};
-            bound_to_neon = false;
-        };
-        owner_principal = principal \"$(dfx identity get-principal)\";
-    })"
+    # Create gallery data using shared utilities
+    local gallery_data=$(create_basic_gallery_data "$GALLERY_ID" "$GALLERY_NAME" "$GALLERY_DESCRIPTION" "true" "Web2Only")
     
     # Call galleries_create
     local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
-    # Verify response structure
-    if echo "$result" | grep -q "success = true"; then
-        echo_success "galleries_create returned success = true"
+    # Verify response structure (Result<T, Error> format)
+    if is_success "$result"; then
+        echo_success "galleries_create returned success"
     else
         echo_error "galleries_create failed or returned unexpected response"
         echo_debug "Response: $result"
@@ -52,10 +39,11 @@ test_galleries_create_basic() {
     fi
     
     # Verify gallery_id is returned
-    if echo "$result" | grep -q "gallery_id = opt \"$GALLERY_ID\""; then
-        echo_success "galleries_create returned correct gallery_id"
+    local returned_id=$(extract_gallery_id "$result")
+    if [[ "$returned_id" == "$GALLERY_ID" ]]; then
+        echo_success "galleries_create returned correct gallery_id: $returned_id"
     else
-        echo_error "galleries_create did not return expected gallery_id"
+        echo_error "galleries_create did not return expected gallery_id. Expected: $GALLERY_ID, Got: $returned_id"
         echo_debug "Response: $result"
         return 1
     fi
@@ -66,33 +54,15 @@ test_galleries_create_basic() {
 test_galleries_create_idempotency() {
     echo_info "Testing galleries_create idempotency (calling twice with same ID)..."
     
-    # Create gallery data (same ID as before)
-    local gallery_data="(record {
-        gallery = record {
-            id = \"$GALLERY_ID\";
-            title = \"$GALLERY_NAME Updated\";
-            description = opt \"Updated description\";
-            is_public = false;
-            created_at = 0;
-            updated_at = 0;
-            owner_principal = principal \"$(dfx identity get-principal)\";
-            storage_status = variant { Web2Only };
-            memory_entries = vec {};
-            bound_to_neon = false;
-        };
-        owner_principal = principal \"$(dfx identity get-principal)\";
-    })"
+    # Create gallery data using shared utilities (same ID as before)
+    local gallery_data=$(create_basic_gallery_data "$GALLERY_ID" "$GALLERY_NAME Updated" "Updated description" "false" "Web2Only")
     
     # Call galleries_create again with same ID
     local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
-    # Should return success with "already exists" message
-    if echo "$result" | grep -q "success = true"; then
-        if echo "$result" | grep -q "already exists"; then
-            echo_success "galleries_create correctly handled duplicate ID (idempotency)"
-        else
-            echo_warning "galleries_create returned success but no 'already exists' message"
-        fi
+    # Should return success (idempotency - same result for duplicate calls)
+    if is_success "$result"; then
+        echo_success "galleries_create correctly handled duplicate ID (idempotency)"
     else
         echo_error "galleries_create failed on duplicate ID call"
         echo_debug "Response: $result"
@@ -108,8 +78,8 @@ test_galleries_create_verification() {
     # Get galleries list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
     
-    # Check if our gallery is in the list
-    if echo "$result" | grep -q "\"$GALLERY_ID\""; then
+    # Check if our gallery is in the list (Result<Vec<Gallery>, Error> format)
+    if is_success "$result" && echo "$result" | grep -q "\"$GALLERY_ID\""; then
         echo_success "Gallery found in galleries_list after creation"
     else
         echo_error "Gallery not found in galleries_list after creation"
@@ -126,37 +96,15 @@ test_galleries_create_with_memories() {
     # Create new gallery ID for this test
     local gallery_id_with_memories="test-gallery-memories-$(date +%s)"
     
-    # Create gallery data with memories
-    local gallery_data="(record {
-        gallery = record {
-            id = \"$gallery_id_with_memories\";
-            title = \"Gallery with Memories\";
-            description = opt \"A test gallery with memory data\";
-            is_public = true;
-            created_at = 0;
-            updated_at = 0;
-            owner_principal = principal \"$(dfx identity get-principal)\";
-            storage_status = variant { Web2Only };
-            memory_entries = vec {
-                record {
-                    memory_id = \"memory-1\";
-                    position = 1;
-                    gallery_caption = opt \"Test Memory Caption\";
-                    is_featured = true;
-                    gallery_metadata = \"{\\\"test\\\": true}\";
-                };
-            };
-            bound_to_neon = false;
-        };
-        owner_principal = principal \"$(dfx identity get-principal)\";
-    })"
+    # Create gallery data with memories using shared utilities
+    local gallery_data=$(create_gallery_data_with_memories "$gallery_id_with_memories" "Gallery with Memories" "A test gallery with memory data" "true" "memory-1" "" "Web2Only")
     
     # Call galleries_create
     local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
-    # Verify response
-    if echo "$result" | grep -q "success = true"; then
-        echo_success "galleries_create with memories returned success = true"
+    # Verify response (Result<T, Error> format)
+    if is_success "$result"; then
+        echo_success "galleries_create with memories returned success"
     else
         echo_error "galleries_create with memories failed"
         echo_debug "Response: $result"
@@ -170,7 +118,7 @@ test_old_endpoint_removed() {
     echo_info "Verifying that old store_gallery_forever endpoint is removed..."
     
     # Try to call the old endpoint
-    local result=$(dfx canister call backend store_gallery_forever "(record { gallery = record { id = \"test\"; title = \"test\"; description = opt \"test\"; is_public = true; created_at = 0; updated_at = 0; owner_principal = principal \"2vxsx-fae\"; storage_status = variant { Web2Only }; memory_entries = vec {}; }; owner_principal = principal \"2vxsx-fae\"; })" 2>&1 || true)
+    local result=$(dfx canister call backend store_gallery_forever "(record { gallery = record { id = \"test\"; title = \"test\"; description = opt \"test\"; is_public = true; created_at = 0; updated_at = 0; owner_principal = principal \"2vxsx-fae\"; storage_location = variant { Web2Only }; memory_entries = vec {}; }; owner_principal = principal \"2vxsx-fae\"; })" 2>&1 || true)
     
     # Should get an error about method not found
     if echo "$result" | grep -q "method not found\|no update method"; then
@@ -188,7 +136,7 @@ test_old_endpoint_with_memories_removed() {
     echo_info "Verifying that old store_gallery_forever_with_memories endpoint is removed..."
     
     # Try to call the old endpoint
-    local result=$(dfx canister call backend store_gallery_forever_with_memories "(record { gallery = record { id = \"test\"; title = \"test\"; description = opt \"test\"; is_public = true; created_at = 0; updated_at = 0; owner_principal = principal \"2vxsx-fae\"; storage_status = variant { Web2Only }; memory_entries = vec {}; }; owner_principal = principal \"2vxsx-fae\"; }, true)" 2>&1 || true)
+    local result=$(dfx canister call backend store_gallery_forever_with_memories "(record { gallery = record { id = \"test\"; title = \"test\"; description = opt \"test\"; is_public = true; created_at = 0; updated_at = 0; owner_principal = principal \"2vxsx-fae\"; storage_location = variant { Web2Only }; memory_entries = vec {}; }; owner_principal = principal \"2vxsx-fae\"; }, true)" 2>&1 || true)
     
     # Should get an error about method not found
     if echo "$result" | grep -q "method not found\|no update method"; then

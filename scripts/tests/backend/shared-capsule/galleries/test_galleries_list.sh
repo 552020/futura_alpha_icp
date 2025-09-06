@@ -7,7 +7,8 @@ set -e
 
 # Source test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Galleries List Tests"
@@ -29,41 +30,14 @@ is_empty_vector() {
     echo "$response" | grep -q "vec {}"
 }
 
-# Helper function to increment test counters
+# Use run_gallery_test from shared utilities
 run_test() {
-    local test_name="$1"
-    local test_command="$2"
-    
-    echo_info "Running: $test_name"
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
-    if eval "$test_command"; then
-        echo_pass "$test_name"
-        PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-        echo_fail "$test_name"
-        FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    echo ""
+    run_gallery_test "$1" "$2"
 }
 
 # Test setup - ensure user is registered and has a capsule
 test_setup_user_and_capsule() {
-    echo_info "Setting up test user and capsule..."
-    
-    # Register user
-    local register_result=$(dfx canister call backend register 2>/dev/null)
-    if ! echo "$register_result" | grep -q "true"; then
-        echo_warn "User registration failed, continuing with existing user..."
-    fi
-    
-    # Mark capsule as bound to Web2
-    local bind_result=$(dfx canister call backend 'capsules_bind_neon("Capsule", "", true)' 2>/dev/null)
-    if ! echo "$bind_result" | grep -q "true"; then
-        echo_warn "Capsule binding failed, continuing..."
-    fi
-    
-    echo_info "Setup complete"
+    setup_user_and_capsule
 }
 
 # Test 1: Basic galleries_list call (should return empty vector if no galleries)

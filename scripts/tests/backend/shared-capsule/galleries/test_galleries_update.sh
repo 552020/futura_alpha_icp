@@ -7,7 +7,8 @@ set -e
 
 # Source test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Galleries Update Tests"
@@ -22,26 +23,12 @@ GALLERY_DESCRIPTION="A test gallery for update operations"
 test_galleries_update_basic() {
     echo_info "Testing galleries_update with basic gallery data..."
     
-    # First create a gallery to update
-    local gallery_data="(record {
-        gallery = record {
-            id = \"$GALLERY_ID\";
-            title = \"$GALLERY_NAME\";
-            description = opt \"$GALLERY_DESCRIPTION\";
-            is_public = true;
-            created_at = 0;
-            updated_at = 0;
-            owner_principal = principal \"$(dfx identity get-principal)\";
-            storage_status = variant { Web2Only };
-            memory_entries = vec {};
-            bound_to_neon = false;
-        };
-        owner_principal = principal \"$(dfx identity get-principal)\";
-    })"
+    # First create a gallery to update using shared utilities
+    local gallery_data=$(create_basic_gallery_data "$GALLERY_ID" "$GALLERY_NAME" "$GALLERY_DESCRIPTION" "true" "Web2Only")
     
     # Create the gallery
     local create_result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
-    if ! echo "$create_result" | grep -q "success = true"; then
+    if ! is_success "$create_result"; then
         echo_error "Failed to create gallery for update test"
         return 1
     fi
@@ -57,17 +44,17 @@ test_galleries_update_basic() {
     # Call galleries_update
     local result=$(dfx canister call backend galleries_update "(\"$GALLERY_ID\", $update_data)" 2>/dev/null)
     
-    # Verify response structure
-    if echo "$result" | grep -q "success = true"; then
-        echo_success "galleries_update returned success = true"
+    # Verify response structure (Result<T, Error> format)
+    if is_success "$result"; then
+        echo_success "galleries_update returned success"
     else
         echo_error "galleries_update failed or returned unexpected response"
         echo_debug "Response: $result"
         return 1
     fi
     
-    # Verify gallery is returned
-    if echo "$result" | grep -q "gallery = opt record"; then
+    # Verify gallery is returned (Result<Gallery, Error> format)
+    if echo "$result" | grep -q "id = \"$GALLERY_ID\""; then
         echo_success "galleries_update returned gallery data"
     else
         echo_error "galleries_update did not return gallery data"
@@ -119,8 +106,8 @@ test_galleries_update_partial() {
     # Call galleries_update
     local result=$(dfx canister call backend galleries_update "(\"$GALLERY_ID\", $update_data)" 2>/dev/null)
     
-    # Verify response
-    if echo "$result" | grep -q "success = true"; then
+    # Verify response (Result<T, Error> format)
+    if is_success "$result"; then
         if echo "$result" | grep -q "title = \"Partially Updated Title\""; then
             echo_success "galleries_update correctly handled partial update (title only)"
         else
@@ -150,13 +137,9 @@ test_galleries_update_nonexistent() {
     # Call galleries_update with non-existent ID
     local result=$(dfx canister call backend galleries_update "(\"non-existent-gallery-123\", $update_data)" 2>/dev/null)
     
-    # Should return failure
-    if echo "$result" | grep -q "success = false"; then
-        if echo "$result" | grep -q "Gallery not found"; then
-            echo_success "galleries_update correctly handled non-existent gallery"
-        else
-            echo_warning "galleries_update returned failure but unexpected message"
-        fi
+    # Should return failure (Result<T, Error> format)
+    if is_failure "$result"; then
+        echo_success "galleries_update correctly handled non-existent gallery"
     else
         echo_error "galleries_update should have failed for non-existent gallery"
         echo_debug "Response: $result"
@@ -172,8 +155,8 @@ test_galleries_update_verification() {
     # Get galleries list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
     
-    # Check if our updated gallery is in the list with new title
-    if echo "$result" | grep -q "\"$GALLERY_ID\""; then
+    # Check if our updated gallery is in the list with new title (Result<Vec<Gallery>, Error> format)
+    if is_success "$result" && echo "$result" | grep -q "\"$GALLERY_ID\""; then
         if echo "$result" | grep -q "Partially Updated Title"; then
             echo_success "Gallery found in galleries_list with updated title"
         else

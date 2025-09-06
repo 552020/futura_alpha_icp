@@ -8,6 +8,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../test_config.sh"
 source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Galleries Create With Memories Tests"
@@ -20,95 +21,21 @@ TEST_TIMESTAMP=$(date +%s)
 TEST_GALLERY_1_ID="test_gallery_with_memories_${TEST_TIMESTAMP}"
 TEST_GALLERY_2_ID="test_gallery_without_memories_${TEST_TIMESTAMP}"
 
-# Helper function to check if response indicates success (Result<T, Error> format)
-is_success() {
-    local response="$1"
-    echo "$response" | grep -q "variant {" && echo "$response" | grep -q "Ok ="
-}
-
-# Helper function to check if response indicates failure (Result<T, Error> format)
-is_failure() {
-    local response="$1"
-    echo "$response" | grep -q "variant {" && echo "$response" | grep -q "Err ="
-}
-
-# Helper function to increment test counters
+# Use run_gallery_test from shared utilities
 run_test() {
-    local test_name="$1"
-    local test_command="$2"
-    
-    echo_info "Running: $test_name"
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
-    
-    if eval "$test_command"; then
-        echo_pass "$test_name"
-        PASSED_TESTS=$((PASSED_TESTS + 1))
-    else
-        echo_fail "$test_name"
-        FAILED_TESTS=$((FAILED_TESTS + 1))
-    fi
-    echo ""
-}
-
-# Helper function to extract storage status from response (Result<Gallery, Error> format)
-extract_storage_status() {
-    local response="$1"
-    echo "$response" | grep -o 'storage_status = variant { [^}]*}' | sed 's/storage_status = variant { \([^}]*\) }/\1/'
-}
-
-# Helper function to create gallery data
-create_gallery_data() {
-    local gallery_id="$1"
-    local title="$2"
-    local description="$3"
-    local is_public="$4"
-    
-    local timestamp=${TEST_TIMESTAMP}000000000
-    
-    cat << EOF
-(record {
-  gallery = record {
-    id = "$gallery_id";
-    owner_principal = principal "$(dfx identity get-principal)";
-    title = "$title";
-    description = opt "$description";
-    is_public = $is_public;
-    created_at = $timestamp;
-    updated_at = $timestamp;
-    storage_status = variant { Web2Only };
-    memory_entries = vec {};
-    bound_to_neon = false;
-  };
-  owner_principal = principal "$(dfx identity get-principal)";
-})
-EOF
+    run_gallery_test "$1" "$2"
 }
 
 # Test setup - ensure user is registered and has a capsule
 test_setup_user_and_capsule() {
-    echo_info "Setting up test user and capsule..."
-    
-    # Register user
-    local register_result=$(dfx canister call backend register 2>/dev/null)
-    if ! is_success "$register_result"; then
-        echo_warn "User registration failed, continuing with existing user..."
-    fi
-    
-    # Mark capsule as bound to Web2
-    local bind_result=$(dfx canister call backend 'capsules_bind_neon("Capsule", "", true)' 2>/dev/null)
-    if ! is_success "$bind_result"; then
-        echo_warn "Capsule binding failed, continuing..."
-    fi
-    
-    echo_info "Setup complete"
-    return 0
+    setup_user_and_capsule
 }
 
 # Test 1: Store gallery with memory sync intent (sync_memories = true)
 test_store_gallery_with_memory_sync_intent() {
     echo_info "Testing galleries_create_with_memories with sync_memories = true..."
     
-    local gallery_data=$(create_gallery_data "$TEST_GALLERY_1_ID" "Gallery With Memory Sync" "Gallery intended for memory synchronization" "false")
+    local gallery_data=$(create_basic_gallery_data "$TEST_GALLERY_1_ID" "Gallery With Memory Sync" "Gallery intended for memory synchronization" "false" "Web2Only")
     
     # Call galleries_create_with_memories with sync_memories = true
     local result=$(dfx canister call backend galleries_create_with_memories "($gallery_data, true)" 2>/dev/null)
@@ -135,7 +62,7 @@ test_store_gallery_with_memory_sync_intent() {
 test_store_gallery_without_memory_sync_intent() {
     echo_info "Testing galleries_create_with_memories with sync_memories = false..."
     
-    local gallery_data=$(create_gallery_data "$TEST_GALLERY_2_ID" "Gallery Without Memory Sync" "Gallery not intended for memory synchronization" "true")
+    local gallery_data=$(create_basic_gallery_data "$TEST_GALLERY_2_ID" "Gallery Without Memory Sync" "Gallery not intended for memory synchronization" "true" "Web2Only")
     
     # Call galleries_create_with_memories with sync_memories = false
     local result=$(dfx canister call backend galleries_create_with_memories "($gallery_data, false)" 2>/dev/null)
@@ -163,7 +90,7 @@ test_store_gallery_idempotency() {
     echo_info "Testing idempotency of galleries_create_with_memories..."
     
     local gallery_id="test_gallery_idempotent_${TEST_TIMESTAMP}"
-    local gallery_data=$(create_gallery_data "$gallery_id" "Idempotent Gallery Test" "Testing idempotency" "false")
+    local gallery_data=$(create_basic_gallery_data "$gallery_id" "Idempotent Gallery Test" "Testing idempotency" "false" "Web2Only")
     
     # Store gallery first time
     local result1=$(dfx canister call backend galleries_create_with_memories "($gallery_data, true)" 2>/dev/null)
@@ -197,8 +124,8 @@ test_compare_with_basic_store_gallery() {
     local gallery_id_basic="test_gallery_basic_${TEST_TIMESTAMP}"
     local gallery_id_enhanced="test_gallery_enhanced_${TEST_TIMESTAMP}"
     
-    local gallery_data_basic=$(create_gallery_data "$gallery_id_basic" "Basic Gallery" "Basic storage test" "true")
-    local gallery_data_enhanced=$(create_gallery_data "$gallery_id_enhanced" "Enhanced Gallery" "Enhanced storage test" "true")
+    local gallery_data_basic=$(create_basic_gallery_data "$gallery_id_basic" "Basic Gallery" "Basic storage test" "true" "Web2Only")
+    local gallery_data_enhanced=$(create_basic_gallery_data "$gallery_id_enhanced" "Enhanced Gallery" "Enhanced storage test" "true" "Web2Only")
     
     # Store with basic endpoint
     local result_basic=$(dfx canister call backend galleries_create "$gallery_data_basic" 2>/dev/null)
@@ -234,7 +161,7 @@ test_gallery_retrieval_after_storage() {
     echo_info "Testing gallery retrieval after galleries_create_with_memories..."
     
     local gallery_id="test_gallery_retrieval_${TEST_TIMESTAMP}"
-    local gallery_data=$(create_gallery_data "$gallery_id" "Retrieval Test Gallery" "Testing retrieval functionality" "false")
+    local gallery_data=$(create_basic_gallery_data "$gallery_id" "Retrieval Test Gallery" "Testing retrieval functionality" "false" "Web2Only")
     
     # Store gallery
     local store_result=$(dfx canister call backend galleries_create_with_memories "($gallery_data, true)" 2>/dev/null)
@@ -273,13 +200,13 @@ test_different_gallery_configurations() {
     
     # Test public gallery with memory sync
     local public_gallery_id="test_gallery_public_${TEST_TIMESTAMP}"
-    local public_gallery_data=$(create_gallery_data "$public_gallery_id" "Public Gallery" "Public gallery with memory sync" "true")
+    local public_gallery_data=$(create_basic_gallery_data "$public_gallery_id" "Public Gallery" "Public gallery with memory sync" "true" "Web2Only")
     
     local public_result=$(dfx canister call backend galleries_create_with_memories "($public_gallery_data, true)" 2>/dev/null)
     
     # Test private gallery without memory sync
     local private_gallery_id="test_gallery_private_${TEST_TIMESTAMP}"
-    local private_gallery_data=$(create_gallery_data "$private_gallery_id" "Private Gallery" "Private gallery without memory sync" "false")
+    local private_gallery_data=$(create_basic_gallery_data "$private_gallery_id" "Private Gallery" "Private gallery without memory sync" "false" "Web2Only")
     
     local private_result=$(dfx canister call backend galleries_create_with_memories "($private_gallery_data, false)" 2>/dev/null)
     
