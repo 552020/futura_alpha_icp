@@ -12,6 +12,7 @@
 
 use super::{CapsuleId, CapsuleStore, Order, Page};
 use crate::memory::{MEM_CAPSULES, MEM_CAPSULES_IDX_OWNER, MEM_CAPSULES_IDX_SUBJECT, MM};
+use crate::state::track_size_change;
 use crate::types::{Capsule, Error};
 #[allow(unused_imports)]
 use candid::{Decode, Encode, Principal};
@@ -207,10 +208,23 @@ impl CapsuleStore for StableStore {
             panic!("Empty CapsuleId is not allowed - would cause empty string returns in subject index");
         }
 
-        if let Some(old) = self.capsules.get(&id) {
+        let old_size = if let Some(old) = self.capsules.get(&id) {
             // remove old index entries first (avoid stale/dup)
             self.remove_from_indexes(&id, &old);
+            old.to_bytes().len() as u64
+        } else {
+            0
+        };
+
+        let new_size = capsule.to_bytes().len() as u64;
+
+        // Track size change (this will fail if it exceeds limits)
+        if let Err(_) = track_size_change(old_size, new_size) {
+            // If size tracking fails, we should not proceed with the upsert
+            // This is a design decision - we could also log and continue
+            panic!("Capsule size would exceed canister limits");
         }
+
         let prev = self.capsules.insert(id.clone(), capsule.clone());
         self.update_indexes(&id, &capsule);
         prev
@@ -248,7 +262,16 @@ impl CapsuleStore for StableStore {
                 })
                 .collect();
 
+            // Calculate old size before update
+            let old_size = capsule.to_bytes().len() as u64;
+
             f(&mut capsule);
+
+            // Calculate new size after update and track the change
+            let new_size = capsule.to_bytes().len() as u64;
+            if let Err(e) = track_size_change(old_size, new_size) {
+                return Err(e);
+            }
 
             // Update indexes if subject or owners changed
             let new_subject = capsule.subject.principal().cloned();
@@ -477,10 +500,7 @@ impl CapsuleStore for StableStore {
 /// This implementation handles serialization/deserialization for stable storage.
 /// It includes schema versioning for forward compatibility.
 impl Storable for Capsule {
-    const BOUND: Bound = Bound::Bounded {
-        max_size: 8 * 1024, // 8 KiB headroom
-        is_fixed_size: false,
-    };
+    const BOUND: Bound = Bound::Unbounded;
 
     fn to_bytes(&self) -> Cow<[u8]> {
         // versioned encoding

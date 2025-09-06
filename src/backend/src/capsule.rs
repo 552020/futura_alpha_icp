@@ -2,12 +2,24 @@
 
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
+use crate::state::{add_canister_size, track_size_change};
 use crate::types::BlobRef;
 use crate::types::Result;
 use crate::types::*;
+use ic_stable_structures::Storable;
 
 use ic_cdk::api::{msg_caller, time};
 use std::collections::HashMap;
+
+// ============================================================================
+// SIZE TRACKING UTILITIES
+// ============================================================================
+
+/// Calculate the serialized size of a capsule
+fn calculate_capsule_size(capsule: &Capsule) -> u64 {
+    let bytes = capsule.to_bytes();
+    bytes.len() as u64
+}
 
 // ============================================================================
 // MIGRATION GUIDE: From Direct Storage Access to Trait-Based API
@@ -347,6 +359,16 @@ pub fn capsules_create(subject: Option<PersonRef>) -> CapsuleCreationResult {
     let capsule = Capsule::new(actual_subject, caller);
     let capsule_id = capsule.id.clone();
 
+    // Track size before creating capsule
+    let capsule_size = calculate_capsule_size(&capsule);
+    if let Err(e) = add_canister_size(capsule_size) {
+        return CapsuleCreationResult {
+            success: false,
+            capsule_id: None,
+            message: format!("Cannot create capsule: {}", e),
+        };
+    }
+
     // Use upsert to create new capsule (should succeed since we're checking for existing self-capsule above)
     with_capsule_store_mut(|store| {
         store.upsert(capsule_id.clone(), capsule);
@@ -646,439 +668,6 @@ pub fn import_capsules_from_upgrade(capsule_data: Vec<(String, Capsule)>) {
             store.upsert(id, capsule);
         }
     })
-}
-
-// ============================================================================
-// GALLERY MANAGEMENT FUNCTIONS
-// ============================================================================
-
-/// Create a gallery in the caller's capsule (replaces store_gallery_forever)
-pub fn galleries_create(gallery_data: GalleryData) -> StoreGalleryResponse {
-    let caller = PersonRef::from_caller();
-
-    // Use the gallery ID provided by Web2 (don't generate new ID)
-    let gallery_id = gallery_data.gallery.id.clone();
-
-    // MIGRATED: Ensure caller has a capsule - create one if it doesn't exist
-    let capsule = match with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-    }) {
-        Some(capsule) => Some(capsule),
-        None => {
-            // No capsule found - create one automatically for first-time users
-            match capsules_create(None) {
-                CapsuleCreationResult { success: true, .. } => {
-                    // MIGRATED: Now get the newly created capsule
-                    with_capsule_store(|store| {
-                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                        all_capsules.items.into_iter().find(|capsule| {
-                            capsule.subject == caller && capsule.owners.contains_key(&caller)
-                        })
-                    })
-                }
-                CapsuleCreationResult {
-                    success: false,
-                    message,
-                    ..
-                } => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: format!("Failed to create capsule: {message}"),
-                        storage_status: GalleryStorageStatus::Failed,
-                    };
-                }
-            }
-        }
-    };
-
-    match capsule {
-        Some(mut capsule) => {
-            // Check if gallery already exists with this UUID (idempotency)
-            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
-                return StoreGalleryResponse {
-                    success: true,
-                    gallery_id: Some(gallery_id.clone()),
-                    icp_gallery_id: Some(gallery_id),
-                    message: "Gallery already exists with this UUID".to_string(),
-                    storage_status: GalleryStorageStatus::ICPOnly,
-                };
-            }
-
-            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
-            let mut gallery = gallery_data.gallery;
-            gallery.owner_principal = match caller {
-                PersonRef::Principal(p) => p,
-                PersonRef::Opaque(_) => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: "Only principals can store galleries".to_string(),
-                        storage_status: GalleryStorageStatus::Failed,
-                    }
-                }
-            };
-            gallery.created_at = ic_cdk::api::time();
-            gallery.updated_at = ic_cdk::api::time();
-            gallery.storage_status = GalleryStorageStatus::ICPOnly;
-
-            // Store gallery in capsule
-            capsule.galleries.insert(gallery_id.clone(), gallery);
-            capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
-
-            // MIGRATED: Save updated capsule
-            let capsule_id = capsule.id.clone();
-            with_capsule_store_mut(|store| {
-                store.upsert(capsule_id, capsule);
-            });
-
-            StoreGalleryResponse {
-                success: true,
-                gallery_id: Some(gallery_id.clone()),
-                icp_gallery_id: Some(gallery_id),
-                message: "Gallery stored successfully in capsule".to_string(),
-                storage_status: GalleryStorageStatus::ICPOnly,
-            }
-        }
-        None => StoreGalleryResponse {
-            success: false,
-            gallery_id: None,
-            icp_gallery_id: None,
-            message: "No capsule found for caller".to_string(),
-            storage_status: GalleryStorageStatus::Failed,
-        },
-    }
-}
-
-/// Create a gallery with memories in the caller's capsule (replaces store_gallery_forever_with_memories)
-pub fn galleries_create_with_memories(
-    gallery_data: GalleryData,
-    sync_memories: bool,
-) -> StoreGalleryResponse {
-    let caller = PersonRef::from_caller();
-
-    // Use the gallery ID provided by Web2 (don't generate new ID)
-    let gallery_id = gallery_data.gallery.id.clone();
-
-    // MIGRATED: Ensure caller has a capsule - create one if it doesn't exist
-    let capsule = match with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-    }) {
-        Some(capsule) => Some(capsule),
-        None => {
-            // No capsule found - create one automatically for first-time users
-            match capsules_create(None) {
-                CapsuleCreationResult { success: true, .. } => {
-                    // MIGRATED: Now get the newly created capsule
-                    with_capsule_store(|store| {
-                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                        all_capsules.items.into_iter().find(|capsule| {
-                            capsule.subject == caller && capsule.owners.contains_key(&caller)
-                        })
-                    })
-                }
-                CapsuleCreationResult {
-                    success: false,
-                    message,
-                    ..
-                } => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: format!("Failed to create capsule: {message}"),
-                        storage_status: GalleryStorageStatus::Failed,
-                    };
-                }
-            }
-        }
-    };
-
-    match capsule {
-        Some(mut capsule) => {
-            // Check if gallery already exists with this UUID (idempotency)
-            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
-                return StoreGalleryResponse {
-                    success: true,
-                    gallery_id: Some(gallery_id.clone()),
-                    icp_gallery_id: Some(gallery_id),
-                    message: "Gallery already exists with this UUID".to_string(),
-                    storage_status: GalleryStorageStatus::ICPOnly,
-                };
-            }
-
-            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
-            let mut gallery = gallery_data.gallery;
-            gallery.owner_principal = match caller {
-                PersonRef::Principal(p) => p,
-                PersonRef::Opaque(_) => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: "Only principals can store galleries".to_string(),
-                        storage_status: GalleryStorageStatus::Failed,
-                    }
-                }
-            };
-            gallery.created_at = ic_cdk::api::time();
-            gallery.updated_at = ic_cdk::api::time();
-
-            // Set storage status based on whether memories will be synced
-            let storage_status = if sync_memories {
-                GalleryStorageStatus::Both // Will be updated after memory sync
-            } else {
-                GalleryStorageStatus::ICPOnly
-            };
-            gallery.storage_status = storage_status.clone();
-
-            // Store gallery in capsule
-            capsule.galleries.insert(gallery_id.clone(), gallery);
-            capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
-
-            // MIGRATED: Save updated capsule
-            with_capsule_store_mut(|store| {
-                store.upsert(capsule.id.clone(), capsule);
-            });
-            let message = if sync_memories {
-                "Gallery stored successfully in capsule (memory sync pending)".to_string()
-            } else {
-                "Gallery stored successfully in capsule".to_string()
-            };
-
-            StoreGalleryResponse {
-                success: true,
-                gallery_id: Some(gallery_id.clone()),
-                icp_gallery_id: Some(gallery_id),
-                message,
-                storage_status,
-            }
-        }
-        None => StoreGalleryResponse {
-            success: false,
-            gallery_id: None,
-            icp_gallery_id: None,
-            message: "No capsule found for caller".to_string(),
-            storage_status: GalleryStorageStatus::Failed,
-        },
-    }
-}
-
-/// Get all galleries for the caller (replaces get_user_galleries)
-pub fn galleries_list() -> Vec<Gallery> {
-    let caller = PersonRef::from_caller();
-
-    // MIGRATED: List all galleries from caller's self-capsule
-    with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .filter(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
-            .collect()
-    })
-}
-
-/// Get gallery by ID from caller's capsule (replaces get_gallery_by_id)
-pub fn galleries_read(gallery_id: String) -> Result<Gallery> {
-    let caller = PersonRef::from_caller();
-
-    // MIGRATED: Find gallery in caller's self-capsule
-    with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .and_then(|capsule| capsule.galleries.get(&gallery_id).cloned())
-            .ok_or(Error::NotFound)
-    })
-}
-
-/// Update gallery storage status after memory synchronization
-pub fn update_gallery_storage_status(
-    gallery_id: String,
-    new_status: GalleryStorageStatus,
-) -> Result<()> {
-    let caller = PersonRef::from_caller();
-
-    // MIGRATED: Update gallery storage status in caller's self-capsule
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-        // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
-            capsule.subject == caller
-                && capsule.owners.contains_key(&caller)
-                && capsule.galleries.contains_key(&gallery_id)
-        }) {
-            let capsule_id = capsule.id.clone();
-
-            // Update the capsule with the new gallery status
-            let update_result = store.update(&capsule_id, |capsule| {
-                if let Some(gallery) = capsule.galleries.get_mut(&gallery_id) {
-                    gallery.storage_status = new_status;
-                    gallery.updated_at = ic_cdk::api::time();
-                    capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
-                }
-            });
-
-            if update_result.is_ok() {
-                Ok(())
-            } else {
-                Err(crate::types::Error::Internal(
-                    "Failed to update gallery storage status".to_string(),
-                ))
-            }
-        } else {
-            Err(crate::types::Error::NotFound)
-        }
-    })
-}
-
-/// Update a gallery in caller's capsule (replaces update_gallery)
-pub fn galleries_update(
-    gallery_id: String,
-    update_data: GalleryUpdateData,
-) -> UpdateGalleryResponse {
-    let caller = PersonRef::from_caller();
-
-    // MIGRATED: Find and update gallery in caller's self-capsule
-    let mut capsule_found = false;
-    let mut updated_gallery: Option<Gallery> = None;
-
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-        // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
-            capsule.subject == caller
-                && capsule.owners.contains_key(&caller)
-                && capsule.galleries.contains_key(&gallery_id)
-        }) {
-            capsule_found = true;
-            let capsule_id = capsule.id.clone();
-
-            // Update the capsule with the modified gallery
-            let update_result = store.update(&capsule_id, |capsule| {
-                if let Some(gallery) = capsule.galleries.get(&gallery_id) {
-                    // Update gallery fields
-                    let mut gallery_clone = gallery.clone();
-                    if let Some(title) = update_data.title.clone() {
-                        gallery_clone.title = title;
-                    }
-                    if let Some(description) = update_data.description.clone() {
-                        gallery_clone.description = Some(description);
-                    }
-                    if let Some(is_public) = update_data.is_public {
-                        gallery_clone.is_public = is_public;
-                    }
-                    if let Some(memory_entries) = update_data.memory_entries.clone() {
-                        gallery_clone.memory_entries = memory_entries;
-                    }
-
-                    gallery_clone.updated_at = ic_cdk::api::time();
-
-                    // Store updated gallery
-                    capsule.galleries.insert(gallery_id, gallery_clone.clone());
-                    capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
-
-                    updated_gallery = Some(gallery_clone);
-                }
-            });
-
-            if update_result.is_err() {
-                capsule_found = false;
-            }
-        }
-    });
-
-    if !capsule_found {
-        return UpdateGalleryResponse {
-            success: false,
-            gallery: None,
-            message: "No capsule found for caller".to_string(),
-        };
-    }
-
-    match updated_gallery {
-        Some(gallery) => UpdateGalleryResponse {
-            success: true,
-            gallery: Some(gallery),
-            message: "Gallery updated successfully".to_string(),
-        },
-        None => UpdateGalleryResponse {
-            success: false,
-            gallery: None,
-            message: "Gallery not found".to_string(),
-        },
-    }
-}
-
-/// Delete a gallery from caller's capsule (replaces delete_gallery)
-pub fn galleries_delete(gallery_id: String) -> DeleteGalleryResponse {
-    let caller = PersonRef::from_caller();
-
-    // MIGRATED: Find and delete gallery from caller's self-capsule
-    let mut capsule_found = false;
-    let mut gallery_found = false;
-
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-        // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
-            capsule.subject == caller
-                && capsule.owners.contains_key(&caller)
-                && capsule.galleries.contains_key(&gallery_id)
-        }) {
-            capsule_found = true;
-            let capsule_id = capsule.id.clone();
-
-            // Update the capsule to remove the gallery
-            let update_result = store.update(&capsule_id, |capsule| {
-                if capsule.galleries.contains_key(&gallery_id) {
-                    capsule.galleries.remove(&gallery_id);
-                    capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
-                    gallery_found = true;
-                }
-            });
-
-            if update_result.is_err() {
-                capsule_found = false;
-            }
-        }
-    });
-
-    if !capsule_found {
-        return DeleteGalleryResponse {
-            success: false,
-            message: "No capsule found for caller".to_string(),
-        };
-    }
-
-    if !gallery_found {
-        return DeleteGalleryResponse {
-            success: false,
-            message: "Gallery not found".to_string(),
-        };
-    }
-
-    DeleteGalleryResponse {
-        success: true,
-        message: "Gallery deleted successfully".to_string(),
-    }
 }
 
 // ============================================================================

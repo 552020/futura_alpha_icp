@@ -338,9 +338,3 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
         message: "Memories retrieved successfully".to_string(),
     }
 }
-
-// === Metadata & Presence ===
-
-// Wrapper functions removed - call crate::metadata::upsert_metadata and crate::metadata::memories_ping directly
-
-// finalize_new_memory helper removed - was just returning empty string
