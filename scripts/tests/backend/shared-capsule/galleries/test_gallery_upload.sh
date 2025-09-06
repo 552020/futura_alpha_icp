@@ -14,16 +14,16 @@ TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 
-# Helper function to check if response indicates success
+# Helper function to check if response indicates success (Result<T, Error> format)
 is_success() {
     local response="$1"
-    echo "$response" | grep -q "success = true"
+    echo "$response" | grep -q "variant {" && echo "$response" | grep -q "Ok ="
 }
 
-# Helper function to check if response indicates failure
+# Helper function to check if response indicates failure (Result<T, Error> format)
 is_failure() {
     local response="$1"
-    echo "$response" | grep -q "success = false"
+    echo "$response" | grep -q "variant {" && echo "$response" | grep -q "Err ="
 }
 
 # Helper function to increment test counters
@@ -53,13 +53,15 @@ create_test_memory_data() {
     local encoded_content=$(echo -n "$content" | base64)
     
     cat << EOF
-(record {
-  blob_ref = record {
-    kind = variant { ICPCapsule };
-    locator = "memory_${name}";
-    hash = null;
-  };
-  data = opt blob "$encoded_content";
+(variant {
+  Inline = record {
+    bytes = blob "$encoded_content";
+    meta = record {
+      name = "test_${name}.txt";
+      description = opt "Test memory for gallery testing";
+      tags = vec { "test"; "gallery"; };
+    };
+  }
 })
 EOF
 }
@@ -69,9 +71,9 @@ upload_test_memory() {
     local content="$1"
     local name="$2"
     
-    # Generate a UUID for the memory (using timestamp + random for uniqueness)
+    # Generate a unique idempotency key
     local timestamp=$(date +%s)
-    local memory_uuid="memory-${timestamp}-${RANDOM}-${name}"
+    local idem="gallery_test_${timestamp}_${RANDOM}_${name}"
     
     local memory_data=$(create_test_memory_data "$content" "$name")
     local capsule_id=$(get_test_capsule_id)
@@ -80,10 +82,12 @@ upload_test_memory() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
-    
-    if echo "$result" | grep -q "success = true"; then
-        local memory_id=$(echo "$result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
+    # Use the correct API format: memories_create(capsule_id, memory_data, idem)
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+
+    # Check for successful Result<MemoryId, Error> response
+    if echo "$result" | grep -q "variant {" && echo "$result" | grep -q "Ok =" && echo "$result" | grep -q "mem_"; then
+        local memory_id=$(echo "$result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
         echo "$memory_id"
         return 0
     else
@@ -145,6 +149,7 @@ create_gallery_data() {
         gallery_metadata = "{}";
       };
     };
+    bound_to_neon = false;
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
@@ -178,6 +183,7 @@ EOF
         gallery_metadata = "{\"tags\": [\"secondary\"]}";
       };
     };
+    bound_to_neon = false;
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
@@ -196,6 +202,7 @@ EOF
     updated_at = $timestamp;
     storage_status = variant { ICPOnly };
     memory_entries = vec {};
+    bound_to_neon = false;
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
@@ -222,6 +229,7 @@ EOF
         gallery_metadata = "{\"private\": true}";
       };
     };
+    bound_to_neon = false;
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
@@ -233,7 +241,7 @@ EOF
     esac
 }
 
-# Test functions for store_gallery_forever
+# Test functions for galleries_create
 
 test_store_basic_gallery() {
     # Upload a test memory first
@@ -246,10 +254,10 @@ test_store_basic_gallery() {
     
     # Create and store basic gallery
     local gallery_data=$(create_gallery_data "basic" "$memory_id")
-    local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+        local gallery_id=$(echo "$result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1)
         echo_info "Basic gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -270,10 +278,10 @@ test_store_gallery_with_multiple_memories() {
     
     # Create and store gallery with multiple memories
     local gallery_data=$(create_gallery_data "multiple_memories" "$memory_id1" "$memory_id2")
-    local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+        local gallery_id=$(echo "$result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1)
         echo_info "Multi-memory gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -285,10 +293,10 @@ test_store_gallery_with_multiple_memories() {
 test_store_empty_gallery() {
     # Create and store empty gallery (no memories)
     local gallery_data=$(create_gallery_data "empty_gallery")
-    local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+        local gallery_id=$(echo "$result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1)
         echo_info "Empty gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -308,10 +316,10 @@ test_store_private_gallery() {
     
     # Create and store private gallery
     local gallery_data=$(create_gallery_data "private_gallery" "$memory_id")
-    local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
-        local gallery_id=$(echo "$result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+        local gallery_id=$(echo "$result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1)
         echo_info "Private gallery creation successful with ID: $gallery_id"
         return 0
     else
@@ -353,13 +361,14 @@ test_store_gallery_with_metadata() {
         gallery_metadata = "{\"tags\": [\"test\", \"metadata\"], \"category\": \"experimental\", \"rating\": 5}";
       };
     };
+    bound_to_neon = false;
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
 EOF
 )
     
-    local result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if is_success "$result"; then
         echo_info "Gallery with metadata creation successful"
@@ -370,7 +379,7 @@ EOF
     fi
 }
 
-# Test functions for get_gallery_by_id
+# Test functions for galleries_read
 
 test_retrieve_gallery_by_id() {
     # Upload a test memory first
@@ -383,7 +392,7 @@ test_retrieve_gallery_by_id() {
     
     # Create and store gallery
     local gallery_data=$(create_gallery_data "basic" "$memory_id")
-    local store_result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local store_result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if ! is_success "$store_result"; then
         echo_info "Failed to store gallery for retrieval test"
@@ -391,7 +400,7 @@ test_retrieve_gallery_by_id() {
     fi
     
     # Extract gallery ID from store result (take first match to avoid duplicates)
-    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+    local gallery_id=$(echo "$store_result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1)
     
     if [ -z "$gallery_id" ]; then
         echo_info "Failed to extract gallery ID from store result: $store_result"
@@ -401,10 +410,10 @@ test_retrieve_gallery_by_id() {
     # Retrieve the gallery (add small delay for persistence)
     echo_info "Attempting to retrieve gallery with ID: $gallery_id"
     sleep 1
-    local retrieve_result=$(dfx canister call backend get_gallery_by_id "(\"$gallery_id\")" 2>/dev/null)
+    local retrieve_result=$(dfx canister call backend galleries_read "(\"$gallery_id\")" 2>/dev/null)
     
     # Check if gallery was retrieved successfully
-    if echo "$retrieve_result" | grep -q "opt record" && echo "$retrieve_result" | grep -q "title = \"Basic Test Gallery\""; then
+    if echo "$retrieve_result" | grep -q "variant {" && echo "$retrieve_result" | grep -q "Ok =" && echo "$retrieve_result" | grep -q "title = \"Basic Test Gallery\""; then
         echo_info "Gallery retrieval successful for ID: $gallery_id"
         return 0
     else
@@ -416,11 +425,11 @@ test_retrieve_gallery_by_id() {
 test_retrieve_nonexistent_gallery() {
     # Try to retrieve a gallery that doesn't exist
     local fake_id="nonexistent_gallery_12345"
-    local result=$(dfx canister call backend get_gallery_by_id "(\"$fake_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend galleries_read "(\"$fake_id\")" 2>/dev/null)
     
-    # Should return null for non-existent gallery
-    if echo "$result" | grep -q "(null)"; then
-        echo_info "Correctly returned null for non-existent gallery"
+    # Should return error for non-existent gallery
+    if echo "$result" | grep -q "variant {" && echo "$result" | grep -q "Err ="; then
+        echo_info "Correctly returned error for non-existent gallery"
         return 0
     else
         echo_info "Unexpected result for non-existent gallery: $result"
@@ -440,7 +449,7 @@ test_gallery_memory_associations() {
     
     # Create gallery with multiple memories
     local gallery_data=$(create_gallery_data "multiple_memories" "$memory_id1" "$memory_id2")
-    local store_result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local store_result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if ! is_success "$store_result"; then
         echo_info "Failed to store gallery for association test"
@@ -448,12 +457,12 @@ test_gallery_memory_associations() {
     fi
     
     # Extract gallery ID (take first match to avoid duplicates)
-    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+    local gallery_id=$(echo "$store_result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1)
     
     # Retrieve and verify memory associations
     echo_info "Retrieving gallery for association test with ID: $gallery_id"
     sleep 1
-    local retrieve_result=$(dfx canister call backend get_gallery_by_id "(\"$gallery_id\")" 2>/dev/null)
+    local retrieve_result=$(dfx canister call backend galleries_read "(\"$gallery_id\")" 2>/dev/null)
     
     # Check if both memory IDs are present in the gallery
     if echo "$retrieve_result" | grep -q "$memory_id1" && echo "$retrieve_result" | grep -q "$memory_id2"; then
@@ -477,7 +486,7 @@ test_gallery_metadata_preservation() {
     
     # Create gallery with specific metadata
     local gallery_data=$(create_gallery_data "basic" "$memory_id")
-    local store_result=$(dfx canister call backend store_gallery_forever "$gallery_data" 2>/dev/null)
+    local store_result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
     
     if ! is_success "$store_result"; then
         echo_info "Failed to store gallery for metadata preservation test"
@@ -485,12 +494,12 @@ test_gallery_metadata_preservation() {
     fi
     
     # Extract gallery ID (take first match to avoid duplicates)
-    local gallery_id=$(echo "$store_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "\([^"]*\)"/\1/' | head -1)
+    local gallery_id=$(echo "$store_result" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1)
     
     # Retrieve and verify metadata preservation
     echo_info "Retrieving gallery for metadata test with ID: $gallery_id"
     sleep 1
-    local retrieve_result=$(dfx canister call backend get_gallery_by_id "(\"$gallery_id\")" 2>/dev/null)
+    local retrieve_result=$(dfx canister call backend galleries_read "(\"$gallery_id\")" 2>/dev/null)
     
     # Check if key metadata fields are preserved
     if echo "$retrieve_result" | grep -q "title = \"Basic Test Gallery\"" && \
@@ -532,15 +541,15 @@ main() {
         echo_warn "User registration returned: $register_result"
     fi
     
-    # Run store_gallery_forever tests
-    echo_info "=== Testing store_gallery_forever endpoint ==="
+    # Run galleries_create tests
+    echo_info "=== Testing galleries_create endpoint ==="
     run_test "Store basic gallery" "test_store_basic_gallery"
     run_test "Store gallery with multiple memories" "test_store_gallery_with_multiple_memories"
     run_test "Store empty gallery" "test_store_empty_gallery"
     run_test "Store private gallery" "test_store_private_gallery"
     run_test "Store gallery with metadata" "test_store_gallery_with_metadata"
     
-    echo_info "=== Testing get_gallery_by_id endpoint ==="
+    echo_info "=== Testing galleries_read endpoint ==="
     run_test "Retrieve gallery by ID" "test_retrieve_gallery_by_id"
     run_test "Retrieve non-existent gallery" "test_retrieve_nonexistent_gallery"
     

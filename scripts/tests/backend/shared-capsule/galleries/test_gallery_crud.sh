@@ -65,13 +65,15 @@ create_test_memory_data() {
     local encoded_content=$(echo -n "$content" | base64)
     
     cat << EOF
-(record {
-  blob_ref = record {
-    kind = variant { ICPCapsule };
-    locator = "memory_${name}";
-    hash = null;
-  };
-  data = opt blob "$encoded_content";
+(variant {
+  Inline = record {
+    bytes = blob "$encoded_content";
+    meta = record {
+      name = "test_${name}.txt";
+      description = opt "Test memory for gallery testing";
+      tags = vec { "test"; "gallery"; };
+    };
+  }
 })
 EOF
 }
@@ -81,9 +83,9 @@ upload_test_memory() {
     local content="$1"
     local name="$2"
     
-    # Generate a UUID for the memory (using timestamp + random for uniqueness)
+    # Generate a unique idempotency key
     local timestamp=$(date +%s)
-    local memory_uuid="memory-${timestamp}-${RANDOM}-${name}"
+    local idem="gallery_test_${timestamp}_${RANDOM}_${name}"
     
     local memory_data=$(create_test_memory_data "$content" "$name")
     local capsule_id=$(get_test_capsule_id)
@@ -92,10 +94,12 @@ upload_test_memory() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    # Use the correct API format: memories_create(capsule_id, memory_data, idem)
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
 
-    if is_success_icp "$result"; then
-        local memory_id=$(echo "$result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
+    # Check for successful Result<MemoryId, Error> response
+    if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
+        local memory_id=$(echo "$result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
         echo "$memory_id"
         return 0
     else
@@ -330,7 +334,7 @@ test_update_nonexistent_gallery() {
     local result=$(dfx canister call backend galleries_update "(\"$fake_id\", $update_data)" 2>/dev/null)
     
     # Should fail with appropriate error
-    if is_failure "$result"; then
+    if is_failure_icp "$result"; then
         echo_info "Correctly failed to update non-existent gallery"
         return 0
     else
@@ -531,13 +535,13 @@ test_gallery_crud_consistency() {
     local update_data='(record { title = opt "CRUD Test Updated"; description = null; is_public = null; memory_entries = null; })'
     local update_result=$(dfx canister call backend galleries_update "(\"$gallery_id\", $update_data)" 2>/dev/null)
     
-    if ! is_success "$update_result"; then
+    if ! is_success_icp "$update_result"; then
         echo_info "Failed to update gallery in CRUD consistency test"
         return 1
     fi
     
     # Read gallery to verify update
-    local read_result=$(dfx canister call backend get_gallery_by_id "(\"$gallery_id\")" 2>/dev/null)
+    local read_result=$(dfx canister call backend galleries_read "(\"$gallery_id\")" 2>/dev/null)
     
     if ! echo "$read_result" | grep -q "CRUD Test Updated"; then
         echo_info "Gallery update not reflected in read operation"
@@ -547,15 +551,15 @@ test_gallery_crud_consistency() {
     # Delete gallery
     local delete_result=$(dfx canister call backend galleries_delete "(\"$gallery_id\")" 2>/dev/null)
     
-    if ! is_success "$delete_result"; then
+    if ! is_success_icp "$delete_result"; then
         echo_info "Failed to delete gallery in CRUD consistency test"
         return 1
     fi
     
     # Verify deletion
-    local verify_result=$(dfx canister call backend get_gallery_by_id "(\"$gallery_id\")" 2>/dev/null)
+    local verify_result=$(dfx canister call backend galleries_read "(\"$gallery_id\")" 2>/dev/null)
     
-    if echo "$verify_result" | grep -q "(null)"; then
+    if echo "$verify_result" | grep -q "NotFound"; then
         echo_info "CRUD consistency test completed successfully"
         return 0
     else
