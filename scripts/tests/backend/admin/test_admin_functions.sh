@@ -105,3 +105,4 @@ else
     echo_error "Some admin function tests failed!"
     exit 1
 fi
+
