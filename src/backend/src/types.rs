@@ -843,30 +843,6 @@ pub struct GalleryCreationResult {
     pub message: String,
 }
 
-// Gallery storage result for "Store Forever" feature
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct StoreGalleryResponse {
-    pub success: bool,
-    pub gallery_id: Option<String>,
-    pub icp_gallery_id: Option<String>, // ID in ICP canister
-    pub message: String,
-    pub storage_status: GalleryStorageStatus,
-}
-
-// Gallery update result
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct UpdateGalleryResponse {
-    pub success: bool,
-    pub gallery: Option<Gallery>,
-    pub message: String,
-}
-
-// Gallery deletion result
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct DeleteGalleryResponse {
-    pub success: bool,
-    pub message: String,
-}
 
 // Gallery data for storage operations
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]

@@ -10,9 +10,11 @@ mod auth;
 mod canister_factory;
 mod capsule;
 pub mod capsule_store;
+mod gallery;
 mod memories;
 mod memory;
 mod metadata;
+mod state;
 pub mod types;
 pub mod upload;
 mod user;
@@ -34,6 +36,11 @@ fn greet(name: String) -> String {
 #[ic_cdk::query]
 fn whoami() -> Principal {
     ic_cdk::api::msg_caller()
+}
+
+#[ic_cdk::query]
+fn get_canister_size_stats() -> state::CanisterSizeStats {
+    state::get_canister_size_stats()
 }
 
 // ============================================================================
@@ -87,470 +94,57 @@ fn capsules_bind_neon(
     resource_id: String,
     bind: bool,
 ) -> types::Result<()> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::memory::with_capsule_store_mut;
-    use crate::types::PersonRef;
-    use ic_cdk::api::time;
-
-    let caller_ref = PersonRef::from_caller();
-
-    match resource_type {
-        types::ResourceType::Capsule => {
-            // Bind specific capsule if caller owns it
-            with_capsule_store_mut(|store| {
-                let update_result = store.update(&resource_id, |capsule| {
-                    if capsule.owners.contains_key(&caller_ref) {
-                        capsule.bound_to_neon = bind;
-                        capsule.updated_at = time();
-
-                        // Update owner activity
-                        if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                            owner_state.last_activity_at = time();
-                        }
-                    }
-                });
-                if update_result.is_ok() {
-                    Ok(())
-                } else {
-                    Err(types::Error::Internal(
-                        "Failed to update capsule".to_string(),
-                    ))
-                }
-            })
-        }
-        types::ResourceType::Gallery => {
-            // Bind specific gallery if caller owns the capsule containing it
-            with_capsule_store_mut(|store| {
-                let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-                for capsule in all_capsules.items {
-                    if capsule.owners.contains_key(&caller_ref) {
-                        if let Some(_gallery) = capsule.galleries.get(&resource_id) {
-                            // Update gallery binding
-                            let update_result = store.update(&capsule.id, |capsule| {
-                                if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
-                                    gallery.bound_to_neon = bind;
-                                    capsule.updated_at = time();
-
-                                    // Update owner activity
-                                    if let Some(owner_state) = capsule.owners.get_mut(&caller_ref) {
-                                        owner_state.last_activity_at = time();
-                                    }
-                                }
-                            });
-
-                            if update_result.is_ok() {
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
-                Err(types::Error::NotFound)
-            })
-        }
-        types::ResourceType::Memory => {
-            // Memory binding not implemented yet
-            Err(types::Error::Internal(
-                "Memory binding not yet implemented".to_string(),
-            ))
-        }
-    }
+    // Delegate to capsule module (thin facade)
+    capsule::capsules_bind_neon(resource_type, resource_id, bind)
 }
 
 // Capsule management endpoints
 #[ic_cdk::update]
 fn capsules_create(subject: Option<types::PersonRef>) -> types::CapsuleCreationResult {
-    use crate::memory::with_capsule_store_mut;
-    use crate::types::PersonRef;
-    use crate::types::{Capsule, CapsuleCreationResult};
-
-    let caller = PersonRef::from_caller();
-
-    // Check if caller already has a self-capsule when creating self-capsule
-    let is_self_capsule = subject.is_none();
-
-    if is_self_capsule {
-        // Check if caller already has a self-capsule
-        if let Some(capsule) = capsule::find_self_capsule(&caller) {
-            // Update existing self-capsule activity
-            if capsule::update_capsule_activity(&capsule.id, &caller).is_ok() {
-                return CapsuleCreationResult {
-                    success: true,
-                    capsule_id: Some(capsule.id),
-                    message: "Welcome back! Your capsule is ready.".to_string(),
-                };
-            }
-        }
-    }
-
-    // Create new capsule
-    let actual_subject = subject.unwrap_or_else(|| caller.clone());
-    let capsule = Capsule::new(actual_subject, caller.clone());
-    let capsule_id = capsule.id.clone();
-
-    // Use upsert to create new capsule (should succeed since we're checking for existing self-capsule above)
-    with_capsule_store_mut(|store| {
-        store.upsert(capsule_id.clone(), capsule);
-    });
-
-    CapsuleCreationResult {
-        success: true,
-        capsule_id: Some(capsule_id),
-        message: if is_self_capsule {
-            "Self-capsule created successfully!".to_string()
-        } else {
-            "Capsule created".to_string()
-        },
-    }
+    // Delegate to capsule module (thin facade)
+    capsule::capsules_create(subject)
 }
 
 #[ic_cdk::query]
 fn capsules_read_full(capsule_id: Option<String>) -> types::Result<types::Capsule> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::memory::with_capsule_store;
-    use crate::types::PersonRef;
-
-    let caller = PersonRef::from_caller();
-
+    // Delegate to capsule module (thin facade)
     match capsule_id {
-        Some(id) => {
-            // Read specific capsule by ID with access check
-            with_capsule_store(|store| {
-                store
-                    .get(&id)
-                    .filter(|capsule| capsule.has_write_access(&caller))
-                    .ok_or(types::Error::NotFound)
-            })
-        }
-        None => {
-            // Read caller's self-capsule
-            with_capsule_store(|store| {
-                let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                all_capsules
-                    .items
-                    .into_iter()
-                    .find(|capsule| capsule.subject == caller)
-                    .ok_or(types::Error::NotFound)
-            })
-        }
+        Some(id) => capsule::capsules_read(id),
+        None => capsule::capsule_read_self(),
     }
 }
 
 #[ic_cdk::query]
 fn capsules_read_basic(capsule_id: Option<String>) -> types::Result<types::CapsuleInfo> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::memory::with_capsule_store;
-    use crate::types::PersonRef;
-
-    let caller = PersonRef::from_caller();
-
+    // Delegate to capsule module (thin facade)
     match capsule_id {
-        Some(id) => {
-            // Read specific capsule by ID with access check (basic info)
-            with_capsule_store(|store| {
-                store
-                    .get(&id)
-                    .filter(|capsule| capsule.has_write_access(&caller))
-                    .map(|capsule| types::CapsuleInfo {
-                        capsule_id: capsule.id.clone(),
-                        subject: capsule.subject.clone(),
-                        is_owner: capsule.owners.contains_key(&caller),
-                        is_controller: capsule.controllers.contains_key(&caller),
-                        is_self_capsule: capsule.subject == caller,
-                        bound_to_neon: capsule.bound_to_neon,
-                        created_at: capsule.created_at,
-                        updated_at: capsule.updated_at,
-
-                        // Add lightweight counts for summary information
-                        memory_count: capsule.memories.len() as u32,
-                        gallery_count: capsule.galleries.len() as u32,
-                        connection_count: capsule.connections.len() as u32,
-                    })
-                    .ok_or(types::Error::NotFound)
-            })
-        }
-        None => {
-            // Read caller's self-capsule (basic info)
-            with_capsule_store(|store| {
-                let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                all_capsules
-                    .items
-                    .into_iter()
-                    .find(|capsule| capsule.subject == caller)
-                    .map(|capsule| types::CapsuleInfo {
-                        capsule_id: capsule.id.clone(),
-                        subject: capsule.subject.clone(),
-                        is_owner: capsule.owners.contains_key(&caller),
-                        is_controller: capsule.controllers.contains_key(&caller),
-                        is_self_capsule: capsule.subject == caller,
-                        bound_to_neon: capsule.bound_to_neon,
-                        created_at: capsule.created_at,
-                        updated_at: capsule.updated_at,
-
-                        // Add lightweight counts for summary information
-                        memory_count: capsule.memories.len() as u32,
-                        gallery_count: capsule.galleries.len() as u32,
-                        connection_count: capsule.connections.len() as u32,
-                    })
-                    .ok_or(types::Error::NotFound)
-            })
-        }
+        Some(id) => capsule::capsules_read_basic(id),
+        None => capsule::capsule_read_self_basic(),
     }
 }
 
 #[ic_cdk::query]
 fn capsules_list() -> Vec<types::CapsuleHeader> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::memory::with_capsule_store;
-    use crate::types::PersonRef;
-
-    let caller = PersonRef::from_caller();
-
-    // Using new trait-based API with pagination
-    // Note: Using large limit to get all capsules, maintaining backward compatibility
-    with_capsule_store(|store| {
-        let page = store.paginate(None, u32::MAX, Order::Asc);
-        page.items
-            .into_iter()
-            .filter(|capsule| capsule.has_write_access(&caller))
-            .map(|capsule| capsule.to_header())
-            .collect()
-    })
+    // Delegate to capsule module (thin facade)
+    capsule::capsules_list()
 }
 
 // ============================================================================
 // GALLERY MANAGEMENT (7 functions)
 // ============================================================================
 #[ic_cdk::update]
-async fn galleries_create(gallery_data: types::GalleryData) -> types::StoreGalleryResponse {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::types::PersonRef;
-    use crate::types::{GalleryStorageStatus, StoreGalleryResponse};
-    use ic_cdk::api::time;
-
-    let caller = PersonRef::from_caller();
-
-    // Use the gallery ID provided by Web2 (don't generate new ID)
-    let gallery_id = gallery_data.gallery.id.clone();
-
-    // Ensure caller has a capsule - create one if it doesn't exist
-    let capsule = match with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-    }) {
-        Some(capsule) => Some(capsule),
-        None => {
-            // No capsule found - create one automatically for first-time users
-            match capsules_create(None) {
-                types::CapsuleCreationResult { success: true, .. } => {
-                    // Now get the newly created capsule
-                    with_capsule_store(|store| {
-                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                        all_capsules.items.into_iter().find(|capsule| {
-                            capsule.subject == caller && capsule.owners.contains_key(&caller)
-                        })
-                    })
-                }
-                types::CapsuleCreationResult {
-                    success: false,
-                    message,
-                    ..
-                } => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: format!("Failed to create capsule: {message}"),
-                        storage_status: GalleryStorageStatus::Failed,
-                    };
-                }
-            }
-        }
-    };
-
-    match capsule {
-        Some(mut capsule) => {
-            // Check if gallery already exists with this UUID (idempotency)
-            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
-                return StoreGalleryResponse {
-                    success: true,
-                    gallery_id: Some(gallery_id.clone()),
-                    icp_gallery_id: Some(gallery_id),
-                    message: "Gallery already exists with this UUID".to_string(),
-                    storage_status: GalleryStorageStatus::ICPOnly,
-                };
-            }
-
-            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
-            let mut gallery = gallery_data.gallery;
-            gallery.owner_principal = match caller {
-                PersonRef::Principal(p) => p,
-                PersonRef::Opaque(_) => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: "Only principals can store galleries".to_string(),
-                        storage_status: GalleryStorageStatus::Failed,
-                    }
-                }
-            };
-            gallery.created_at = time();
-            gallery.updated_at = time();
-            gallery.storage_status = GalleryStorageStatus::ICPOnly;
-
-            // Store gallery in capsule
-            capsule.galleries.insert(gallery_id.clone(), gallery);
-            capsule.updated_at = time(); // Update capsule timestamp
-
-            // Save updated capsule
-            let capsule_id = capsule.id.clone();
-            with_capsule_store_mut(|store| {
-                store.upsert(capsule_id, capsule);
-            });
-
-            StoreGalleryResponse {
-                success: true,
-                gallery_id: Some(gallery_id.clone()),
-                icp_gallery_id: Some(gallery_id),
-                message: "Gallery stored successfully in capsule".to_string(),
-                storage_status: GalleryStorageStatus::ICPOnly,
-            }
-        }
-        None => StoreGalleryResponse {
-            success: false,
-            gallery_id: None,
-            icp_gallery_id: None,
-            message: "No capsule found for caller".to_string(),
-            storage_status: GalleryStorageStatus::Failed,
-        },
-    }
+async fn galleries_create(gallery_data: types::GalleryData) -> types::Result<types::Gallery> {
+    // TESTING: Using gallery.rs implementation
+    gallery::galleries_create(gallery_data)
 }
 
 #[ic_cdk::update]
 async fn galleries_create_with_memories(
     gallery_data: types::GalleryData,
     sync_memories: bool,
-) -> types::StoreGalleryResponse {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::types::PersonRef;
-    use crate::types::{GalleryStorageStatus, StoreGalleryResponse};
-    use ic_cdk::api::time;
-
-    let caller = PersonRef::from_caller();
-
-    // Use the gallery ID provided by Web2 (don't generate new ID)
-    let gallery_id = gallery_data.gallery.id.clone();
-
-    // Ensure caller has a capsule - create one if it doesn't exist
-    let capsule = match with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-    }) {
-        Some(capsule) => Some(capsule),
-        None => {
-            // No capsule found - create one automatically for first-time users
-            match capsules_create(None) {
-                types::CapsuleCreationResult { success: true, .. } => {
-                    // Now get the newly created capsule
-                    with_capsule_store(|store| {
-                        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                        all_capsules.items.into_iter().find(|capsule| {
-                            capsule.subject == caller && capsule.owners.contains_key(&caller)
-                        })
-                    })
-                }
-                types::CapsuleCreationResult {
-                    success: false,
-                    message,
-                    ..
-                } => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: format!("Failed to create capsule: {message}"),
-                        storage_status: GalleryStorageStatus::Failed,
-                    };
-                }
-            }
-        }
-    };
-
-    match capsule {
-        Some(mut capsule) => {
-            // Check if gallery already exists with this UUID (idempotency)
-            if let Some(_existing_gallery) = capsule.galleries.get(&gallery_id) {
-                return StoreGalleryResponse {
-                    success: true,
-                    gallery_id: Some(gallery_id.clone()),
-                    icp_gallery_id: Some(gallery_id),
-                    message: "Gallery already exists with this UUID".to_string(),
-                    storage_status: GalleryStorageStatus::ICPOnly,
-                };
-            }
-
-            // Create gallery from data (don't overwrite gallery.id - it's already set by Web2)
-            let mut gallery = gallery_data.gallery;
-            gallery.owner_principal = match caller {
-                PersonRef::Principal(p) => p,
-                PersonRef::Opaque(_) => {
-                    return StoreGalleryResponse {
-                        success: false,
-                        gallery_id: None,
-                        icp_gallery_id: None,
-                        message: "Only principals can store galleries".to_string(),
-                        storage_status: GalleryStorageStatus::Failed,
-                    }
-                }
-            };
-            gallery.created_at = time();
-            gallery.updated_at = time();
-
-            // Set storage status based on whether memories will be synced
-            let storage_status = if sync_memories {
-                GalleryStorageStatus::Both // Will be updated after memory sync
-            } else {
-                GalleryStorageStatus::ICPOnly
-            };
-            gallery.storage_status = storage_status.clone();
-
-            // Store gallery in capsule
-            capsule.galleries.insert(gallery_id.clone(), gallery);
-            capsule.updated_at = time(); // Update capsule timestamp
-
-            // Save updated capsule
-            with_capsule_store_mut(|store| {
-                store.upsert(capsule.id.clone(), capsule);
-            });
-            let message = if sync_memories {
-                "Gallery stored successfully in capsule (memory sync pending)".to_string()
-            } else {
-                "Gallery stored successfully in capsule".to_string()
-            };
-
-            StoreGalleryResponse {
-                success: true,
-                gallery_id: Some(gallery_id.clone()),
-                icp_gallery_id: Some(gallery_id),
-                message,
-                storage_status,
-            }
-        }
-        None => StoreGalleryResponse {
-            success: false,
-            gallery_id: None,
-            icp_gallery_id: None,
-            message: "No capsule found for caller".to_string(),
-            storage_status: GalleryStorageStatus::Failed,
-        },
-    }
+) -> types::Result<types::Gallery> {
+    // TESTING: Using gallery.rs implementation
+    gallery::galleries_create_with_memories(gallery_data, sync_memories)
 }
 
 #[ic_cdk::update]
@@ -600,7 +194,7 @@ fn update_gallery_storage_status(
 }
 
 #[ic_cdk::query]
-fn galleries_list() -> Vec<types::Gallery> {
+fn galleries_list() -> types::Result<Vec<types::Gallery>> {
     use crate::capsule_store::types::PaginationOrder as Order;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
@@ -608,7 +202,7 @@ fn galleries_list() -> Vec<types::Gallery> {
     let caller = PersonRef::from_caller();
 
     // List all galleries from caller's self-capsule
-    with_capsule_store(|store| {
+    Ok(with_capsule_store(|store| {
         let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
         all_capsules
             .items
@@ -616,7 +210,7 @@ fn galleries_list() -> Vec<types::Gallery> {
             .filter(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
             .flat_map(|capsule| capsule.galleries.values().cloned().collect::<Vec<_>>())
             .collect()
-    })
+    }))
 }
 
 #[ic_cdk::query]
@@ -643,16 +237,15 @@ fn galleries_read(gallery_id: String) -> types::Result<types::Gallery> {
 async fn galleries_update(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
-) -> types::UpdateGalleryResponse {
+) -> types::Result<types::Gallery> {
     use crate::capsule_store::types::PaginationOrder as Order;
+    use crate::types::Gallery;
     use crate::types::PersonRef;
-    use crate::types::{Gallery, UpdateGalleryResponse};
     use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
 
     // Find and update gallery in caller's self-capsule
-    let mut capsule_found = false;
     let mut updated_gallery: Option<Gallery> = None;
 
     with_capsule_store_mut(|store| {
@@ -664,7 +257,6 @@ async fn galleries_update(
                 && capsule.owners.contains_key(&caller)
                 && capsule.galleries.contains_key(&gallery_id)
         }) {
-            capsule_found = true;
             let capsule_id = capsule.id.clone();
 
             // Update the capsule with the modified gallery
@@ -696,44 +288,26 @@ async fn galleries_update(
             });
 
             if update_result.is_err() {
-                capsule_found = false;
+                updated_gallery = None;
             }
         }
     });
 
-    if !capsule_found {
-        return UpdateGalleryResponse {
-            success: false,
-            gallery: None,
-            message: "No capsule found for caller".to_string(),
-        };
-    }
-
     match updated_gallery {
-        Some(gallery) => UpdateGalleryResponse {
-            success: true,
-            gallery: Some(gallery),
-            message: "Gallery updated successfully".to_string(),
-        },
-        None => UpdateGalleryResponse {
-            success: false,
-            gallery: None,
-            message: "Gallery not found".to_string(),
-        },
+        Some(gallery) => Ok(gallery),
+        None => Err(types::Error::NotFound),
     }
 }
 
 #[ic_cdk::update]
-async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
+async fn galleries_delete(gallery_id: String) -> types::Result<()> {
     use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::types::DeleteGalleryResponse;
     use crate::types::PersonRef;
     use ic_cdk::api::time;
 
     let caller = PersonRef::from_caller();
 
     // Find and delete gallery from caller's self-capsule
-    let mut capsule_found = false;
     let mut gallery_found = false;
 
     with_capsule_store_mut(|store| {
@@ -745,7 +319,6 @@ async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
                 && capsule.owners.contains_key(&caller)
                 && capsule.galleries.contains_key(&gallery_id)
         }) {
-            capsule_found = true;
             let capsule_id = capsule.id.clone();
 
             // Update the capsule to remove the gallery
@@ -758,28 +331,15 @@ async fn galleries_delete(gallery_id: String) -> types::DeleteGalleryResponse {
             });
 
             if update_result.is_err() {
-                capsule_found = false;
+                gallery_found = false;
             }
         }
     });
 
-    if !capsule_found {
-        return DeleteGalleryResponse {
-            success: false,
-            message: "No capsule found for caller".to_string(),
-        };
-    }
-
-    if !gallery_found {
-        return DeleteGalleryResponse {
-            success: false,
-            message: "Gallery not found".to_string(),
-        };
-    }
-
-    DeleteGalleryResponse {
-        success: true,
-        message: "Gallery deleted successfully".to_string(),
+    if gallery_found {
+        Ok(())
+    } else {
+        Err(types::Error::NotFound)
     }
 }
 
@@ -1122,6 +682,34 @@ fn clear_all_stable_memory() -> types::Result<()> {
     }
 
     memory::clear_all_stable_memory().map_err(types::Error::Internal)
+}
+
+// ============================================================================
+// GALLERY UTILITY ENDPOINTS
+// ============================================================================
+
+/// Get gallery size information for debugging stable memory limits
+#[ic_cdk::query]
+fn get_gallery_size_info(gallery: types::Gallery) -> String {
+    gallery::get_gallery_size_report(&gallery)
+}
+
+/// Get detailed gallery size breakdown
+#[ic_cdk::query]
+fn get_gallery_size_breakdown(gallery: types::Gallery) -> gallery::GallerySizeInfo {
+    gallery::get_gallery_size_breakdown(&gallery)
+}
+
+/// Calculate just the gallery size (without capsule overhead)
+#[ic_cdk::query]
+fn calculate_gallery_size(gallery: types::Gallery) -> u64 {
+    gallery::estimate_gallery_size(&gallery)
+}
+
+/// Calculate gallery size when stored in capsule context
+#[ic_cdk::query]
+fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
+    gallery::estimate_gallery_capsule_size(&gallery)
 }
 
 // ============================================================================
