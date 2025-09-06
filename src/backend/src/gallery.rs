@@ -6,7 +6,7 @@ use crate::capsule::capsules_create;
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
-    CapsuleCreationResult, Error, Gallery, GalleryData, GalleryStorageStatus, GalleryUpdateData,
+    CapsuleCreationResult, Error, Gallery, GalleryData, GalleryStorageLocation, GalleryUpdateData,
     PersonRef, Result,
 };
 
@@ -70,7 +70,7 @@ pub fn galleries_create(gallery_data: GalleryData) -> Result<Gallery> {
             };
             gallery.created_at = ic_cdk::api::time();
             gallery.updated_at = ic_cdk::api::time();
-            gallery.storage_status = GalleryStorageStatus::ICPOnly;
+            gallery.storage_location = GalleryStorageLocation::ICPOnly;
 
             // Store gallery in capsule
             let gallery_clone = gallery.clone();
@@ -153,13 +153,13 @@ pub fn galleries_create_with_memories(
             gallery.created_at = ic_cdk::api::time();
             gallery.updated_at = ic_cdk::api::time();
 
-            // Set storage status based on whether memories will be synced
-            let storage_status = if sync_memories {
-                GalleryStorageStatus::Both // Will be updated after memory sync
+            // Set storage location based on whether memories will be synced
+            let storage_location = if sync_memories {
+                GalleryStorageLocation::Both // Will be updated after memory sync
             } else {
-                GalleryStorageStatus::ICPOnly
+                GalleryStorageLocation::ICPOnly
             };
-            gallery.storage_status = storage_status.clone();
+            gallery.storage_location = storage_location.clone();
 
             // Store gallery in capsule
             let gallery_clone = gallery.clone();
@@ -209,10 +209,10 @@ pub fn galleries_read(gallery_id: String) -> Result<Gallery> {
     })
 }
 
-/// Update gallery storage status after memory synchronization
-pub fn update_gallery_storage_status(
+/// Update gallery storage location after memory synchronization
+pub fn update_gallery_storage_location(
     gallery_id: String,
-    new_status: GalleryStorageStatus,
+    new_location: GalleryStorageLocation,
 ) -> Result<()> {
     let caller = PersonRef::from_caller();
 
@@ -228,10 +228,10 @@ pub fn update_gallery_storage_status(
         }) {
             let capsule_id = capsule.id.clone();
 
-            // Update the capsule with the new gallery status
+            // Update the capsule with the new gallery location
             let update_result = store.update(&capsule_id, |capsule| {
                 if let Some(gallery) = capsule.galleries.get_mut(&gallery_id) {
-                    gallery.storage_status = new_status;
+                    gallery.storage_location = new_location;
                     gallery.updated_at = ic_cdk::api::time();
                     capsule.updated_at = ic_cdk::api::time(); // Update capsule timestamp
                 }
@@ -241,7 +241,7 @@ pub fn update_gallery_storage_status(
                 Ok(())
             } else {
                 Err(crate::types::Error::Internal(
-                    "Failed to update gallery storage status".to_string(),
+                    "Failed to update gallery storage location".to_string(),
                 ))
             }
         } else {

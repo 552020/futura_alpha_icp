@@ -801,7 +801,7 @@ impl Memory {
 
 // Gallery storage status for tracking where gallery data is stored
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum GalleryStorageStatus {
+pub enum GalleryStorageLocation {
     Web2Only,  // Stored only in Web2 database
     ICPOnly,   // Stored only in ICP canister
     Both,      // Stored in both Web2 and ICP
@@ -830,7 +830,7 @@ pub struct Gallery {
     pub is_public: bool,                         // whether gallery is publicly accessible
     pub created_at: u64,                         // creation timestamp (nanoseconds)
     pub updated_at: u64,                         // last update timestamp (nanoseconds)
-    pub storage_status: GalleryStorageStatus,    // where this gallery is stored
+    pub storage_location: GalleryStorageLocation,    // where this gallery is stored
     pub memory_entries: Vec<GalleryMemoryEntry>, // minimal extra data for each memory
     pub bound_to_neon: bool,                     // whether linked to Neon database
 }
@@ -957,7 +957,7 @@ impl Gallery {
             is_public: web2_gallery.is_public,
             created_at: Self::timestamp_to_nanoseconds(web2_gallery.created_at),
             updated_at: Self::timestamp_to_nanoseconds(web2_gallery.updated_at),
-            storage_status: GalleryStorageStatus::Web2Only,
+            storage_location: GalleryStorageLocation::Web2Only,
             memory_entries,
             bound_to_neon: false,
         }

@@ -148,49 +148,12 @@ async fn galleries_create_with_memories(
 }
 
 #[ic_cdk::update]
-fn update_gallery_storage_status(
+fn update_gallery_storage_location(
     gallery_id: String,
-    new_status: types::GalleryStorageStatus,
+    new_location: types::GalleryStorageLocation,
 ) -> types::Result<()> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::memory::with_capsule_store_mut;
-    use crate::types::PersonRef;
-    use ic_cdk::api::time;
-
-    let caller = PersonRef::from_caller();
-
-    // Update gallery storage status in caller's self-capsule
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-        // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
-            capsule.subject == caller
-                && capsule.owners.contains_key(&caller)
-                && capsule.galleries.contains_key(&gallery_id)
-        }) {
-            let capsule_id = capsule.id.clone();
-
-            // Update the capsule with the new gallery status
-            let update_result = store.update(&capsule_id, |capsule| {
-                if let Some(gallery) = capsule.galleries.get_mut(&gallery_id) {
-                    gallery.storage_status = new_status;
-                    gallery.updated_at = time();
-                    capsule.updated_at = time(); // Update capsule timestamp
-                }
-            });
-
-            if update_result.is_ok() {
-                Ok(())
-            } else {
-                Err(types::Error::Internal(
-                    "Failed to update gallery storage status".to_string(),
-                ))
-            }
-        } else {
-            Err(types::Error::NotFound)
-        }
-    })
+    // Delegate to gallery module (thin facade)
+    gallery::update_gallery_storage_location(gallery_id, new_location)
 }
 
 #[ic_cdk::query]
@@ -238,109 +201,42 @@ async fn galleries_update(
     gallery_id: String,
     update_data: types::GalleryUpdateData,
 ) -> types::Result<types::Gallery> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::types::Gallery;
-    use crate::types::PersonRef;
-    use ic_cdk::api::time;
-
-    let caller = PersonRef::from_caller();
-
-    // Find and update gallery in caller's self-capsule
-    let mut updated_gallery: Option<Gallery> = None;
-
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-
-        // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
-            capsule.subject == caller
-                && capsule.owners.contains_key(&caller)
-                && capsule.galleries.contains_key(&gallery_id)
-        }) {
-            let capsule_id = capsule.id.clone();
-
-            // Update the capsule with the modified gallery
-            let update_result = store.update(&capsule_id, |capsule| {
-                if let Some(gallery) = capsule.galleries.get(&gallery_id) {
-                    // Update gallery fields
-                    let mut gallery_clone = gallery.clone();
-                    if let Some(title) = update_data.title.clone() {
-                        gallery_clone.title = title;
-                    }
-                    if let Some(description) = update_data.description.clone() {
-                        gallery_clone.description = Some(description);
-                    }
-                    if let Some(is_public) = update_data.is_public {
-                        gallery_clone.is_public = is_public;
-                    }
-                    if let Some(memory_entries) = update_data.memory_entries.clone() {
-                        gallery_clone.memory_entries = memory_entries;
-                    }
-
-                    gallery_clone.updated_at = time();
-
-                    // Store updated gallery
-                    capsule.galleries.insert(gallery_id, gallery_clone.clone());
-                    capsule.updated_at = time(); // Update capsule timestamp
-
-                    updated_gallery = Some(gallery_clone);
-                }
-            });
-
-            if update_result.is_err() {
-                updated_gallery = None;
-            }
-        }
-    });
-
-    match updated_gallery {
-        Some(gallery) => Ok(gallery),
-        None => Err(types::Error::NotFound),
-    }
+    // Delegate to gallery module (thin facade)
+    gallery::galleries_update(gallery_id, update_data)
 }
 
 #[ic_cdk::update]
 async fn galleries_delete(gallery_id: String) -> types::Result<()> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::types::PersonRef;
-    use ic_cdk::api::time;
+    // Delegate to gallery module (thin facade)
+    gallery::galleries_delete(gallery_id)
+}
 
-    let caller = PersonRef::from_caller();
+// ============================================================================
+// GALLERY UTILITY ENDPOINTS
+// ============================================================================
 
-    // Find and delete gallery from caller's self-capsule
-    let mut gallery_found = false;
+/// Get gallery size information for debugging stable memory limits
+#[ic_cdk::query]
+fn get_gallery_size_info(gallery: types::Gallery) -> String {
+    gallery::get_gallery_size_report(&gallery)
+}
 
-    with_capsule_store_mut(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+/// Get detailed gallery size breakdown
+#[ic_cdk::query]
+fn get_gallery_size_breakdown(gallery: types::Gallery) -> gallery::GallerySizeInfo {
+    gallery::get_gallery_size_breakdown(&gallery)
+}
 
-        // Find the capsule containing the gallery
-        if let Some(capsule) = all_capsules.items.into_iter().find(|capsule| {
-            capsule.subject == caller
-                && capsule.owners.contains_key(&caller)
-                && capsule.galleries.contains_key(&gallery_id)
-        }) {
-            let capsule_id = capsule.id.clone();
+/// Calculate just the gallery size (without capsule overhead)
+#[ic_cdk::query]
+fn calculate_gallery_size(gallery: types::Gallery) -> u64 {
+    gallery::estimate_gallery_size(&gallery)
+}
 
-            // Update the capsule to remove the gallery
-            let update_result = store.update(&capsule_id, |capsule| {
-                if capsule.galleries.contains_key(&gallery_id) {
-                    capsule.galleries.remove(&gallery_id);
-                    capsule.updated_at = time(); // Update capsule timestamp
-                    gallery_found = true;
-                }
-            });
-
-            if update_result.is_err() {
-                gallery_found = false;
-            }
-        }
-    });
-
-    if gallery_found {
-        Ok(())
-    } else {
-        Err(types::Error::NotFound)
-    }
+/// Calculate gallery size when stored in capsule context
+#[ic_cdk::query]
+fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
+    gallery::estimate_gallery_capsule_size(&gallery)
 }
 
 // ============================================================================
@@ -359,24 +255,8 @@ async fn memories_create(
 
 #[ic_cdk::query]
 fn memories_read(memory_id: String) -> types::Result<types::Memory> {
-    use crate::capsule_store::types::PaginationOrder as Order;
-    use crate::types::PersonRef;
-
-    let caller = PersonRef::from_caller();
-
-    // Find memory across caller's accessible capsules
-    with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| {
-                // Check if caller has access to this capsule
-                capsule.owners.contains_key(&caller) || capsule.subject == caller
-            })
-            .and_then(|capsule| capsule.memories.get(&memory_id).cloned())
-            .ok_or(types::Error::NotFound)
-    })
+    // Delegate to memories module (thin facade)
+    crate::memories::read(memory_id)
 }
 
 #[ic_cdk::update]
@@ -410,14 +290,124 @@ fn upsert_metadata(
     metadata::upsert_metadata(memory_id, memory_type, metadata, idempotency_key)
 }
 
+// ============================================================================
+// EMERGENCY RECOVERY ENDPOINTS (Admin Only)
+// ============================================================================
+
+/// Emergency function to clear all stable memory data
+/// WARNING: This will delete all stored data and should only be used for recovery
+#[ic_cdk::update]
+fn clear_all_stable_memory() -> types::Result<()> {
+    // Only allow admin to call this
+    let caller = ic_cdk::api::msg_caller();
+    if !admin::is_admin(&caller) {
+        return Err(types::Error::Unauthorized);
+    }
+
+    memory::clear_all_stable_memory().map_err(types::Error::Internal)
+}
+
+// ============================================================================
+// CHUNKED ASSET UPLOAD ENDPOINTS - ICP Canister API
+// ============================================================================
+
+// OLD UPLOAD FUNCTIONS REMOVED - Migration to new hybrid architecture complete
+// All old upload functions have been removed and replaced with the new workflow:
+// - memories_create_inline (≤32KB files)
+// - uploads_begin + uploads_put_chunk + uploads_finish (large files)
+// - uploads_abort (cancel uploads)
+
+// ============================================================================
+// FILE UPLOAD & ASSET MANAGEMENT (5 functions)
+// ============================================================================
+
+/// Create memory with inline data (≤32KB only)
+#[ic_cdk::update]
+async fn memories_create_inline(
+    capsule_id: types::CapsuleId,
+    file_data: Vec<u8>,
+    metadata: types::MemoryMeta,
+) -> types::Result<types::MemoryId> {
+    // Use real UploadService with actual store integration
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        match upload_service.create_inline(&capsule_id, file_data, metadata) {
+            Ok(memory_id) => Ok(memory_id),
+            Err(err) => Err(err),
+        }
+    })
+}
+
+/// Begin chunked upload for large files
+#[ic_cdk::update]
+fn uploads_begin(
+    capsule_id: types::CapsuleId,
+    meta: types::MemoryMeta,
+    expected_chunks: u32,
+    idem: String,
+) -> types::Result<upload::types::SessionId> {
+    with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        upload_service.begin_upload(capsule_id, meta, expected_chunks, idem)
+    })
+}
+
+/// Upload a chunk for an active session
+#[ic_cdk::update]
+async fn uploads_put_chunk(session_id: u64, chunk_idx: u32, bytes: Vec<u8>) -> types::Result<()> {
+    // Use real UploadService with actual store integration
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.put_chunk(&session_id, chunk_idx, bytes) {
+            Ok(()) => Ok(()),
+            Err(err) => Err(err),
+        }
+    })
+}
+
+/// Commit chunks to create final memory
+#[ic_cdk::update]
+async fn uploads_finish(
+    session_id: u64,
+    expected_sha256: Vec<u8>,
+    total_len: u64,
+) -> types::Result<types::MemoryId> {
+    // Use real UploadService with actual store integration
+    let hash: [u8; 32] = match expected_sha256.try_into() {
+        Ok(h) => h,
+        Err(_) => return Err(types::Error::InvalidArgument("invalid hash".to_string())),
+    };
+
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.commit(session_id, hash, total_len) {
+            Ok(memory_id) => Ok(memory_id),
+            Err(err) => Err(err),
+        }
+    })
+}
+
+/// Abort upload session and cleanup
+#[ic_cdk::update]
+async fn uploads_abort(session_id: u64) -> types::Result<()> {
+    // Use real UploadService with actual store integration
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new(store);
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.abort(session_id) {
+            Ok(()) => Ok(()),
+            Err(err) => Err(err),
+        }
+    })
+}
+
 /// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
 #[ic_cdk::query]
 fn memories_ping(memory_ids: Vec<String>) -> types::Result<Vec<types::MemoryPresenceResult>> {
     metadata::memories_ping(memory_ids)
 }
-
-// Note: User principal management is handled through capsule registration
-// The existing register() function handles user principal management
 
 // ============================================================================
 // PERSONAL CANISTER MANAGEMENT (22 functions)
@@ -661,151 +651,6 @@ fn post_upgrade() {
     // If restore fails, start with empty state (no panic)
 
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
-}
-
-// ============================================================================
-// MEMORY METADATA & PRESENCE (2 functions)
-// ============================================================================
-
-// ============================================================================
-// EMERGENCY RECOVERY ENDPOINTS (Admin Only)
-// ============================================================================
-
-/// Emergency function to clear all stable memory data
-/// WARNING: This will delete all stored data and should only be used for recovery
-#[ic_cdk::update]
-fn clear_all_stable_memory() -> types::Result<()> {
-    // Only allow admin to call this
-    let caller = ic_cdk::api::msg_caller();
-    if !admin::is_admin(&caller) {
-        return Err(types::Error::Unauthorized);
-    }
-
-    memory::clear_all_stable_memory().map_err(types::Error::Internal)
-}
-
-// ============================================================================
-// GALLERY UTILITY ENDPOINTS
-// ============================================================================
-
-/// Get gallery size information for debugging stable memory limits
-#[ic_cdk::query]
-fn get_gallery_size_info(gallery: types::Gallery) -> String {
-    gallery::get_gallery_size_report(&gallery)
-}
-
-/// Get detailed gallery size breakdown
-#[ic_cdk::query]
-fn get_gallery_size_breakdown(gallery: types::Gallery) -> gallery::GallerySizeInfo {
-    gallery::get_gallery_size_breakdown(&gallery)
-}
-
-/// Calculate just the gallery size (without capsule overhead)
-#[ic_cdk::query]
-fn calculate_gallery_size(gallery: types::Gallery) -> u64 {
-    gallery::estimate_gallery_size(&gallery)
-}
-
-/// Calculate gallery size when stored in capsule context
-#[ic_cdk::query]
-fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
-    gallery::estimate_gallery_capsule_size(&gallery)
-}
-
-// ============================================================================
-// CHUNKED ASSET UPLOAD ENDPOINTS - ICP Canister API
-// ============================================================================
-
-// OLD UPLOAD FUNCTIONS REMOVED - Migration to new hybrid architecture complete
-// All old upload functions have been removed and replaced with the new workflow:
-// - memories_create_inline (≤32KB files)
-// - uploads_begin + uploads_put_chunk + uploads_finish (large files)
-// - uploads_abort (cancel uploads)
-
-// ============================================================================
-// FILE UPLOAD & ASSET MANAGEMENT (5 functions)
-// ============================================================================
-
-/// Create memory with inline data (≤32KB only)
-#[ic_cdk::update]
-async fn memories_create_inline(
-    capsule_id: types::CapsuleId,
-    file_data: Vec<u8>,
-    metadata: types::MemoryMeta,
-) -> types::Result<types::MemoryId> {
-    // Use real UploadService with actual store integration
-    memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        match upload_service.create_inline(&capsule_id, file_data, metadata) {
-            Ok(memory_id) => Ok(memory_id),
-            Err(err) => Err(err),
-        }
-    })
-}
-
-/// Begin chunked upload for large files
-#[ic_cdk::update]
-fn uploads_begin(
-    capsule_id: types::CapsuleId,
-    meta: types::MemoryMeta,
-    expected_chunks: u32,
-    idem: String,
-) -> types::Result<upload::types::SessionId> {
-    with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        upload_service.begin_upload(capsule_id, meta, expected_chunks, idem)
-    })
-}
-
-/// Upload a chunk for an active session
-#[ic_cdk::update]
-async fn uploads_put_chunk(session_id: u64, chunk_idx: u32, bytes: Vec<u8>) -> types::Result<()> {
-    // Use real UploadService with actual store integration
-    memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        let session_id = upload::types::SessionId(session_id);
-        match upload_service.put_chunk(&session_id, chunk_idx, bytes) {
-            Ok(()) => Ok(()),
-            Err(err) => Err(err),
-        }
-    })
-}
-
-/// Commit chunks to create final memory
-#[ic_cdk::update]
-async fn uploads_finish(
-    session_id: u64,
-    expected_sha256: Vec<u8>,
-    total_len: u64,
-) -> types::Result<types::MemoryId> {
-    // Use real UploadService with actual store integration
-    let hash: [u8; 32] = match expected_sha256.try_into() {
-        Ok(h) => h,
-        Err(_) => return Err(types::Error::InvalidArgument("invalid hash".to_string())),
-    };
-
-    memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        let session_id = upload::types::SessionId(session_id);
-        match upload_service.commit(session_id, hash, total_len) {
-            Ok(memory_id) => Ok(memory_id),
-            Err(err) => Err(err),
-        }
-    })
-}
-
-/// Abort upload session and cleanup
-#[ic_cdk::update]
-async fn uploads_abort(session_id: u64) -> types::Result<()> {
-    // Use real UploadService with actual store integration
-    memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        let session_id = upload::types::SessionId(session_id);
-        match upload_service.abort(session_id) {
-            Ok(()) => Ok(()),
-            Err(err) => Err(err),
-        }
-    })
 }
 
 // Export the interface for the smart contract.

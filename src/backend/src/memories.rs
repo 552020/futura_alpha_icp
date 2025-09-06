@@ -338,3 +338,25 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
         message: "Memories retrieved successfully".to_string(),
     }
 }
+
+/// Read a memory by ID from caller's accessible capsules
+pub fn read(memory_id: String) -> Result<crate::types::Memory> {
+    use crate::capsule_store::types::PaginationOrder as Order;
+    use crate::types::PersonRef;
+
+    let caller = PersonRef::from_caller();
+
+    // Find memory across caller's accessible capsules
+    crate::memory::with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        all_capsules
+            .items
+            .into_iter()
+            .find(|capsule| {
+                // Check if caller has access to this capsule
+                capsule.owners.contains_key(&caller) || capsule.subject == caller
+            })
+            .and_then(|capsule| capsule.memories.get(&memory_id).cloned())
+            .ok_or(crate::types::Error::NotFound)
+    })
+}

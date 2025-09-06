@@ -123,11 +123,11 @@ type Gallery = record {
   is_public : bool;
   title : text;
   updated_at : nat64;
+  storage_location : GalleryStorageLocation;
   memory_entries : vec GalleryMemoryEntry;
   description : opt text;
   created_at : nat64;
   bound_to_neon : bool;
-  storage_status : GalleryStorageStatus;
   owner_principal : principal;
 };
 type GalleryData = record { owner_principal : principal; gallery : Gallery };
@@ -146,7 +146,7 @@ type GallerySizeInfo = record {
   estimated_memory_entries_size : nat64;
   over_limit_by : nat64;
 };
-type GalleryStorageStatus = variant {
+type GalleryStorageLocation = variant {
   Web2Only;
   Failed;
   Both;
@@ -355,7 +355,7 @@ service : {
   remove_admin : (principal) -> (Result);
   set_migration_enabled : (bool) -> (Result);
   set_personal_canister_creation_enabled : (bool) -> (Result);
-  update_gallery_storage_status : (text, GalleryStorageStatus) -> (Result);
+  update_gallery_storage_location : (text, GalleryStorageLocation) -> (Result);
   // Abort upload session and cleanup
   uploads_abort : (nat64) -> (Result);
   // Begin chunked upload for large files

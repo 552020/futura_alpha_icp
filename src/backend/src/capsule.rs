@@ -968,20 +968,20 @@ mod gallery_tests {
     use super::*;
 
     #[test]
-    fn test_gallery_storage_status_logic() {
+    fn test_gallery_storage_location_logic() {
         // Test the logic for different storage status values
         // This test doesn't call the actual functions to avoid canister time() calls
 
         // Test storage status enum values
-        let status_icp = GalleryStorageStatus::ICPOnly;
-        let status_both = GalleryStorageStatus::Both;
-        let status_web2 = GalleryStorageStatus::Web2Only;
-        let status_failed = GalleryStorageStatus::Failed;
+        let location_icp = GalleryStorageLocation::ICPOnly;
+        let location_both = GalleryStorageLocation::Both;
+        let location_web2 = GalleryStorageLocation::Web2Only;
+        let location_failed = GalleryStorageLocation::Failed;
 
         // Verify enum values are different
-        assert_ne!(status_icp, status_both);
-        assert_ne!(status_web2, status_failed);
-        assert_ne!(status_icp, status_web2);
+        assert_ne!(location_icp, location_both);
+        assert_ne!(location_web2, location_failed);
+        assert_ne!(location_icp, location_web2);
     }
 
     #[test]
@@ -991,8 +991,8 @@ mod gallery_tests {
 
         assert_eq!(gallery_data.gallery.title, "Test Gallery");
         assert_eq!(
-            gallery_data.gallery.storage_status,
-            GalleryStorageStatus::Web2Only
+            gallery_data.gallery.storage_location,
+            GalleryStorageLocation::Web2Only
         );
         assert!(!gallery_data.gallery.is_public);
         assert!(gallery_data.gallery.memory_entries.is_empty());
@@ -1027,7 +1027,7 @@ mod gallery_tests {
                 is_public: false,
                 created_at: mock_time,
                 updated_at: mock_time,
-                storage_status: GalleryStorageStatus::Web2Only,
+                storage_location: GalleryStorageLocation::Web2Only,
                 memory_entries: vec![],
                 bound_to_neon: false,
             },
