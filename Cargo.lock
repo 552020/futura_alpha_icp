@@ -54,6 +54,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 name = "backend"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "candid",
  "getrandom 0.2.16",
  "hex",
@@ -641,6 +642,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ic_upload_minimal"
+version = "0.1.0"
+dependencies = [
+ "candid",
+ "serde",
+]
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1115,6 +1124,14 @@ dependencies = [
  "ryu",
  "serde",
 ]
+
+[[package]]
+name = "service_lifetimes_stateless"
+version = "0.1.0"
+
+[[package]]
+name = "service_lifetimes_threadlocal"
+version = "0.1.0"
 
 [[package]]
 name = "sha2"
