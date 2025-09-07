@@ -1,6 +1,15 @@
 [workspace]
 members = [
     "src/backend",
-    "src/canister_factory"
+    "src/canister_factory",
+    "lab/service_lifetimes_stateless",
+    "lab/service_lifetimes_threadlocal",
+    "lab/ic_upload_minimal",
 ]
 resolver = "2"
+
+# Only build prod by default (so CI / local `cargo build` stays clean & fast)
+default-members = [
+    "src/backend",
+    "src/canister_factory"
+]

@@ -1,0 +1,10 @@
+[package]
+name = "service_lifetimes_threadlocal"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "demo"
+path = "src/bin/demo.rs"
+
+[dependencies]
