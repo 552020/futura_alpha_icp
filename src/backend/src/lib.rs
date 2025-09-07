@@ -130,7 +130,10 @@ fn capsules_list() -> Vec<types::CapsuleHeader> {
 }
 
 #[ic_cdk::update]
-fn capsules_update(capsule_id: String, updates: types::CapsuleUpdateData) -> types::Result<types::Capsule> {
+fn capsules_update(
+    capsule_id: String,
+    updates: types::CapsuleUpdateData,
+) -> types::Result<types::Capsule> {
     // Delegate to capsule module (thin facade)
     capsule::capsules_update(capsule_id, updates)
 }
@@ -306,8 +309,8 @@ fn uploads_begin(
     idem: String,
 ) -> types::Result<upload::types::SessionId> {
     with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
-        upload_service.begin_upload(capsule_id, meta, expected_chunks, idem)
+        let mut upload_service = upload::service::UploadService::new();
+        upload_service.begin_upload(store, capsule_id, meta, expected_chunks, idem)
     })
 }
 
@@ -316,9 +319,9 @@ fn uploads_begin(
 async fn uploads_put_chunk(session_id: u64, chunk_idx: u32, bytes: Vec<u8>) -> types::Result<()> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
+        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.put_chunk(&session_id, chunk_idx, bytes) {
+        match upload_service.put_chunk(store, &session_id, chunk_idx, bytes) {
             Ok(()) => Ok(()),
             Err(err) => Err(err),
         }
@@ -333,15 +336,20 @@ async fn uploads_finish(
     total_len: u64,
 ) -> types::Result<types::MemoryId> {
     // Use real UploadService with actual store integration
-    let hash: [u8; 32] = match expected_sha256.try_into() {
+    let hash: [u8; 32] = match expected_sha256.clone().try_into() {
         Ok(h) => h,
-        Err(_) => return Err(types::Error::InvalidArgument("invalid hash".to_string())),
+        Err(_) => {
+            return Err(types::Error::InvalidArgument(format!(
+                "invalid_hash_length: expected 32 bytes, got {}",
+                expected_sha256.len()
+            )))
+        }
     };
 
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
+        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.commit(session_id, hash, total_len) {
+        match upload_service.commit(store, session_id, hash, total_len) {
             Ok(memory_id) => Ok(memory_id),
             Err(err) => Err(err),
         }
@@ -353,9 +361,9 @@ async fn uploads_finish(
 async fn uploads_abort(session_id: u64) -> types::Result<()> {
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new(store);
+        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.abort(session_id) {
+        match upload_service.abort(store, session_id) {
             Ok(()) => Ok(()),
             Err(err) => Err(err),
         }
@@ -389,6 +397,60 @@ fn clear_all_stable_memory() -> types::Result<()> {
 // - uploads_begin + uploads_put_chunk + uploads_finish (large files)
 // - uploads_abort (cancel uploads)
 // All upload endpoints are now organized under the MEMORIES section above.
+
+// ============================================================================
+// DEBUG ENDPOINTS (dev only)
+// ============================================================================
+
+/// Debug endpoint to compute SHA256 hash of provided bytes
+#[ic_cdk::query]
+fn debug_sha256(bytes: Vec<u8>) -> String {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(&bytes);
+    hex::encode(hash)
+}
+
+/// Debug endpoint to upload chunk with base64 data (dev only)
+#[ic_cdk::update]
+async fn debug_put_chunk_b64(session_id: u64, chunk_idx: u32, b64: String) -> types::Result<()> {
+    let bytes =
+        base64::decode(b64).map_err(|_| types::Error::InvalidArgument("bad base64".into()))?;
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new();
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.put_chunk(store, &session_id, chunk_idx, bytes) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(types::Error::from(e)),
+        }
+    })
+}
+
+/// Debug endpoint to finish upload with hex hash (dev only)
+#[ic_cdk::update]
+async fn debug_finish_hex(
+    session_id: u64,
+    sha256_hex: String,
+    total_len: u64,
+) -> types::Result<types::MemoryId> {
+    let bytes =
+        hex::decode(sha256_hex).map_err(|_| types::Error::InvalidArgument("bad hex".into()))?;
+    if bytes.len() != 32 {
+        return Err(types::Error::InvalidArgument(
+            "hash must be 32 bytes".into(),
+        ));
+    }
+    let mut hash_array = [0u8; 32];
+    hash_array.copy_from_slice(&bytes);
+
+    memory::with_capsule_store_mut(|store| {
+        let mut upload_service = upload::service::UploadService::new();
+        let session_id = upload::types::SessionId(session_id);
+        match upload_service.commit(store, session_id, hash_array, total_len) {
+            Ok(memory_id) => Ok(memory_id),
+            Err(e) => Err(types::Error::from(e)),
+        }
+    })
+}
 
 // ============================================================================
 // PERSONAL CANISTER MANAGEMENT (22 functions)
