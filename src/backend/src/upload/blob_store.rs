@@ -92,6 +92,17 @@ impl BlobStore {
         // Stream chunks into blob store pages
         let chunk_iter = session_store.iter_chunks(session_id, chunk_count);
         for (page_idx, chunk_data) in chunk_iter.enumerate() {
+            // Debug logging: Log the exact bytes being hashed
+            let first_10_bytes = if chunk_data.len() >= 10 {
+                format!("{:?}", &chunk_data[..10])
+            } else {
+                format!("{:?}", &chunk_data[..])
+            };
+            ic_cdk::println!(
+                "STORE_FROM_CHUNKS: session_id={}, page_idx={}, data_len={}, first_10_bytes={}",
+                session_id.0, page_idx, chunk_data.len(), first_10_bytes
+            );
+
             hasher.update(&chunk_data);
             total_written += chunk_data.len() as u64;
 
@@ -107,12 +118,19 @@ impl BlobStore {
         if actual_hash != expected_hash {
             // Cleanup on failure
             self.delete_blob(&blob_id)?;
-            return Err(Error::InvalidArgument("checksum".to_string()));
+            return Err(Error::InvalidArgument(format!(
+                "checksum_mismatch: expected={}, actual={}",
+                hex::encode(expected_hash),
+                hex::encode(actual_hash)
+            )));
         }
         if total_written != expected_len {
             // Cleanup on failure
             self.delete_blob(&blob_id)?;
-            return Err(Error::InvalidArgument("size".to_string()));
+            return Err(Error::InvalidArgument(format!(
+                "size_mismatch: expected={}, actual={}",
+                expected_len, total_written
+            )));
         }
 
         // Store blob metadata

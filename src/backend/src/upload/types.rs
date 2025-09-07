@@ -96,7 +96,7 @@ impl Storable for BlobId {
 }
 
 /// Session status for crash-safe commit workflow
-#[derive(Clone, Debug, CandidType, Deserialize)]
+#[derive(Clone, Debug, CandidType, Deserialize, PartialEq)]
 pub enum SessionStatus {
     Pending,
     Committed { blob_id: u64 },
