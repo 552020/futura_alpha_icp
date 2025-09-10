@@ -24,5 +24,9 @@ dist/
 # environment variables
 .env
 
+# kiro
+.kiro/
+
+# private
 
 secretus/
