@@ -24,8 +24,9 @@ dist/
 # environment variables
 .env
 
-# kiro
+# AI
 .kiro/
+.cursor/
 
 # private
 
