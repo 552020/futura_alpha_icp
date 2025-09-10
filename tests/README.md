@@ -1,6 +1,6 @@
 # Backend Test Suite Overview
 
-This document provides an overview of all test types in the Futura ICP backend and how to run them.
+This document provides a comprehensive overview of all test types in the Futura ICP backend and how to run them.
 
 ## 📁 Test Structure
 
@@ -8,44 +8,39 @@ This document provides an overview of all test types in the Futura ICP backend a
 
 Located at the workspace root for end-to-end testing.
 
-#### `capsule_store_integration.rs`
+#### **Test Categories & Structure:**
 
-**Purpose**: High-level integration tests for the capsule storage foundation.
-**Coverage**: Tests both HashMap and Stable backends through the `Store` enum.
-**Key Tests**:
-
-- `test_store_enum_delegation()` - Verifies runtime polymorphism between backends
-- `test_store_backend_identification()` - Confirms backend type identification
-- `test_store_api_completeness()` - Complete API surface testing
-- `test_index_updates_on_upsert_and_update()` - Index consistency during updates
-- `test_pagination_cursor_semantics()` - Cursor-based pagination logic
-
-**Run Command**:
-
-```bash
-cargo test --test capsule_store_integration -- --nocapture
+```
+tests/backend/
+├── admin/                    # Admin function tests
+├── canister-capsule/         # Basic canister-capsule operations
+├── general/                  # General capsule operations
+├── shared-capsule/           # Advanced shared capsule functionality
+│   ├── auth/                 # Authorization tests
+│   ├── galleries/            # Gallery CRUD operations
+│   ├── memories/             # Memory CRUD operations
+│   └── upload/               # Upload workflow tests
+├── logs/                     # Test execution logs
+├── test_config.sh            # Shared configuration
+├── test_utils.sh             # Shared utilities
+├── test_registry.sh          # Registry tests
+├── test_status.sh            # Status tests
+└── run_all_tests.sh          # Run all backend tests
 ```
 
 ---
 
-### 🐚 **Bash Test Scripts** (`scripts/tests/backend/`)
+### 🐚 **Bash Test Scripts** (`tests/backend/`)
 
 End-to-end integration tests that test the deployed canister against real ICP network.
 
-#### **Test Categories & Structure:**
-
-```
-scripts/tests/backend/
-├── canister-capsule/          # Basic canister-capsule operations
-├── general/                   # General capsule operations
-├── shared-capsule/           # Advanced shared capsule functionality
-│   ├── memories/             # Memory CRUD operations
-│   └── galleries/            # Gallery CRUD operations
-├── test_config.sh            # Shared configuration
-└── test_utils.sh             # Shared utilities
-```
-
 #### **Main Test Suites:**
+
+##### **👑 Admin Tests** (`admin/`)
+
+- **`test_admin_functions.sh`** - Core admin functionality
+- **`test_admin_management.sh`** - Admin management operations
+- **`test_admin_simple.sh`** - Basic admin operations
 
 ##### **📦 Canister-Capsule Tests** (`canister-capsule/`)
 
@@ -56,40 +51,53 @@ scripts/tests/backend/
 
 - **`test_capsules_bind_neon.sh`** - Neon binding functionality
 - **`test_capsules_create.sh`** - Capsule creation workflow
+- **`test_capsules_delete.sh`** - Capsule deletion
 - **`test_capsules_list.sh`** - Capsule listing and pagination
 - **`test_capsules_read.sh`** - Capsule read operations
-- **`test_galleries_create.sh`** - Gallery creation
-- **`test_galleries_delete.sh`** - Gallery deletion
-- **`test_galleries_list.sh`** - Gallery listing
-- **`test_galleries_update.sh`** - Gallery updates
-- **`test_memories_ping.sh`** - Memory service health checks
-- **`test_store_gallery_forever_with_memories.sh`** - Gallery persistence
-- **`test_sync_gallery_memories.sh`** - Gallery-memory synchronization
+- **`test_capsules_update.sh`** - Capsule updates
+- **`test_subject_index.sh`** - Subject index operations
+- **`capsule_test_utils.sh`** - Shared capsule test utilities
 
 ##### **🎯 Shared Capsule Tests** (`shared-capsule/`)
 
 - **`test_shared_capsule.sh`** - Shared capsule operations
 - **`run_all_shared_tests.sh`** - Complete shared capsule test suite
 
-###### **Memory Tests** (`shared-capsule/memories/`)
+###### **🔐 Authorization Tests** (`shared-capsule/auth/`)
 
 - **`test_authorization.sh`** - Memory access authorization
-- **`test_chunked_upload.sh`** - Large file chunked uploads
+
+###### **📸 Gallery Tests** (`shared-capsule/galleries/`)
+
+- **`test_gallery_crud.sh`** - Gallery CRUD operations
+- **`test_gallery_upload.sh`** - Gallery file uploads
+- **`test_galleries_create.sh`** - Gallery creation
+- **`test_galleries_create_with_memories.sh`** - Gallery creation with memories
+- **`test_galleries_delete.sh`** - Gallery deletion
+- **`test_galleries_list.sh`** - Gallery listing
+- **`test_galleries_update.sh`** - Gallery updates
+- **`test_uuid_mapping.sh`** - UUID mapping validation
+- **`run_all_gallery_tests.sh`** - Run all gallery tests
+- **`gallery_test_utils.sh`** - Shared gallery test utilities
+
+###### **🧠 Memory Tests** (`shared-capsule/memories/`)
+
+- **`test_memory_crud.sh`** - Complete memory CRUD workflow
 - **`test_memories_advanced.sh`** - Advanced memory operations
 - **`test_memories_create.sh`** - Memory creation
 - **`test_memories_delete.sh`** - Memory deletion
 - **`test_memories_list.sh`** - Memory listing
+- **`test_memories_ping.sh`** - Memory service health checks
 - **`test_memories_read.sh`** - Memory reading
 - **`test_memories_update.sh`** - Memory updates
-- **`test_memory_crud.sh`** - Complete memory CRUD workflow
 - **`run_all_memory_tests.sh`** - Run all memory tests
 
-###### **Gallery Tests** (`shared-capsule/galleries/`)
+###### **📤 Upload Tests** (`shared-capsule/upload/`)
 
-- **`test_gallery_crud.sh`** - Gallery CRUD operations
-- **`test_gallery_upload.sh`** - Gallery file uploads
-- **`test_uuid_mapping.sh`** - UUID mapping validation
-- **`run_all_gallery_tests.sh`** - Run all gallery tests
+- **`test_upload_begin.sh`** - Upload initialization
+- **`test_upload_workflow.sh`** - Complete upload workflow
+- **`test_uploads_put_chunk.sh`** - Chunked upload operations
+- **`upload_test_utils.sh`** - Shared upload test utilities
 
 #### **Setup Requirements:**
 
@@ -100,9 +108,10 @@ dfx start --background
 # 2. Deploy canisters
 dfx deploy
 
-# 3. Configure test settings
-# Edit scripts/tests/backend/test_config.sh
-export BACKEND_CANISTER_ID="your-backend-canister-id"
+# 3. Test configuration is automatic
+# test_config.sh automatically reads canister IDs from dfx
+export BACKEND_CANISTER_ID=$(dfx canister id backend 2>/dev/null)
+export FRONTEND_CANISTER_ID=$(dfx canister id frontend 2>/dev/null)
 
 # 4. Register test user (if needed)
 dfx canister call backend register
@@ -111,9 +120,12 @@ dfx canister call backend register
 #### **Running Bash Tests:**
 
 ```bash
-cd scripts/tests/backend
+cd tests/backend
 
-# Run all shared capsule tests (recommended)
+# Run all backend tests (recommended)
+./run_all_tests.sh
+
+# Run all shared capsule tests
 ./shared-capsule/run_all_shared_tests.sh
 
 # Run specific test suites
@@ -124,6 +136,8 @@ cd scripts/tests/backend
 ./general/test_capsules_create.sh
 ./general/test_capsules_read.sh
 ./shared-capsule/memories/test_memory_crud.sh
+./admin/test_admin_functions.sh
+./shared-capsule/upload/test_upload_workflow.sh
 
 # Run basic canister tests
 ./canister-capsule/test_canister_capsule.sh
@@ -135,15 +149,16 @@ cd scripts/tests/backend
 - **Detailed error reporting** with dfx command outputs
 - **Test suite aggregation** with summary statistics
 - **Individual test execution** for debugging
-- **Configuration-driven** setup (no hardcoded values)
+- **Automatic configuration** (no hardcoded values)
+- **Test logging** in `logs/` directory
 
 ---
 
 ### 🔧 **Unit Tests** (Embedded in source files)
 
-#### **Capsule Store Tests** (`src/capsule_store/`)
+#### **Capsule Store Tests** (`src/backend/src/capsule_store/`)
 
-**Location**: `src/capsule_store/stable.rs`, `src/capsule_store/hash.rs`, `src/capsule_store/store.rs`
+**Location**: `src/backend/src/capsule_store/stable.rs`, `src/backend/src/capsule_store/hash.rs`, `src/backend/src/capsule_store/store.rs`
 
 ##### **Guardrail Tests** (Critical Regression Prevention)
 
@@ -161,7 +176,7 @@ These tests protect against the bugs we discovered during stable memory migratio
 - **`test_capsule_storable()`** - Data serialization compatibility
 - **`test_capsule_size_within_bound()`** - Memory size constraints
 
-#### **Property-Based Tests** (`src/capsule_store/integration_tests.rs`)
+#### **Property-Based Tests** (`src/backend/src/capsule_store/integration_tests.rs`)
 
 **Purpose**: Automated bug hunting through randomized testing.
 **Coverage**: Complex operation sequences that reveal edge cases.
@@ -172,20 +187,23 @@ These tests protect against the bugs we discovered during stable memory migratio
 
 **Note**: These tests now correctly panic on empty IDs instead of showing false corruption.
 
-#### **Canister Factory Tests** (`src/canister_factory/`)
+#### **Canister Factory Tests** (`src/backend/src/canister_factory/`)
 
-**Location**: `src/canister_factory/integration_tests/`
+**Location**: `src/backend/src/canister_factory/integration_tests/`
 
 1. **`cycles_tests.rs`** - Cycle management and payment logic
 2. **`import_session_tests.rs`** - Import session handling
 3. **`orchestration_tests.rs`** - Multi-canister orchestration
 4. **`registry_tests.rs`** - Canister registry operations
+5. **`test_utils.rs`** - Shared test utilities
 
-#### **Upload Service Tests** (`src/upload/tests.rs`)
+#### **Upload Service Tests** (`src/backend/src/upload/tests/`)
 
 **Purpose**: File upload workflow validation.
 **Coverage**:
 
+- **`test_unit.rs`** - Unit tests for upload components
+- **`test_integration.rs`** - Integration tests for upload workflows
 - Service creation and initialization
 - Constants validation (chunk sizes, budgets)
 - ID generation (SessionId, BlobId)
@@ -222,12 +240,6 @@ cargo test capsule_store::stable::tests --lib -- --nocapture
 ```bash
 cd src/backend
 cargo test test_property_based_operations_stable --lib -- --nocapture
-```
-
-#### **Integration Tests Only**
-
-```bash
-cargo test --test capsule_store_integration -- --nocapture
 ```
 
 #### **Upload Tests Only**
@@ -334,20 +346,23 @@ Our comprehensive test suite follows a testing pyramid approach with multiple le
 - Shared capsule workflows - Complete user journeys
 - Memory upload cycles - File handling end-to-end
 - Gallery operations - Complete gallery lifecycles
+- Admin operations - Administrative functionality
+- Upload workflows - File upload and chunking
 
 ---
 
 ## 📊 Test Coverage Areas
 
-| Area                   | Test Type                                 | Files                                                                             | Status      |
-| ---------------------- | ----------------------------------------- | --------------------------------------------------------------------------------- | ----------- |
-| **Capsule Storage**    | Guardrail + Property + Integration + Bash | `capsule_store/` + `scripts/tests/backend/`                                       | ✅ Complete |
-| **Memory Management**  | Unit + Integration + Bash                 | `memory.rs` + `scripts/tests/backend/shared-capsule/memories/`                    | ✅ Complete |
-| **Upload Service**     | Unit + Bash                               | `upload/tests.rs` + `scripts/tests/backend/shared-capsule/memories/`              | ✅ Complete |
-| **Gallery Operations** | Bash                                      | `scripts/tests/backend/shared-capsule/galleries/`                                 | ✅ Complete |
-| **Canister Factory**   | Integration                               | `canister_factory/integration_tests/`                                             | ✅ Complete |
-| **Authentication**     | Unit + Bash                               | `auth.rs` + `scripts/tests/backend/shared-capsule/memories/test_authorization.sh` | ✅ Complete |
-| **Metadata**           | Unit                                      | `metadata.rs`                                                                     | ✅ Basic    |
+| Area                   | Test Type                                 | Files                                                    | Status      |
+| ---------------------- | ----------------------------------------- | -------------------------------------------------------- | ----------- |
+| **Capsule Storage**    | Guardrail + Property + Integration + Bash | `capsule_store/` + `tests/backend/`                      | ✅ Complete |
+| **Memory Management**  | Unit + Integration + Bash                 | `memory.rs` + `tests/backend/shared-capsule/memories/`   | ✅ Complete |
+| **Upload Service**     | Unit + Bash                               | `upload/tests/` + `tests/backend/shared-capsule/upload/` | ✅ Complete |
+| **Gallery Operations** | Bash                                      | `tests/backend/shared-capsule/galleries/`                | ✅ Complete |
+| **Canister Factory**   | Integration                               | `canister_factory/integration_tests/`                    | ✅ Complete |
+| **Authentication**     | Unit + Bash                               | `auth.rs` + `tests/backend/shared-capsule/auth/`         | ✅ Complete |
+| **Admin Functions**    | Bash                                      | `tests/backend/admin/`                                   | ✅ Complete |
+| **Metadata**           | Unit                                      | `metadata.rs`                                            | ✅ Basic    |
 
 ---
 
@@ -358,6 +373,8 @@ Our comprehensive test suite follows a testing pyramid approach with multiple le
 - `test_utils.rs` - Shared test helpers and fixtures
 - `create_test_capsule()` - Standard test capsule creation
 - Memory isolation via `StableStore::new_test()`
+- `test_config.sh` - Automatic canister ID configuration
+- `test_utils.sh` - Shared bash test utilities
 
 ### **Test Data**
 
@@ -397,6 +414,7 @@ Our comprehensive test suite follows a testing pyramid approach with multiple le
 2. **Empty ID Protection** - Guards against subject index corruption
 3. **Guardrail Tests** - 8 comprehensive regression tests
 4. **Property Test Fixes** - Now catch real bugs instead of false positives
+5. **Comprehensive Test Coverage** - Added admin, upload, and auth test suites
 
 ### **🚀 Current Status**
 
@@ -404,6 +422,9 @@ Our comprehensive test suite follows a testing pyramid approach with multiple le
 - Property tests working correctly ✅
 - Memory isolation implemented ✅
 - Test documentation complete ✅
+- Admin functionality tested ✅
+- Upload workflows tested ✅
+- Authorization tested ✅
 
 ---
 
@@ -412,16 +433,18 @@ Our comprehensive test suite follows a testing pyramid approach with multiple le
 ### **Adding New Tests**
 
 1. Place unit tests in the same file as the code they test
-2. Add integration tests to `capsule_store_integration.rs`
+2. Add integration tests to appropriate `integration_tests.rs` files
 3. Use `#[test]` attribute for unit tests
 4. Use `#[should_panic]` for tests that should fail
 5. Add guardrail tests for critical bug fixes
+6. Add bash tests for end-to-end workflows
 
 ### **Test Naming Conventions**
 
 - `test_[component]_[behavior]()` - Unit tests
 - `test_property_based_[component]()` - Property tests
 - `test_[bug_name]_rejection()` - Guardrail tests
+- `test_[feature]_[operation].sh` - Bash tests
 
 ### **Test Categories**
 
@@ -429,3 +452,11 @@ Our comprehensive test suite follows a testing pyramid approach with multiple le
 - **Integration**: Multi-component workflows
 - **Property**: Automated edge case discovery
 - **Guardrail**: Regression prevention
+- **End-to-End**: Complete user workflows
+
+### **Test Organization**
+
+- **Backend Unit Tests**: In `src/backend/src/` alongside source code
+- **Integration Tests**: In `src/backend/src/*/integration_tests/`
+- **End-to-End Tests**: In `tests/backend/` organized by feature
+- **Test Utilities**: Shared helpers in `test_utils.sh` and `test_config.sh`
