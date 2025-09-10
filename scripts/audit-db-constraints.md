@@ -52,12 +52,14 @@ Add this to your CI pipeline:
 ## Common Scenarios
 
 ### ✅ Clean Database
+
 ```
 ✓ Audit passed: No unknown constraints found!
 ✓ All database constraints are managed by Drizzle migrations
 ```
 
 ### ⚠️ Schema Drift Detected
+
 ```
 ⚠ Found 2 constraint(s) in database but not in migrations:
 
@@ -81,12 +83,15 @@ Unknown constraints:
 ## Troubleshooting
 
 ### "Migrations directory not found"
+
 Make sure you're running from the repository root and the path `src/nextjs/src/db/migrations` exists.
 
 ### "Failed to connect to database"
+
 Check your `DATABASE_URL` and database connectivity.
 
 ### Too many unknown constraints?
+
 Run with `--baseline` to accept current state, then investigate which constraints should be in migrations vs removed.
 
 ## MVP Benefits
@@ -96,3 +101,5 @@ Run with `--baseline` to accept current state, then investigate which constraint
 - **CI/CD ready** with proper exit codes
 - **Actionable output** with specific constraint names
 - **Zero dependencies** (uses only psql and standard Unix tools)
+
+
