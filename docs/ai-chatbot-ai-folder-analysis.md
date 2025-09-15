@@ -327,5 +327,3 @@ export const artifactModel = createMockModel();
 4. **Add testing support** once core functionality is working
 
 The AI folder provides a complete, production-ready AI system that can be adapted to Futura's needs while maintaining the core functionality and architecture.
-
-

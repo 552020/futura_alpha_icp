@@ -323,5 +323,3 @@ The original import guide was **misleading** about the suggestion table. The ai-
 1. Add the core chat tables (`chats`, `messages`, `votes`, `streams`)
 2. Create custom `memoryAISuggestions` table for memory-specific AI features
 3. Skip the document-related tables unless you want AI document editing
-
-
