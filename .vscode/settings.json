@@ -1,0 +1,11 @@
+{
+  "rust-analyzer.cargo.features": ["migration", "personal_canister_creation"],
+  "rust-analyzer.cargo.allFeatures": false,
+  "rust-analyzer.checkOnSave.allFeatures": false,
+  "rust-analyzer.checkOnSave.features": ["migration", "personal_canister_creation"],
+  "workbench.colorCustomizations": {
+    "activityBar.background": "#461C4D",
+    "titleBar.activeBackground": "#62276B",
+    "titleBar.activeForeground": "#FCF8FD"
+  }
+}
