@@ -1,45 +1,26 @@
 # FUTURA alpha
 
-Submission for the **ICP WCHL25 National Round**.
+Submission for the **ICP WCHL25 Regional Round**.
 
 ## Hackathon submission overview
 
-The core of this project is leveraging ICP and blockchain technologies to preserve memories long term — and, ultimately, aspects of the person themself.
+> ⚠️ **Note**: This README is outdated as we are busy building.
 
-We are working on three verticals:
+Futura leverages ICP and blockchain technologies to preserve the most valuable memories of a person long term and pass them through generations.
 
-1. **Digital vault**: share and store valuable memories across generations
-2. **Forever wedding album**: permanent, shareable album with optional AI curation
-3. **AI‑Self for the aftermath**: legacy messages and guided memory preservation
+Over the past months We explored three potential verticals:
 
-### 1. Offline validation
+- Futura as a **digital vault** for sharing memories across generations,
+- Futura as a a long-lasting **wedding album**,
+- Futura as AI generated digital Self.
 
-We conducted market research across all three verticals to validate product-market fit.
+After initial offline idea validation through interviews and market research, we're now focusing on the wedding album vertical, and we are just one step away from launch.
 
-#### Offline validation (market research)
+## Clone with submodules
 
-**Digital vault**: we conducted interviews with potential customers (parents, family archivists, people who already keep photo libraries). Main takeaways are: difficulty of reaching target audience, higher age of possible targets, need is not well defined, and the target niche is a spread target group.
-
-**Wedding album**: in this case it's really easy to reach out, the market is big, target is much younger and interviews showed strong interest. We reached out to wedding photographers and planners to test interest in a permanent, easily shareable album with AI curation and guest contributions. Early partners are interested, especially for differentiating their packages.
-
-**AI‑Self**: we ran a quick survey and exploratory calls around memorialization/legacy messages and an "AI companion clone." There's curiosity about leaving messages to loved ones and organizing digital life in one place, but consent, privacy, and tone are critical. Early signal says start with narrow use cases (e.g., guided legacy prompts) rather than a full conversational clone.
-
-### 2. Juno fake‑door landing pages
-
-We prepared three simple landing pages (one per vertical) for an upcoming A/B test to measure interest.
-
-- Source: see the submodule `src/nextjs`, branch `juno`
-- Deployed on Juno: [add link here]
-
-The goal is to validate messaging, value prop, and capture early sign‑ups.
-
-### 3. Web2 MVP with ICP integration
-
-We continued working on the web2 MVP. It’s a full‑stack Next.js app, and we integrated an ICP backend to store memories.
-
-- Next.js app (web2) provides most of the needed functionality and UX
-- Memory HTTP certification and storage code is scaffolded in the Rust canister but temporarily commented out to keep the current build clean while we iterate
-- Internet Identity is included for future sign‑in flows; frontend canister deployment is disabled for now to simplify local deploys
+```bash
+git clone --recursive https://github.com/552020/futura_alpha_icp.git
+```
 
 ### Local dev quickstart
 
@@ -48,12 +29,6 @@ dfx start --background
 ./scripts/deploy-local.sh
 # Optional: run Next.js locally
 cd src/nextjs && npm run dev
-```
-
-## Clone with submodules
-
-```bash
-git clone --recursive https://github.com/552020/futura_alpha_icp.git
 ```
 
 ## Local Development
