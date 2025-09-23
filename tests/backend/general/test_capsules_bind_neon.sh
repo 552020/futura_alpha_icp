@@ -3,6 +3,11 @@
 # Test script for capsules_bind_neon function
 # Tests binding/unbinding capsules, galleries, and memories to Neon database
 
+# Fix dfx color issues
+export DFX_COLOR=0
+export NO_COLOR=1
+export TERM=dumb
+
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
@@ -22,20 +27,13 @@ FAILED_TESTS=0
 test_capsules_bind_neon_basic() {
     echo_info "Testing basic capsules_bind_neon functionality..."
     
-    # First create a capsule for the caller
-    local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-    if ! is_success "$create_result"; then
-        echo_error "Failed to create test capsule"
-        return 1
-    fi
-    
-    # Extract capsule ID
-    local capsule_id=$(extract_capsule_id "$create_result")
+    # Use the shared capsule from setup
+    local capsule_id=$(get_test_capsule_id)
     if [[ -z "$capsule_id" ]]; then
-        echo_error "Failed to extract capsule ID from creation response"
+        echo_error "Failed to get test capsule ID"
         return 1
     fi
-    echo_info "Created test capsule: $capsule_id"
+    echo_info "Using test capsule: $capsule_id"
     
     # Test binding capsule to Neon
     local bind_result=$(dfx canister call backend capsules_bind_neon "(variant { Capsule }, \"$capsule_id\", true)" 2>&1)
@@ -131,36 +129,34 @@ test_capsules_bind_neon_gallery() {
 test_capsules_bind_neon_memory() {
     echo_info "Testing memory binding with capsules_bind_neon..."
     
-    # Create a capsule
-    local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-    if ! is_success "$create_result"; then
-        echo_error "Failed to create test capsule for memory binding"
+    # Get the first available capsule for the current user
+    local capsules_list=$(dfx canister call backend capsules_list 2>/dev/null)
+    local capsule_id=$(echo "$capsules_list" | grep -o 'id = "[^"]*"' | head -1 | sed 's/id = "//' | sed 's/"//')
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "No accessible capsules found for current user"
         return 1
     fi
-    local capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+    echo_info "Using accessible capsule: $capsule_id"
     
-    # Create a memory in the capsule
-    local memory_data='(variant {
-      Inline = record {
-        bytes = blob "54657374206d656d6f72792064617461";
-        meta = record {
-          name = "test_memory_binding";
-          tags = vec {};
-          description = opt "Test memory for binding";
-        };
-      };
-    })'
+    # Create a memory in the capsule with minimal data
+    local memory_data='(variant { Inline = record { meta = record { name = "test_memory_binding"; tags = vec {}; description = null }; bytes = blob "" } })'
     
-    local memory_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"test_idem_$(date +%s)\")" 2>/dev/null)
+    local idempotency_key="test_idem_$(date +%s)"
+    echo_info "Creating memory with capsule_id: $capsule_id, idempotency_key: $idempotency_key"
+    
+    local memory_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idempotency_key\")" 2>&1)
+    echo_info "Memory creation result: $memory_result"
+    
     if ! is_success "$memory_result"; then
         echo_error "Failed to create test memory: $memory_result"
         return 1
     fi
     
     # Extract the actual memory ID from the response
-    local memory_id=$(echo "$memory_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+    local memory_id=$(echo "$memory_result" | grep -o 'Ok = "[^"]*"' | sed 's/Ok = "//' | sed 's/"//')
     if [[ -z "$memory_id" ]]; then
-        echo_error "Failed to extract memory ID from creation response"
+        echo_error "Failed to extract memory ID from creation response: $memory_result"
         return 1
     fi
     echo_info "Created test memory: $memory_id"
