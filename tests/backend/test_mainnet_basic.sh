@@ -2,19 +2,24 @@
 
 # Basic Mainnet Connectivity Test
 # Tests that the mainnet canister is accessible and responding
+#
+# DFX Methods Used:
+# - dfx canister id backend --network ic
+# - dfx canister call backend --network ic greet()
+# - dfx canister call backend --network ic whoami
+# - dfx canister status backend --network ic
+# - dfx cycles balance --network ic
 
-# Load test utilities
+# Load test utilities and mainnet configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/test_utils.sh"
+source "$SCRIPT_DIR/mainnet_test_config.sh"
 
 # Test configuration
 TEST_NAME="Mainnet Basic Connectivity Tests"
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
-
-# Mainnet canister ID from canister_ids.json
-MAINNET_CANISTER_ID="izhgj-eiaaa-aaaaj-a2f7q-cai"
 
 # Helper function to run a test with proper counting
 run_test() {
@@ -146,7 +151,13 @@ test_cycles_balance() {
 main() {
     echo_info "Starting $TEST_NAME"
     echo_info "=================================="
-    echo_info "Testing mainnet canister: $MAINNET_CANISTER_ID"
+    
+    # Validate mainnet configuration
+    if ! validate_mainnet_config; then
+        echo_error "Mainnet configuration validation failed"
+        exit 1
+    fi
+    
     echo_info "Network: ICP Mainnet"
     echo ""
     
