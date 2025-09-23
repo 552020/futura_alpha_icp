@@ -3,21 +3,16 @@
 # Test script for subject index functionality in stable backend
 # This tests the functionality that was previously only testable in IC environment
 
-# Fix dfx color issues
-export DFX_COLOR=0
-export NO_COLOR=1
-export TERM=dumb
+# Color issues are handled in test_utils.sh
 
 # Parse command line arguments
 MAINNET_MODE=false
-CANISTER_ID="backend"
 NETWORK_FLAG=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --mainnet)
             MAINNET_MODE=true
-            CANISTER_ID="rdmx6-jaaaa-aaaah-qcaiq-cai"
             NETWORK_FLAG="--network ic"
             shift
             ;;
@@ -29,10 +24,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Load test configuration and utilities
+# Load test configuration and utilities first
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
 source "$SCRIPT_DIR/../test_utils.sh"
+
+# Set canister ID based on mode
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    CANISTER_ID=$(get_canister_id "backend" "ic")
+else
+    CANISTER_ID=$(get_canister_id "backend")
+fi
 
 # Test configuration
 TEST_NAME="Subject Index Tests"
@@ -59,7 +61,7 @@ test_subject_index_functionality() {
         echo_info "Capsule created successfully"
         
         # Extract capsule ID from the result
-        local capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+        local capsule_id=$(extract_capsule_id "$create_result")
         echo_info "Created capsule ID: $capsule_id"
         
         # Test 2: Read the capsule back (this tests the subject index indirectly)

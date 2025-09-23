@@ -51,10 +51,16 @@ FAILED_TESTS=0
 test_capsules_bind_neon_basic() {
     echo_info "Testing basic capsules_bind_neon functionality..."
     
-    # Use the shared capsule from setup
-    local capsule_id=$(get_test_capsule_id)
+    # Create a fresh capsule for this test to avoid conflicts
+    local create_result=$(dfx canister call $CANISTER_ID capsules_create "(null)" $NETWORK_FLAG 2>/dev/null)
+    if ! is_success "$create_result"; then
+        echo_error "Failed to create test capsule: $create_result"
+        return 1
+    fi
+    
+    local capsule_id=$(extract_capsule_id "$create_result")
     if [[ -z "$capsule_id" ]]; then
-        echo_error "Failed to get test capsule ID"
+        echo_error "Failed to extract capsule ID from creation result"
         return 1
     fi
     echo_info "Using test capsule: $capsule_id"

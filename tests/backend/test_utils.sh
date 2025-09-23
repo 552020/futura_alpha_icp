@@ -370,8 +370,8 @@ extract_capsule_id() {
     # Try different patterns for capsule ID extraction
     local capsule_id=""
     
-    # Pattern 1: id = "capsule_id"
-    capsule_id=$(echo "$response" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+    # Pattern 1: id = "capsule_id" (look for the first occurrence after "Ok = record")
+    capsule_id=$(echo "$response" | grep -A 5 "Ok = record" | grep -o 'id = "[^"]*"' | head -1 | sed 's/id = "//' | sed 's/"//')
     
     # Pattern 2: capsule_id = "capsule_id" (for CapsuleInfo responses)
     if [[ -z "$capsule_id" ]]; then
