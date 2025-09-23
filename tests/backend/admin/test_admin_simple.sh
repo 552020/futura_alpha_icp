@@ -2,14 +2,35 @@
 
 # Simple Admin Functions Test
 # Tests that admin functions exist and can be called
+# Usage: ./test_admin_simple.sh [--mainnet]
 
-echo "Testing admin functions..."
+# Load test utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../test_utils.sh"
 
-# Get canister ID
-CANISTER_ID="${CANISTER_ID:-$(dfx canister id backend 2>/dev/null)}"
-if [ -z "$CANISTER_ID" ]; then
-    echo "ERROR: Backend canister not found. Make sure it's deployed."
-    exit 1
+# Parse command line arguments
+MAINNET_MODE=false
+if [[ "$1" == "--mainnet" ]]; then
+    MAINNET_MODE=true
+    echo_info "Running in mainnet mode"
+fi
+
+# Get canister ID and network settings
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    # Load mainnet configuration
+    source "$SCRIPT_DIR/../mainnet/config.sh"
+    CANISTER_ID="$MAINNET_CANISTER_ID"
+    NETWORK_FLAG="--network $MAINNET_NETWORK"
+    echo_info "Using mainnet canister: $CANISTER_ID"
+else
+    # Local mode
+    CANISTER_ID="${CANISTER_ID:-$(dfx canister id backend 2>/dev/null)}"
+    NETWORK_FLAG=""
+    if [ -z "$CANISTER_ID" ]; then
+        echo_error "Backend canister not found. Make sure it's deployed locally."
+        exit 1
+    fi
+    echo_info "Using local canister: $CANISTER_ID"
 fi
 
 echo "Using canister: $CANISTER_ID"
@@ -29,7 +50,7 @@ test_function() {
     
     echo "Testing: $description"
     
-    if dfx canister call "$CANISTER_ID" "$func_name" "$args" --query >/dev/null 2>&1; then
+    if dfx canister call "$CANISTER_ID" $NETWORK_FLAG "$func_name" "$args" --query >/dev/null 2>&1; then
         echo "PASS: $description"
         ((TESTS_PASSED++))
     else
@@ -41,7 +62,7 @@ test_function() {
 # Test admin functions exist and can be called
 # Note: add_admin and remove_admin are update functions, not query functions
 echo "Testing: add_admin function exists"
-if dfx canister call "$CANISTER_ID" add_admin "(principal \"$TEST_PRINCIPAL\")" >/dev/null 2>&1; then
+if dfx canister call "$CANISTER_ID" $NETWORK_FLAG add_admin "(principal \"$TEST_PRINCIPAL\")" >/dev/null 2>&1; then
     echo "PASS: add_admin function exists"
     ((TESTS_PASSED++))
 else
@@ -50,7 +71,7 @@ else
 fi
 
 echo "Testing: remove_admin function exists"
-if dfx canister call "$CANISTER_ID" remove_admin "(principal \"$TEST_PRINCIPAL\")" >/dev/null 2>&1; then
+if dfx canister call "$CANISTER_ID" $NETWORK_FLAG remove_admin "(principal \"$TEST_PRINCIPAL\")" >/dev/null 2>&1; then
     echo "PASS: remove_admin function exists"
     ((TESTS_PASSED++))
 else
@@ -64,7 +85,7 @@ test_function "list_superadmins" "()" "list_superadmins function exists"
 echo "Testing function return types..."
 
 # Test list_admins returns a vector
-if result=$(dfx canister call "$CANISTER_ID" list_admins "()" --query 2>/dev/null); then
+if result=$(dfx canister call "$CANISTER_ID" $NETWORK_FLAG list_admins "()" --query 2>/dev/null); then
     if echo "$result" | grep -q "vec"; then
         echo "PASS: list_admins returns vector"
         ((TESTS_PASSED++))
@@ -78,7 +99,7 @@ else
 fi
 
 # Test list_superadmins returns a vector
-if result=$(dfx canister call "$CANISTER_ID" list_superadmins "()" --query 2>/dev/null); then
+if result=$(dfx canister call "$CANISTER_ID" $NETWORK_FLAG list_superadmins "()" --query 2>/dev/null); then
     if echo "$result" | grep -q "vec"; then
         echo "PASS: list_superadmins returns vector"
         ((TESTS_PASSED++))

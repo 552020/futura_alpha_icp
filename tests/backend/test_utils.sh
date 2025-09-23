@@ -58,6 +58,72 @@ get_test_principals() {
     echo "$admin2"
 }
 
+# Helper function to check if current identity is a superadmin
+check_superadmin_status() {
+    local canister_id="$1"
+    local network_flag="$2"
+    
+    # Get current identity
+    local current_identity=$(dfx identity get-principal $network_flag 2>/dev/null)
+    echo_info "Current identity: $current_identity" >&2
+    
+    # Check if current identity is in superadmin list
+    if dfx canister call "$canister_id" list_superadmins --query $network_flag 2>/dev/null | grep -q "$current_identity"; then
+        echo_info "Current identity is a superadmin" >&2
+        echo "true"
+    else
+        echo_info "Current identity is NOT a superadmin" >&2
+        echo "false"
+    fi
+}
+
+# Helper function to run a test with expected result
+run_test() {
+    local test_name="$1"
+    local command="$2"
+    local expected_result="$3"
+    
+    echo_info "Running: $test_name"
+    echo_info "Command: $command"
+    
+    # Execute the command and capture result
+    local result
+    if result=$(eval "$command" 2>&1); then
+        if [ "$expected_result" = "success" ]; then
+            echo_pass "$test_name"
+            return 0
+        else
+            echo_fail "$test_name - Expected failure but got success"
+            echo_error "Result: $result"
+            return 1
+        fi
+    else
+        if [ "$expected_result" = "failure" ]; then
+            echo_pass "$test_name"
+            return 0
+        else
+            echo_fail "$test_name - Expected success but got failure"
+            echo_error "Result: $result"
+            return 1
+        fi
+    fi
+}
+
+# Helper function to run a test and update counters
+run_test_with_counters() {
+    local test_name="$1"
+    local command="$2"
+    local expected_result="$3"
+    local tests_passed_var="$4"
+    local tests_failed_var="$5"
+    
+    if run_test "$test_name" "$command" "$expected_result"; then
+        eval "((++$tests_passed_var))"
+    else
+        eval "((++$tests_failed_var))"
+    fi
+}
+
 echo_debug() {
     echo "[DEBUG] $1"
 }

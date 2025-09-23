@@ -5,7 +5,13 @@
 
 # Load test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../test_utils.sh"
+if [[ -f "$SCRIPT_DIR/../test_utils.sh" ]]; then
+    source "$SCRIPT_DIR/../test_utils.sh"
+else
+    # Fallback if test_utils.sh is not found
+    echo_error() { echo "[ERROR] $1"; }
+    echo_info() { echo "[INFO] $1"; }
+fi
 
 # Mainnet configuration
 MAINNET_NETWORK="ic"
