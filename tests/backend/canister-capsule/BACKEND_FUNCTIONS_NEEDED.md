@@ -97,3 +97,4 @@ pub struct PersonalCanisterInfo {
 ## Testing
 
 The test suite `test_canister_capsule_creation_cost.sh` already includes a test for `list_all_personal_canisters()` that will pass once the function is implemented.
+

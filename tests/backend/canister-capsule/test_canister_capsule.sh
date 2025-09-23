@@ -447,68 +447,46 @@ main() {
     
     # Run personal canister creation enabled/disabled tests
     echo_info "=== Testing Personal Canister Creation Configuration ==="
-    run_test_with_counters "Personal canister creation enabled check" "test_personal_canister_creation_enabled_check" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Personal canister creation enabled check" "test_personal_canister_creation_enabled_check"
     
     # Run personal canister creation tests
     echo_info "=== Testing Personal Canister Creation ==="
-    run_test_with_counters "Create personal canister" "test_create_personal_canister" "success" "PASSED_TESTS" "FAILED_TESTS"
-    run_test_with_counters "Duplicate personal canister creation" "test_duplicate_personal_canister_creation" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Create personal canister" "test_create_personal_canister"
+    run_capsule_test "Duplicate personal canister creation" "test_duplicate_personal_canister_creation"
     
     # Run creation status query tests
     echo_info "=== Testing Creation Status Queries ==="
-    run_test_with_counters "Get creation status" "test_get_creation_status" "success" "PASSED_TESTS" "FAILED_TESTS"
-    run_test_with_counters "Get detailed creation status" "test_get_detailed_creation_status" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Get creation status" "test_get_creation_status"
+    run_capsule_test "Get detailed creation status" "test_get_detailed_creation_status"
     
     # Run personal canister ID retrieval tests
     echo_info "=== Testing Personal Canister ID Retrieval ==="
-    run_test_with_counters "Get my personal canister ID" "test_get_my_personal_canister_id" "success" "PASSED_TESTS" "FAILED_TESTS"
-    run_test_with_counters "Get personal canister ID by principal" "test_get_personal_canister_id_by_principal" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Get my personal canister ID" "test_get_my_personal_canister_id"
+    run_capsule_test "Get personal canister ID by principal" "test_get_personal_canister_id_by_principal"
     
     # Run creation statistics tests
     echo_info "=== Testing Creation Statistics ==="
-    run_test_with_counters "Get personal canister creation stats" "test_get_personal_canister_creation_stats" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Get personal canister creation stats" "test_get_personal_canister_creation_stats"
     
     # Run state transition and progress tests
     echo_info "=== Testing State Transitions and Progress ==="
-    run_test_with_counters "Creation status progression" "test_creation_status_progression" "success" "PASSED_TESTS" "FAILED_TESTS"
-    run_test_with_counters "Creation with existing capsule data" "test_creation_with_existing_capsule_data" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Creation status progression" "test_creation_status_progression"
+    run_capsule_test "Creation with existing capsule data" "test_creation_with_existing_capsule_data"
     
     # Run error handling and edge case tests
     echo_info "=== Testing Error Handling and Edge Cases ==="
-    run_test_with_counters "Creation when disabled" "test_creation_when_disabled" "success" "PASSED_TESTS" "FAILED_TESTS"
-    run_test_with_counters "Invalid principal lookup" "test_invalid_principal_lookup" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Creation when disabled" "test_creation_when_disabled"
+    run_capsule_test "Invalid principal lookup" "test_invalid_principal_lookup"
     
     # Run integration scenario tests
     echo_info "=== Testing Integration Scenarios ==="
-    run_test_with_counters "Creation status consistency" "test_creation_status_consistency" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Creation status consistency" "test_creation_status_consistency"
     
     # Clean up test files
     rm -f /tmp/test_personal_canister_id.txt
     
     # Print test summary
-    echo "========================================="
-    echo "Test Summary for $TEST_NAME"
-    echo "========================================="
-    echo "Total tests: $((PASSED_TESTS + FAILED_TESTS))"
-    echo "Passed: $PASSED_TESTS"
-    echo "Failed: $FAILED_TESTS"
-    echo ""
-    
-    if [ $FAILED_TESTS -eq 0 ]; then
-        echo_pass "All tests passed!"
-        exit 0
-    else
-        echo_fail "$FAILED_TESTS test(s) failed"
-        exit 1
-    fi
+    print_test_summary
 }
 
 # Run main function if script is executed directly

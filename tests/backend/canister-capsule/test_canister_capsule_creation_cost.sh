@@ -272,17 +272,10 @@ main() {
     
     # Run tests
     echo_info "=== Testing Personal Canister Creation Cost ==="
-    run_test_with_counters "Check existing personal canister" "test_check_existing_personal_canister" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
-    
-    run_test_with_counters "Create personal canister with monitoring" "test_create_personal_canister_with_monitoring" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
-    
-    run_test_with_counters "Check creation status" "test_check_creation_status" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
-    
-    run_test_with_counters "List all personal canisters" "test_list_all_personal_canisters" "success" "PASSED_TESTS" "FAILED_TESTS"
-    echo ""
+    run_capsule_test "Check existing personal canister" "test_check_existing_personal_canister"
+    run_capsule_test "Create personal canister with monitoring" "test_create_personal_canister_with_monitoring"
+    run_capsule_test "Check creation status" "test_check_creation_status"
+    run_capsule_test "List all personal canisters" "test_list_all_personal_canisters"
     
     # Show created canisters log if on mainnet
     if [[ "$MAINNET_MODE" == "true" && -f "$MAINNET_CANISTER_LOG" ]]; then
@@ -298,21 +291,7 @@ main() {
     fi
     
     # Print test summary
-    echo "========================================="
-    echo "Test Summary for $TEST_NAME"
-    echo "========================================="
-    echo "Total tests: $((PASSED_TESTS + FAILED_TESTS))"
-    echo "Passed: $PASSED_TESTS"
-    echo "Failed: $FAILED_TESTS"
-    echo ""
-    
-    if [ $FAILED_TESTS -eq 0 ]; then
-        echo_pass "All tests passed!"
-        exit 0
-    else
-        echo_fail "$FAILED_TESTS test(s) failed"
-        exit 1
-    fi
+    print_test_summary
 }
 
 # Run main function if script is executed directly
