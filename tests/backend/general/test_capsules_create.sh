@@ -3,13 +3,44 @@
 # Test script for capsules_create endpoint
 # Tests both self-capsule creation (no subject) and specific subject creation
 
-# Load test configuration and utilities
+# Color issues are handled in test_utils.sh
+
+# Parse command line arguments
+MAINNET_MODE=false
+NETWORK_FLAG=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mainnet)
+            MAINNET_MODE=true
+            NETWORK_FLAG="--network ic"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--mainnet]"
+            exit 1
+            ;;
+    esac
+done
+
+# Load test configuration and utilities first
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
 source "$SCRIPT_DIR/../test_utils.sh"
 
+# Set canister ID based on mode
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    CANISTER_ID=$(get_canister_id "backend" "ic")
+else
+    CANISTER_ID=$(get_canister_id "backend")
+fi
+
 # Test configuration
 TEST_NAME="Capsules Create Tests"
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    TEST_NAME="Capsules Create Tests (Mainnet)"
+fi
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -25,7 +56,7 @@ has_expected_message() {
 test_capsules_create_self() {
     echo_info "Testing capsules_create with no subject (self-capsule)..."
     
-    local response=$(dfx canister call backend capsules_create 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_create $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -48,7 +79,7 @@ test_capsules_create_with_subject() {
     echo_info "Testing capsules_create with specific subject..."
     
     # Create a PersonRef for testing (using caller as subject for simplicity)
-    local response=$(dfx canister call backend capsules_create '(opt variant { Principal = principal "2vxsx-fae" })' 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_create '(opt variant { Principal = principal "2vxsx-fae" })' $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -71,7 +102,7 @@ test_capsules_create_idempotent() {
     echo_info "Testing capsules_create idempotent behavior for self-capsule..."
     
     # First call
-    local first_response=$(dfx canister call backend capsules_create 2>/dev/null)
+    local first_response=$(dfx canister call $CANISTER_ID capsules_create $NETWORK_FLAG 2>/dev/null)
     echo_info "First call response: '$first_response'"
     
     if [ $? -ne 0 ]; then
@@ -80,7 +111,7 @@ test_capsules_create_idempotent() {
     fi
     
     # Second call (should return existing capsule)
-    local second_response=$(dfx canister call backend capsules_create 2>/dev/null)
+    local second_response=$(dfx canister call $CANISTER_ID capsules_create $NETWORK_FLAG 2>/dev/null)
     echo_info "Second call response: '$second_response'"
     
     if [ $? -eq 0 ]; then
@@ -101,7 +132,7 @@ test_capsules_create_idempotent() {
 test_response_structure() {
     echo_info "Testing response structure validation..."
     
-    local response=$(dfx canister call backend capsules_create 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_create $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -125,7 +156,7 @@ test_response_structure() {
 test_authenticated_user() {
     echo_info "Testing capsules_create with authenticated user..."
     
-    local response=$(dfx canister call backend capsules_create 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_create $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then

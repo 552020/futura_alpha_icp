@@ -3,6 +3,32 @@
 # Test script for capsules_delete endpoint functionality
 # Tests the new capsules_delete function that allows deleting capsules
 
+# Fix dfx color issues
+export DFX_COLOR=0
+export NO_COLOR=1
+export TERM=dumb
+
+# Parse command line arguments
+MAINNET_MODE=false
+CANISTER_ID="backend"
+NETWORK_FLAG=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mainnet)
+            MAINNET_MODE=true
+            CANISTER_ID="izhgj-eiaaa-aaaaj-a2f7q-cai"
+            NETWORK_FLAG="--network ic"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--mainnet]"
+            exit 1
+            ;;
+    esac
+done
+
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
@@ -10,6 +36,9 @@ source "$SCRIPT_DIR/../test_utils.sh"
 
 # Test configuration
 TEST_NAME="Capsules Delete Tests"
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    TEST_NAME="Capsules Delete Tests (Mainnet)"
+fi
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -19,7 +48,7 @@ test_capsules_delete_existing() {
     echo_info "Testing capsules_delete with existing capsule..."
     
     # First create a capsule to delete
-    local create_response=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+    local create_response=$(dfx canister call $CANISTER_ID capsules_create "(null)" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$create_response"; then
         echo_fail "Failed to create test capsule for deletion"
         return 1
@@ -35,14 +64,14 @@ test_capsules_delete_existing() {
     echo_info "Created test capsule for deletion: $capsule_id"
     
     # Verify capsule exists before deletion
-    local read_response=$(dfx canister call backend capsules_read_basic "(opt \"$capsule_id\")" 2>/dev/null)
+    local read_response=$(dfx canister call $CANISTER_ID capsules_read_basic "(opt \"$capsule_id\")" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$read_response"; then
         echo_fail "Capsule should exist before deletion"
         return 1
     fi
     
     # Delete the capsule
-    local delete_response=$(dfx canister call backend capsules_delete "(\"$capsule_id\")" 2>/dev/null)
+    local delete_response=$(dfx canister call $CANISTER_ID capsules_delete "(\"$capsule_id\")" $NETWORK_FLAG 2>/dev/null)
     echo_info "Delete response: '$delete_response'"
     
     if [ $? -eq 0 ]; then
@@ -50,7 +79,7 @@ test_capsules_delete_existing() {
             echo_pass "capsules_delete call successful"
             
             # Verify capsule no longer exists
-            local verify_response=$(dfx canister call backend capsules_read_basic "(opt \"$capsule_id\")" 2>/dev/null)
+            local verify_response=$(dfx canister call $CANISTER_ID capsules_read_basic "(opt \"$capsule_id\")" $NETWORK_FLAG 2>/dev/null)
             if is_failure "$verify_response" && is_not_found "$verify_response"; then
                 echo_pass "Capsule successfully deleted (no longer exists)"
                 return 0
@@ -74,7 +103,7 @@ test_capsules_delete_nonexistent() {
     echo_info "Testing capsules_delete with non-existent capsule..."
     
     # Try to delete a non-existent capsule
-    local delete_response=$(dfx canister call backend capsules_delete "(\"nonexistent_capsule_id\")" 2>/dev/null)
+    local delete_response=$(dfx canister call $CANISTER_ID capsules_delete "(\"nonexistent_capsule_id\")" $NETWORK_FLAG 2>/dev/null)
     echo_info "Delete response: '$delete_response'"
     
     if [ $? -eq 0 ]; then
@@ -97,7 +126,7 @@ test_capsules_delete_empty_id() {
     echo_info "Testing capsules_delete with empty capsule ID..."
     
     # Try to delete with empty ID
-    local delete_response=$(dfx canister call backend capsules_delete "(\"\")" 2>/dev/null)
+    local delete_response=$(dfx canister call $CANISTER_ID capsules_delete "(\"\")" $NETWORK_FLAG 2>/dev/null)
     echo_info "Delete response: '$delete_response'"
     
     if [ $? -eq 0 ]; then
@@ -120,7 +149,7 @@ test_capsules_delete_unauthorized() {
     echo_info "Testing capsules_delete with unauthorized access..."
     
     # Create a capsule
-    local create_response=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+    local create_response=$(dfx canister call $CANISTER_ID capsules_create "(null)" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$create_response"; then
         echo_fail "Failed to create test capsule for unauthorized deletion test"
         return 1
@@ -156,7 +185,7 @@ test_capsules_delete_multiple() {
     
     for i in {1..3}; do
         local subject="${subjects[$((i-1))]}"
-        local create_response=$(dfx canister call backend capsules_create "(opt $subject)" 2>/dev/null)
+        local create_response=$(dfx canister call $CANISTER_ID capsules_create "(opt $subject)" $NETWORK_FLAG 2>/dev/null)
         if is_success "$create_response"; then
             local capsule_id=$(extract_capsule_id "$create_response")
             if [[ -n "$capsule_id" ]]; then
@@ -174,7 +203,7 @@ test_capsules_delete_multiple() {
     # Delete each capsule
     local deleted_count=0
     for capsule_id in "${capsule_ids[@]}"; do
-        local delete_response=$(dfx canister call backend capsules_delete "(\"$capsule_id\")" 2>/dev/null)
+        local delete_response=$(dfx canister call $CANISTER_ID capsules_delete "(\"$capsule_id\")" $NETWORK_FLAG 2>/dev/null)
         if is_success "$delete_response"; then
             ((deleted_count++))
             echo_info "Successfully deleted capsule: $capsule_id"
@@ -197,7 +226,7 @@ test_response_structure() {
     echo_info "Testing capsules_delete response structure..."
     
     # Create a capsule to delete
-    local create_response=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
+    local create_response=$(dfx canister call $CANISTER_ID capsules_create "(null)" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$create_response"; then
         echo_fail "Failed to create test capsule for structure validation"
         return 1
@@ -210,7 +239,7 @@ test_response_structure() {
     fi
     
     # Delete the capsule
-    local delete_response=$(dfx canister call backend capsules_delete "(\"$capsule_id\")" 2>/dev/null)
+    local delete_response=$(dfx canister call $CANISTER_ID capsules_delete "(\"$capsule_id\")" $NETWORK_FLAG 2>/dev/null)
     echo_info "Delete response: '$delete_response'"
     
     if [ $? -eq 0 ]; then

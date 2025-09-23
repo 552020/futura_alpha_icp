@@ -3,6 +3,32 @@
 # Test script for subject index functionality in stable backend
 # This tests the functionality that was previously only testable in IC environment
 
+# Fix dfx color issues
+export DFX_COLOR=0
+export NO_COLOR=1
+export TERM=dumb
+
+# Parse command line arguments
+MAINNET_MODE=false
+CANISTER_ID="backend"
+NETWORK_FLAG=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mainnet)
+            MAINNET_MODE=true
+            CANISTER_ID="rdmx6-jaaaa-aaaah-qcaiq-cai"
+            NETWORK_FLAG="--network ic"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--mainnet]"
+            exit 1
+            ;;
+    esac
+done
+
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
@@ -10,72 +36,78 @@ source "$SCRIPT_DIR/../test_utils.sh"
 
 # Test configuration
 TEST_NAME="Subject Index Tests"
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    TEST_NAME="Subject Index Tests (Mainnet)"
+fi
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
 
-# Switch to superadmin identity for testing
-dfx identity use 552020
+# Switch to superadmin identity for testing (only for local mode)
+if [[ "$MAINNET_MODE" == "false" ]]; then
+    dfx identity use 552020
+fi
 
-# Test 1: Create a capsule (this will be the subject)
-echo "Creating test capsule..."
-CREATE_RESULT=$(dfx canister call "$CANISTER_ID" capsules_create "(null)")
-if echo "$CREATE_RESULT" | grep -q "success.*true"; then
-    echo "PASS: Capsule created successfully"
-    ((TESTS_PASSED++))
+# Test function for subject index functionality
+test_subject_index_functionality() {
+    echo_info "Testing subject index functionality..."
     
-    # Extract capsule ID from the result
-    CAPSULE_ID=$(echo "$CREATE_RESULT" | grep -o 'capsule_[0-9]*' | tail -1)
-    echo "Created capsule ID: $CAPSULE_ID"
-else
-    echo "FAIL: Failed to create capsule"
-    ((TESTS_FAILED++))
-    exit 1
-fi
-
-# Test 2: Read the capsule back (this tests the subject index indirectly)
-echo "Reading capsule back..."
-READ_RESULT=$(dfx canister call "$CANISTER_ID" capsules_read_full "(opt \"$CAPSULE_ID\")")
-if echo "$READ_RESULT" | grep -q "id.*$CAPSULE_ID"; then
-    echo "PASS: Capsule read successfully"
-    ((TESTS_PASSED++))
-else
-    echo "FAIL: Failed to read capsule"
-    ((TESTS_FAILED++))
-fi
-
-# Test 3: List capsules (this uses subject index to find caller's capsules)
-echo "Listing capsules..."
-LIST_RESULT=$(dfx canister call "$CANISTER_ID" capsules_list "()")
-if echo "$LIST_RESULT" | grep -q "id.*$CAPSULE_ID"; then
-    echo "PASS: Capsule found in list (subject index working)"
-    ((TESTS_PASSED++))
-else
-    echo "FAIL: Capsule not found in list (subject index may be broken)"
-    ((TESTS_FAILED++))
-fi
-
-# Test 4: Read basic capsule info
-echo "Reading basic capsule info..."
-BASIC_RESULT=$(dfx canister call "$CANISTER_ID" capsules_read_basic "(opt \"$CAPSULE_ID\")")
-if echo "$BASIC_RESULT" | grep -q "capsule_id.*$CAPSULE_ID"; then
-    echo "PASS: Basic capsule info read successfully"
-    ((TESTS_PASSED++))
-else
-    echo "FAIL: Failed to read basic capsule info"
-    ((TESTS_FAILED++))
-fi
-
-# Test 5: Test self-capsule access (None parameter should return caller's self-capsule)
-echo "Testing self-capsule access..."
-SELF_RESULT=$(dfx canister call "$CANISTER_ID" capsules_read_full "(null)")
-if echo "$SELF_RESULT" | grep -q "id.*$CAPSULE_ID"; then
-    echo "PASS: Self-capsule access working (subject index working)"
-    ((TESTS_PASSED++))
-else
-    echo "FAIL: Self-capsule access failed"
-    ((TESTS_FAILED++))
-fi
+    # Test 1: Create a capsule (this will be the subject)
+    echo_info "Creating test capsule..."
+    local create_result=$(dfx canister call "$CANISTER_ID" capsules_create "(null)" $NETWORK_FLAG 2>/dev/null)
+    if is_success "$create_result"; then
+        echo_info "Capsule created successfully"
+        
+        # Extract capsule ID from the result
+        local capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+        echo_info "Created capsule ID: $capsule_id"
+        
+        # Test 2: Read the capsule back (this tests the subject index indirectly)
+        echo_info "Reading capsule back..."
+        local read_result=$(dfx canister call "$CANISTER_ID" capsules_read_full "(opt \"$capsule_id\")" $NETWORK_FLAG 2>/dev/null)
+        if is_success "$read_result" && echo "$read_result" | grep -q "id.*$capsule_id"; then
+            echo_info "Capsule read successfully"
+        else
+            echo_error "Failed to read capsule"
+            return 1
+        fi
+        
+        # Test 3: List capsules (this uses subject index to find caller's capsules)
+        echo_info "Listing capsules..."
+        local list_result=$(dfx canister call "$CANISTER_ID" capsules_list $NETWORK_FLAG 2>/dev/null)
+        if echo "$list_result" | grep -q "id.*$capsule_id"; then
+            echo_info "Capsule found in list (subject index working)"
+        else
+            echo_error "Capsule not found in list (subject index may be broken)"
+            return 1
+        fi
+        
+        # Test 4: Read basic capsule info
+        echo_info "Reading basic capsule info..."
+        local basic_result=$(dfx canister call "$CANISTER_ID" capsules_read_basic "(opt \"$capsule_id\")" $NETWORK_FLAG 2>/dev/null)
+        if is_success "$basic_result" && echo "$basic_result" | grep -q "capsule_id.*$capsule_id"; then
+            echo_info "Basic capsule info read successfully"
+        else
+            echo_error "Failed to read basic capsule info"
+            return 1
+        fi
+        
+        # Test 5: Test self-capsule access (None parameter should return caller's self-capsule)
+        echo_info "Testing self-capsule access..."
+        local self_result=$(dfx canister call "$CANISTER_ID" capsules_read_full "(null)" $NETWORK_FLAG 2>/dev/null)
+        if is_success "$self_result" && echo "$self_result" | grep -q "id.*$capsule_id"; then
+            echo_info "Self-capsule access working (subject index working)"
+        else
+            echo_error "Self-capsule access failed"
+            return 1
+        fi
+        
+        return 0
+    else
+        echo_error "Failed to create capsule: $create_result"
+        return 1
+    fi
+}
 
 # Main test execution
 main() {

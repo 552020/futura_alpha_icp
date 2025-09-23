@@ -3,6 +3,32 @@
 # Test script for capsules_update endpoint functionality
 # Tests the new capsules_update function that allows updating capsule properties
 
+# Fix dfx color issues
+export DFX_COLOR=0
+export NO_COLOR=1
+export TERM=dumb
+
+# Parse command line arguments
+MAINNET_MODE=false
+CANISTER_ID="backend"
+NETWORK_FLAG=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mainnet)
+            MAINNET_MODE=true
+            CANISTER_ID="izhgj-eiaaa-aaaaj-a2f7q-cai"
+            NETWORK_FLAG="--network ic"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--mainnet]"
+            exit 1
+            ;;
+    esac
+done
+
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
@@ -10,6 +36,9 @@ source "$SCRIPT_DIR/../test_utils.sh"
 
 # Test configuration
 TEST_NAME="Capsules Update Tests"
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    TEST_NAME="Capsules Update Tests (Mainnet)"
+fi
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -19,7 +48,7 @@ test_capsules_update_binding() {
     echo_info "Testing capsules_update with binding status change..."
     
     # Get the current user's self-capsule ID directly
-    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local self_capsule_result=$(dfx canister call $CANISTER_ID capsules_read_basic "(null)" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$self_capsule_result"; then
         echo_fail "Failed to get self-capsule for update test"
         return 1
@@ -38,7 +67,7 @@ test_capsules_update_binding() {
     echo_info "Update data: $update_data"
     
     # Call capsules_update
-    local response=$(dfx canister call backend capsules_update "(\"$capsule_id\", $update_data)" 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_update "(\"$capsule_id\", $update_data)" $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -61,7 +90,7 @@ test_capsules_update_unbinding() {
     echo_info "Testing capsules_update with unbinding status change..."
     
     # Get the current user's self-capsule ID directly
-    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local self_capsule_result=$(dfx canister call $CANISTER_ID capsules_read_basic "(null)" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$self_capsule_result"; then
         echo_fail "Failed to get self-capsule for update test"
         return 1
@@ -80,7 +109,7 @@ test_capsules_update_unbinding() {
     echo_info "Update data: $update_data"
     
     # Call capsules_update
-    local response=$(dfx canister call backend capsules_update "(\"$capsule_id\", $update_data)" 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_update "(\"$capsule_id\", $update_data)" $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -106,7 +135,7 @@ test_capsules_update_invalid_id() {
     local update_data=$(create_capsule_update_data "true")
     
     # Call capsules_update with invalid ID
-    local response=$(dfx canister call backend capsules_update "(\"invalid_capsule_id\", $update_data)" 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_update "(\"invalid_capsule_id\", $update_data)" $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -132,7 +161,7 @@ test_capsules_update_empty_id() {
     local update_data=$(create_capsule_update_data "true")
     
     # Call capsules_update with empty ID
-    local response=$(dfx canister call backend capsules_update "(\"\", $update_data)" 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_update "(\"\", $update_data)" $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -155,7 +184,7 @@ test_capsules_update_no_changes() {
     echo_info "Testing capsules_update with no changes..."
     
     # Get the current user's self-capsule ID directly
-    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local self_capsule_result=$(dfx canister call $CANISTER_ID capsules_read_basic "(null)" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$self_capsule_result"; then
         echo_fail "Failed to get self-capsule for update test"
         return 1
@@ -174,7 +203,7 @@ test_capsules_update_no_changes() {
     echo_info "Update data: $update_data"
     
     # Call capsules_update
-    local response=$(dfx canister call backend capsules_update "(\"$capsule_id\", $update_data)" 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_update "(\"$capsule_id\", $update_data)" $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -197,7 +226,7 @@ test_response_structure() {
     echo_info "Testing capsules_update response structure..."
     
     # Get the current user's self-capsule ID directly
-    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local self_capsule_result=$(dfx canister call $CANISTER_ID capsules_read_basic "(null)" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$self_capsule_result"; then
         echo_fail "Failed to get self-capsule for update test"
         return 1
@@ -213,7 +242,7 @@ test_response_structure() {
     local update_data=$(create_capsule_update_data "true")
     
     # Call capsules_update
-    local response=$(dfx canister call backend capsules_update "(\"$capsule_id\", $update_data)" 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_update "(\"$capsule_id\", $update_data)" $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then

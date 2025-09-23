@@ -3,6 +3,32 @@
 # Test capsules_read endpoints functionality
 # Tests both capsules_read_basic and capsules_read_full functions
 
+# Fix dfx color issues
+export DFX_COLOR=0
+export NO_COLOR=1
+export TERM=dumb
+
+# Parse command line arguments
+MAINNET_MODE=false
+CANISTER_ID="backend"
+NETWORK_FLAG=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --mainnet)
+            MAINNET_MODE=true
+            CANISTER_ID="izhgj-eiaaa-aaaaj-a2f7q-cai"
+            NETWORK_FLAG="--network ic"
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--mainnet]"
+            exit 1
+            ;;
+    esac
+done
+
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
@@ -10,6 +36,9 @@ source "$SCRIPT_DIR/../test_utils.sh"
 
 # Test configuration
 TEST_NAME="Capsules Read Basic/Full Tests"
+if [[ "$MAINNET_MODE" == "true" ]]; then
+    TEST_NAME="Capsules Read Basic/Full Tests (Mainnet)"
+fi
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -22,7 +51,7 @@ TEST_CAPSULE_ID="test_capsule_$(date +%s)"
 test_capsules_read_basic_self() {
     echo_info "Testing capsules_read_basic functionality with no ID (self-capsule info)..."
     
-    local response=$(dfx canister call backend capsules_read_basic 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_read_basic $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -47,7 +76,7 @@ test_capsules_read_basic_self() {
 test_capsules_read_full_self() {
     echo_info "Testing capsules_read_full functionality with no ID (full self-capsule)..."
     
-    local response=$(dfx canister call backend capsules_read_full 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_read_full $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -72,7 +101,7 @@ test_capsules_read_full_self() {
 test_basic_capsules_read_basic_invalid() {
     echo_info "Testing basic capsules_read_basic functionality with invalid ID..."
     
-    local response=$(dfx canister call backend capsules_read_basic '(opt "test_invalid_id")' 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_read_basic '(opt "test_invalid_id")' $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -94,7 +123,7 @@ test_basic_capsules_read_basic_invalid() {
 test_capsules_read_empty_string() {
     echo_info "Testing capsules_read_basic with empty string..."
     
-    local response=$(dfx canister call backend capsules_read_basic '(opt "")' 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_read_basic '(opt "")' $NETWORK_FLAG 2>/dev/null)
     echo_info "Response: '$response'"
     
     if [ $? -eq 0 ]; then
@@ -117,11 +146,11 @@ test_capsules_read_valid_id() {
     echo_info "Testing capsules_read_basic with valid capsule ID..."
     
     # First, get the user's capsules to see if they have any
-    local capsules_response=$(dfx canister call backend capsules_list 2>/dev/null)
+    local capsules_response=$(dfx canister call $CANISTER_ID capsules_list $NETWORK_FLAG 2>/dev/null)
     
     if echo "$capsules_response" | grep -q "vec {}"; then
         echo_info "User has no capsules, testing with invalid ID instead"
-        local response=$(dfx canister call backend capsules_read_basic '(opt "no_capsules_exist")' 2>/dev/null)
+        local response=$(dfx canister call $CANISTER_ID capsules_read_basic '(opt "no_capsules_exist")' $NETWORK_FLAG 2>/dev/null)
         
         if [ $? -eq 0 ] && is_failure "$response" && is_not_found "$response"; then
             echo_pass "capsules_read_basic correctly returns NotFound when no capsules exist"
@@ -136,7 +165,7 @@ test_capsules_read_valid_id() {
         
         if [ -n "$capsule_id" ]; then
             echo_info "Testing with existing capsule ID: $capsule_id"
-            local response=$(dfx canister call backend capsules_read_basic '(opt "'"$capsule_id"'")' 2>/dev/null)
+            local response=$(dfx canister call $CANISTER_ID capsules_read_basic '(opt "'"$capsule_id"'")' $NETWORK_FLAG 2>/dev/null)
             echo_info "Response: '$response'"
             
             if [ $? -eq 0 ] && is_success "$response" && has_capsule_data "$response"; then
@@ -162,7 +191,7 @@ test_authenticated_user() {
     local current_principal=$(dfx identity get-principal)
     echo_info "Current principal: $current_principal"
     
-    local response=$(dfx canister call backend capsules_read_basic '(opt "test_id")' 2>/dev/null)
+    local response=$(dfx canister call $CANISTER_ID capsules_read_basic '(opt "test_id")' $NETWORK_FLAG 2>/dev/null)
     
     if [ $? -eq 0 ]; then
         echo_pass "capsules_read_basic works with authenticated user"
@@ -178,11 +207,11 @@ test_response_structure() {
     echo_info "Testing response structure..."
     
     # First, get the user's capsules to see if they have any
-    local capsules_response=$(dfx canister call backend capsules_list 2>/dev/null)
+    local capsules_response=$(dfx canister call $CANISTER_ID capsules_list $NETWORK_FLAG 2>/dev/null)
     
     if echo "$capsules_response" | grep -q "vec {}"; then
         echo_info "User has no capsules, testing structure with invalid ID"
-        local response=$(dfx canister call backend capsules_read_basic '(opt "no_capsules_exist")' 2>/dev/null)
+        local response=$(dfx canister call $CANISTER_ID capsules_read_basic '(opt "no_capsules_exist")' $NETWORK_FLAG 2>/dev/null)
         
         if is_failure "$response" && is_not_found "$response"; then
             echo_pass "Response structure is correct for non-existent capsule (NotFound)"
@@ -196,7 +225,7 @@ test_response_structure() {
         local capsule_id=$(echo "$capsules_response" | grep -o '"[^"]*"' | head -1 | tr -d '"')
         
         if [ -n "$capsule_id" ]; then
-            local response=$(dfx canister call backend capsules_read_basic '(opt "'"$capsule_id"'")' 2>/dev/null)
+            local response=$(dfx canister call $CANISTER_ID capsules_read_basic '(opt "'"$capsule_id"'")' $NETWORK_FLAG 2>/dev/null)
             echo_info "Response: '$response'"
             
             if is_success "$response" && has_expected_capsule_info_fields "$response"; then

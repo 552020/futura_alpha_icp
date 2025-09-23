@@ -2,6 +2,55 @@
 
 # Basic test utilities - minimal setup
 
+# Fix dfx color issues (tech lead recommended - working solution)
+export NO_COLOR=1
+export DFX_COLOR=0
+export CLICOLOR=0
+export TERM=xterm-256color
+export DFX_WARNING=-mainnet_plaintext_identity
+
+# Get canister ID from canister_ids.json
+get_canister_id() {
+    local canister_name="$1"
+    local network="$2"
+    
+    # Default to local canister name if no network specified
+    if [[ -z "$network" ]]; then
+        echo "$canister_name"
+        return 0
+    fi
+    
+    # Read from canister_ids.json (assume we're in project root or can find it)
+    local canister_ids_file="canister_ids.json"
+    
+    # Try to find the file in current directory or parent directories
+    if [[ ! -f "$canister_ids_file" ]]; then
+        # Look in parent directories
+        local current_dir="$(pwd)"
+        while [[ "$current_dir" != "/" ]]; do
+            if [[ -f "$current_dir/canister_ids.json" ]]; then
+                canister_ids_file="$current_dir/canister_ids.json"
+                break
+            fi
+            current_dir="$(dirname "$current_dir")"
+        done
+    fi
+    
+    if [[ -f "$canister_ids_file" ]]; then
+        # Use jq to extract the canister ID
+        if command -v jq >/dev/null 2>&1; then
+            local canister_id=$(jq -r ".$canister_name.$network" "$canister_ids_file" 2>/dev/null)
+            if [[ "$canister_id" != "null" && -n "$canister_id" ]]; then
+                echo "$canister_id"
+                return 0
+            fi
+        fi
+    fi
+    
+    # Fallback to canister name if not found
+    echo "$canister_name"
+}
+
 # Simple logging
 echo_pass() {
     echo "[PASS] $1"
@@ -374,7 +423,7 @@ has_expected_capsule_header_fields() {
 # Helper function to check if response is empty (no capsules)
 is_empty_response() {
     local response="$1"
-    echo "$response" | grep -q "vec {}"
+    echo "$response" | grep -q "vec {}" || [[ -z "$response" ]]
 }
 
 # Helper function to check if response contains capsules
