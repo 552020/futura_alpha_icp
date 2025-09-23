@@ -74,10 +74,12 @@ End-to-end integration tests that test the deployed canister against real ICP ne
 
 ##### **📊 Regression Tests** (`regression/`)
 
-- **`test_storage_regression.sh`** - Storage regression testing
+- **`test_storage_regression.sh`** - Static code analysis for storage API regressions
 - **`data/`** - Test data and regression files
   - **`capsule_store/`** - Capsule store regression data
   - **`README.md`** - Regression test documentation
+
+**Note**: `test_storage_regression.sh` is a static code analysis tool that scans Rust source code for patterns that might indicate storage API regressions. It doesn't interact with canisters and doesn't require mainnet support.
 
 ##### **🎯 Shared Capsule Tests** (`shared-capsule/`)
 
@@ -219,6 +221,9 @@ cd tests/backend
 ./mainnet/test_basic.sh
 ./mainnet/test_canister_status.sh
 ./mainnet/test_candid_interface.sh
+
+# Run regression tests (static code analysis)
+./regression/test_storage_regression.sh
 ```
 
 **Mainnet Test Results:**
@@ -240,6 +245,13 @@ cd tests/backend
 - **Dynamic canister ID resolution** from `canister_ids.json`
 - **Cycle cost monitoring** for expensive operations
 - **dfx color panic fixes** for reliable mainnet testing
+
+#### **Test Types:**
+
+1. **Functional Tests** - Test actual canister functionality (support `--mainnet`)
+2. **Static Analysis Tests** - Scan source code for patterns (no mainnet needed)
+3. **Regression Tests** - Detect potential storage API regressions
+4. **Utility Tests** - Helper scripts for testing infrastructure
 
 ---
 
