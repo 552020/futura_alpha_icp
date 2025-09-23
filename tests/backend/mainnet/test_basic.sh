@@ -12,8 +12,8 @@
 
 # Load test utilities and mainnet configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test_utils.sh"
-source "$SCRIPT_DIR/mainnet_test_config.sh"
+source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/config.sh"
 
 # Test configuration
 TEST_NAME="Mainnet Basic Connectivity Tests"

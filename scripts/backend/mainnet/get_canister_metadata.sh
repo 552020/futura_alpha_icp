@@ -9,7 +9,7 @@
 
 # Load mainnet configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../tests/backend/mainnet_test_config.sh"
+source "$SCRIPT_DIR/../../../tests/backend/mainnet/config.sh"
 
 # Colors for output
 RED='\033[0;31m'

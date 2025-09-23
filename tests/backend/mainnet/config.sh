@@ -5,7 +5,7 @@
 
 # Load test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/test_utils.sh"
+source "$SCRIPT_DIR/../test_utils.sh"
 
 # Mainnet configuration
 MAINNET_NETWORK="ic"
