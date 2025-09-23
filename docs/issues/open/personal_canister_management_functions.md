@@ -1,4 +1,8 @@
-# Backend Functions Needed for Personal Canister Management
+# Personal Canister Management Functions
+
+**Status:** Open Issue  
+**Priority:** Medium  
+**Created:** January 2025
 
 ## Current Functions (Already Implemented)
 
@@ -97,5 +101,3 @@ pub struct PersonalCanisterInfo {
 ## Testing
 
 The test suite `test_canister_capsule_creation_cost.sh` already includes a test for `list_all_personal_canisters()` that will pass once the function is implemented.
-
-
