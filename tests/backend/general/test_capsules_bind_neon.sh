@@ -71,7 +71,11 @@ test_capsules_bind_neon_gallery() {
     
     # Create a capsule
     local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-    local capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//;s/"//')
+    if ! is_success "$create_result"; then
+        echo_error "Failed to create test capsule for gallery binding"
+        return 1
+    fi
+    local capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
     
     # Create a gallery in the capsule with unique ID
     local unique_gallery_id="test_gallery_$(date +%s)_$$"
@@ -84,7 +88,7 @@ test_capsules_bind_neon_gallery() {
             created_at = 0;
             updated_at = 0;
             owner_principal = principal \"$caller_principal\";
-            storage_status = variant { Web2Only };
+            storage_location = variant { ICPOnly };
             memory_entries = vec {};
             bound_to_neon = false;
         };
@@ -92,20 +96,21 @@ test_capsules_bind_neon_gallery() {
     })"
     
     local gallery_result=$(dfx canister call backend galleries_create "$gallery_data" 2>/dev/null)
-    if ! echo "$gallery_result" | grep -q "gallery_id = opt"; then
-        echo_error "Failed to create test gallery"
+    if ! is_success "$gallery_result"; then
+        echo_error "Failed to create test gallery: $gallery_result"
         return 1
     fi
     
-    local gallery_id=$(echo "$gallery_result" | grep -o 'gallery_id = opt "[^"]*"' | sed 's/gallery_id = opt "//;s/"//')
+    # Extract the actual gallery ID from the response
+    local gallery_id=$(echo "$gallery_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
     if [[ -z "$gallery_id" ]]; then
-        # Try alternative format
-        gallery_id=$(echo "$gallery_result" | grep -o 'gallery_id = "[^"]*"' | sed 's/gallery_id = "//;s/"//')
+        echo_error "Failed to extract gallery ID from creation response"
+        return 1
     fi
     echo_info "Created test gallery: $gallery_id"
     
-    # Test binding gallery to Neon
-    local bind_result=$(dfx canister call backend capsules_bind_neon "(variant { Gallery }, \"$unique_gallery_id\", true)" 2>&1)
+    # Test binding gallery to Neon (use the actual gallery ID, not the unique ID)
+    local bind_result=$(dfx canister call backend capsules_bind_neon "(variant { Gallery }, \"$gallery_id\", true)" 2>&1)
     if ! echo "$bind_result" | grep -q "Ok"; then
         echo_error "Failed to bind gallery to Neon: $bind_result"
         return 1
@@ -113,7 +118,7 @@ test_capsules_bind_neon_gallery() {
     echo_info "Successfully bound gallery to Neon"
     
     # Test unbinding gallery from Neon
-    local unbind_result=$(dfx canister call backend capsules_bind_neon "(variant { Gallery }, \"$unique_gallery_id\", false)" 2>&1)
+    local unbind_result=$(dfx canister call backend capsules_bind_neon "(variant { Gallery }, \"$gallery_id\", false)" 2>&1)
     if ! echo "$unbind_result" | grep -q "Ok"; then
         echo_error "Failed to unbind gallery from Neon: $unbind_result"
         return 1
@@ -128,25 +133,36 @@ test_capsules_bind_neon_memory() {
     
     # Create a capsule
     local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-    local capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//;s/"//')
+    if ! is_success "$create_result"; then
+        echo_error "Failed to create test capsule for memory binding"
+        return 1
+    fi
+    local capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
     
     # Create a memory in the capsule
-    local memory_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "test_memory_binding";
-        hash = null;
+    local memory_data='(variant {
+      Inline = record {
+        bytes = blob "54657374206d656d6f72792064617461";
+        meta = record {
+          name = "test_memory_binding";
+          tags = vec {};
+          description = opt "Test memory for binding";
+        };
       };
-      data = opt blob "VGVzdCBtZW1vcnkgZGF0YQ==";
     })'
     
-    local memory_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
-    if ! echo "$memory_result" | grep -q "memory_id = opt"; then
-        echo_error "Failed to create test memory"
+    local memory_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"test_idem_$(date +%s)\")" 2>/dev/null)
+    if ! is_success "$memory_result"; then
+        echo_error "Failed to create test memory: $memory_result"
         return 1
     fi
     
-    local memory_id=$(echo "$memory_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//;s/"//')
+    # Extract the actual memory ID from the response
+    local memory_id=$(echo "$memory_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+    if [[ -z "$memory_id" ]]; then
+        echo_error "Failed to extract memory ID from creation response"
+        return 1
+    fi
     echo_info "Created test memory: $memory_id"
     
     # Test binding memory to Neon

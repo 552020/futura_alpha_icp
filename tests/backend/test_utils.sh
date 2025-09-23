@@ -173,6 +173,7 @@ get_test_capsule_id() {
         fi
     else
         if is_success "$capsule_result"; then
+            # For capsules_read_basic, extract the capsule_id field
             capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
         fi
     fi

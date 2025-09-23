@@ -18,14 +18,20 @@ FAILED_TESTS=0
 test_capsules_update_binding() {
     echo_info "Testing capsules_update with binding status change..."
     
-    # Get a test capsule ID
-    local capsule_id=$(get_test_capsule_id)
-    if [[ -z "$capsule_id" ]]; then
-        echo_fail "Failed to get test capsule ID"
+    # Get the current user's self-capsule ID directly
+    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    if ! is_success "$self_capsule_result"; then
+        echo_fail "Failed to get self-capsule for update test"
         return 1
     fi
     
-    echo_info "Testing with capsule ID: $capsule_id"
+    local capsule_id=$(echo "$self_capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    if [[ -z "$capsule_id" ]]; then
+        echo_fail "Failed to extract capsule ID from self-capsule response"
+        return 1
+    fi
+    
+    echo_info "Testing with self-capsule ID: $capsule_id"
     
     # Create update data to bind to Neon
     local update_data=$(create_capsule_update_data "true")
@@ -54,14 +60,20 @@ test_capsules_update_binding() {
 test_capsules_update_unbinding() {
     echo_info "Testing capsules_update with unbinding status change..."
     
-    # Get a test capsule ID
-    local capsule_id=$(get_test_capsule_id)
-    if [[ -z "$capsule_id" ]]; then
-        echo_fail "Failed to get test capsule ID"
+    # Get the current user's self-capsule ID directly
+    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    if ! is_success "$self_capsule_result"; then
+        echo_fail "Failed to get self-capsule for update test"
         return 1
     fi
     
-    echo_info "Testing with capsule ID: $capsule_id"
+    local capsule_id=$(echo "$self_capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    if [[ -z "$capsule_id" ]]; then
+        echo_fail "Failed to extract capsule ID from self-capsule response"
+        return 1
+    fi
+    
+    echo_info "Testing with self-capsule ID: $capsule_id"
     
     # Create update data to unbind from Neon
     local update_data=$(create_capsule_update_data "false")
@@ -142,14 +154,20 @@ test_capsules_update_empty_id() {
 test_capsules_update_no_changes() {
     echo_info "Testing capsules_update with no changes..."
     
-    # Get a test capsule ID
-    local capsule_id=$(get_test_capsule_id)
-    if [[ -z "$capsule_id" ]]; then
-        echo_fail "Failed to get test capsule ID"
+    # Get the current user's self-capsule ID directly
+    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    if ! is_success "$self_capsule_result"; then
+        echo_fail "Failed to get self-capsule for update test"
         return 1
     fi
     
-    echo_info "Testing with capsule ID: $capsule_id"
+    local capsule_id=$(echo "$self_capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+    if [[ -z "$capsule_id" ]]; then
+        echo_fail "Failed to extract capsule ID from self-capsule response"
+        return 1
+    fi
+    
+    echo_info "Testing with self-capsule ID: $capsule_id"
     
     # Create update data with no changes (all fields null)
     local update_data="(record { bound_to_neon = null; })"
@@ -178,10 +196,16 @@ test_capsules_update_no_changes() {
 test_response_structure() {
     echo_info "Testing capsules_update response structure..."
     
-    # Get a test capsule ID
-    local capsule_id=$(get_test_capsule_id)
+    # Get the current user's self-capsule ID directly
+    local self_capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    if ! is_success "$self_capsule_result"; then
+        echo_fail "Failed to get self-capsule for update test"
+        return 1
+    fi
+    
+    local capsule_id=$(echo "$self_capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
     if [[ -z "$capsule_id" ]]; then
-        echo_fail "Failed to get test capsule ID"
+        echo_fail "Failed to extract capsule ID from self-capsule response"
         return 1
     fi
     
