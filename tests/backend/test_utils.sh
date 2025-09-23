@@ -78,7 +78,7 @@ check_superadmin_status() {
 }
 
 # Helper function to run a test with expected result
-run_test() {
+run_test_with_expected() {
     local test_name="$1"
     local command="$2"
     local expected_result="$3"
@@ -117,7 +117,7 @@ run_test_with_counters() {
     local tests_passed_var="$4"
     local tests_failed_var="$5"
     
-    if run_test "$test_name" "$command" "$expected_result"; then
+    if run_test_with_expected "$test_name" "$command" "$expected_result"; then
         eval "((++$tests_passed_var))"
     else
         eval "((++$tests_failed_var))"
@@ -180,7 +180,7 @@ get_test_capsule_id() {
     echo "$capsule_id"
 }
 
-# Helper function to run tests with counters
+# Helper function to run tests with counters (simple version)
 run_test() {
     local test_name="$1"
     local test_command="$2"
@@ -194,4 +194,95 @@ run_test() {
         echo_error "$test_name failed"
         return 1
     fi
+}
+
+# Response parsing utilities
+is_success() {
+    local response="$1"
+    echo "$response" | grep -q "success = true"
+}
+
+is_failure() {
+    local response="$1"
+    echo "$response" | grep -q "success = false"
+}
+
+# Helper function to extract canister ID from response
+extract_canister_id() {
+    local response="$1"
+    echo "$response" | grep -o 'canister_id = opt principal "[^"]*"' | sed 's/canister_id = opt principal "\([^"]*\)"/\1/'
+}
+
+# Helper function to extract creation status
+extract_creation_status() {
+    local response="$1"
+    echo "$response" | grep -o 'status = variant { [^}]*}' | sed 's/status = variant { \([^}]*\) }/\1/'
+}
+
+# Helper function to extract principal from opt principal response
+extract_principal() {
+    local response="$1"
+    echo "$response" | grep -o 'opt principal "[^"]*"' | sed 's/opt principal "\([^"]*\)"/\1/'
+}
+
+# Cycle monitoring utilities
+get_cycles_balance() {
+    local canister_id="$1"
+    local network_flag="$2"
+    
+    if [[ "$network_flag" == "--network ic" ]]; then
+        dfx canister status "$canister_id" --network ic 2>/dev/null | grep -o 'Balance: [0-9_,]*' | sed 's/Balance: //' | tr -d '_,'
+    else
+        dfx canister status "$canister_id" 2>/dev/null | grep -o 'Balance: [0-9_,]*' | sed 's/Balance: //' | tr -d '_,'
+    fi
+}
+
+# Helper function to monitor cycle consumption
+monitor_cycles() {
+    local canister_id="$1"
+    local network_flag="$2"
+    local operation_name="$3"
+    
+    echo_info "Monitoring cycles for: $operation_name" >&2
+    local initial_balance=$(get_cycles_balance "$canister_id" "$network_flag")
+    echo_info "Initial cycles balance: $initial_balance" >&2
+    
+    # Return the initial balance for comparison later
+    echo "$initial_balance"
+}
+
+# Helper function to calculate cycle consumption
+calculate_cycle_consumption() {
+    local initial_balance="$1"
+    local canister_id="$2"
+    local network_flag="$3"
+    local operation_name="$4"
+    
+    local final_balance=$(get_cycles_balance "$canister_id" "$network_flag")
+    local consumption=$((initial_balance - final_balance))
+    
+    echo_info "Final cycles balance: $final_balance" >&2
+    echo_info "Cycle consumption for $operation_name: $consumption" >&2
+    
+    # Convert to approximate USD (rough estimate: 1 trillion cycles ≈ $1-2)
+    if [[ $consumption -gt 0 ]]; then
+        local usd_estimate=$(echo "scale=4; $consumption / 1000000000000" | bc 2>/dev/null || echo "N/A")
+        echo_info "Estimated cost: ~$${usd_estimate} USD" >&2
+    fi
+    
+    echo "$consumption"
+}
+
+# Helper function to warn about expensive operations
+warn_expensive_operation() {
+    local operation="$1"
+    local estimated_cost="$2"
+    
+    echo_warn "⚠️  WARNING: $operation will cost cycles!"
+    echo_warn "Estimated cost: ~\$${estimated_cost} USD"
+    echo_warn "This operation will create/modify canisters on mainnet."
+    echo ""
+    echo_info "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
+    sleep 5
+    echo_info "Proceeding with $operation..."
 }
