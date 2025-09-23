@@ -5,7 +5,7 @@
 
 # Load test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/../test_utils.sh"
 
 # Test configuration
 CANISTER_ID="${CANISTER_ID:-$(dfx canister id backend 2>/dev/null)}"
@@ -16,9 +16,9 @@ fi
 
 echo_info "Testing admin management with canister: $CANISTER_ID"
 
-# Test principals (using test principals)
-TEST_ADMIN1="$(dfx identity get-principal --identity test-admin-1 2>/dev/null || echo "rdmx6-jaaaa-aaaah-qcaiq-cai")"
-TEST_ADMIN2="$(dfx identity get-principal --identity test-admin-2 2>/dev/null || echo "rrkah-fqaaa-aaaah-qcaiq-cai")"
+# Test principals (using helper function to get valid principals)
+TEST_ADMIN1=$(get_test_principal "test-admin-1")
+TEST_ADMIN2=$(get_test_principal "test-admin-2")
 SUPERADMIN="otzfv-jscof-niinw-gtloq-25uz3-pglpg-u3kug-besf3-rzlbd-ylrmp-5ae"
 
 echo_info "Test principals:"
@@ -68,26 +68,24 @@ run_test "List admins (initial state)" \
     "dfx canister call $CANISTER_ID list_admins '()'" \
     "success"
 
-# Test 2: Add admin as non-superadmin (should fail)
-run_test "Add admin as non-superadmin (should fail)" \
-    "dfx canister call $CANISTER_ID add_admin '(principal \"$TEST_ADMIN1\")'" \
-    "failure"
-
-# Test 3: Add admin as superadmin (should succeed)
-# Note: This requires calling as superadmin, which might not be possible in test environment
-# We'll test the function exists and can be called
-run_test "Add admin function exists" \
-    "dfx canister call $CANISTER_ID add_admin '(principal \"$TEST_ADMIN1\")' --query" \
+# Test 2: Add admin as non-superadmin (should fail with Unauthorized)
+run_test "Add admin as non-superadmin (should fail with Unauthorized)" \
+    "dfx canister call $CANISTER_ID add_admin '(principal \"$TEST_ADMIN1\")' | grep -q 'Unauthorized'" \
     "success"
 
-# Test 4: Remove admin as non-superadmin (should fail)
-run_test "Remove admin as non-superadmin (should fail)" \
-    "dfx canister call $CANISTER_ID remove_admin '(principal \"$TEST_ADMIN1\")'" \
-    "failure"
+# Test 3: Add admin function exists (update function, not query)
+run_test "Add admin function exists" \
+    "dfx canister call $CANISTER_ID add_admin '(principal \"$TEST_ADMIN1\")'" \
+    "success"
 
-# Test 5: Remove admin function exists
+# Test 4: Remove admin as non-superadmin (should fail with Unauthorized)
+run_test "Remove admin as non-superadmin (should fail with Unauthorized)" \
+    "dfx canister call $CANISTER_ID remove_admin '(principal \"$TEST_ADMIN1\")' | grep -q 'Unauthorized'" \
+    "success"
+
+# Test 5: Remove admin function exists (update function, not query)
 run_test "Remove admin function exists" \
-    "dfx canister call $CANISTER_ID remove_admin '(principal \"$TEST_ADMIN1\")' --query" \
+    "dfx canister call $CANISTER_ID remove_admin '(principal \"$TEST_ADMIN1\")'" \
     "success"
 
 # Test 6: List superadmins
@@ -95,24 +93,22 @@ run_test "List superadmins" \
     "dfx canister call $CANISTER_ID list_superadmins '()'" \
     "success"
 
-# Test 7: Check admin status (is_admin function)
-run_test "Check admin status function exists" \
-    "dfx canister call $CANISTER_ID is_admin '(principal \"$TEST_ADMIN1\")' --query" \
-    "success"
+# Note: is_admin is not exposed in the public Candid interface
+# It's an internal function used for authorization checks
 
-# Test 8: Test with invalid principal format
+# Test 7: Test with invalid principal format
 run_test "Add admin with invalid principal (should fail)" \
     "dfx canister call $CANISTER_ID add_admin '(principal \"invalid-principal\")'" \
     "failure"
 
-# Test 9: Test with empty principal
+# Test 8: Test with empty principal
 run_test "Add admin with empty principal (should fail)" \
     "dfx canister call $CANISTER_ID add_admin '(principal \"\")'" \
     "failure"
 
-# Test 10: Test admin functions are available in Candid interface
+# Test 9: Test admin functions are available in Candid interface (via metadata)
 run_test "Admin functions in Candid interface" \
-    "dfx canister call $CANISTER_ID __get_candid_interface_tmp_hack '()' | grep -E '(add_admin|remove_admin|list_admins|is_admin)'" \
+    "dfx canister metadata $CANISTER_ID candid:service | grep -E '(add_admin|remove_admin|list_admins|list_superadmins)'" \
     "success"
 
 # Summary

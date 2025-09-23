@@ -28,6 +28,36 @@ echo_error() {
     echo "[ERROR] $1"
 }
 
+# Helper function to get a valid test principal
+get_test_principal() {
+    local identity_name="${1:-test-admin}"
+    
+    # Try to get principal from existing identity
+    if dfx identity get-principal --identity "$identity_name" >/dev/null 2>&1; then
+        dfx identity get-principal --identity "$identity_name" 2>/dev/null
+        return 0
+    fi
+    
+    # If identity doesn't exist, create it (suppress output)
+    if dfx identity new "$identity_name" --storage-mode plaintext >/dev/null 2>&1; then
+        dfx identity get-principal --identity "$identity_name" 2>/dev/null
+        return 0
+    fi
+    
+    # Fallback to a known valid principal
+    echo "ur7ny-sza5i-m73am-naljv-rgxjo-bzm2w-k7q6l-p2qsc-b2mce-qlpsr-uae"
+    return 0
+}
+
+# Helper function to get multiple test principals
+get_test_principals() {
+    local admin1=$(get_test_principal "test-admin-1")
+    local admin2=$(get_test_principal "test-admin-2")
+    
+    echo "$admin1"
+    echo "$admin2"
+}
+
 echo_debug() {
     echo "[DEBUG] $1"
 }

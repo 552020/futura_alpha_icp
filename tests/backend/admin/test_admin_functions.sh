@@ -5,7 +5,7 @@
 
 # Load test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/../test_utils.sh"
 
 # Get canister ID
 CANISTER_ID="${CANISTER_ID:-$(dfx canister id backend 2>/dev/null)}"
@@ -16,8 +16,8 @@ fi
 
 echo_info "Testing admin functions with canister: $CANISTER_ID"
 
-# Test principals
-TEST_PRINCIPAL="rdmx6-jaaaa-aaaah-qcaiq-cai"
+# Test principals (use helper function to get valid principal)
+TEST_PRINCIPAL=$(get_test_principal "test-admin")
 
 # Test counter
 TESTS_PASSED=0
@@ -41,11 +41,38 @@ test_function() {
 }
 
 # Test admin functions exist and can be called
-test_function "add_admin" "(principal \"$TEST_PRINCIPAL\")" "add_admin function exists"
-test_function "remove_admin" "(principal \"$TEST_PRINCIPAL\")" "remove_admin function exists"
+# Note: add_admin and remove_admin are update functions (not query functions)
+# They should return "Unauthorized" for non-superadmins, which is correct behavior
+echo_info "Testing: add_admin function exists (update function)"
+if result=$(dfx canister call "$CANISTER_ID" add_admin "(principal \"$TEST_PRINCIPAL\")" 2>&1); then
+    if echo "$result" | grep -q "Unauthorized"; then
+        echo_pass "add_admin function exists (returns Unauthorized as expected)"
+        ((TESTS_PASSED++))
+    else
+        echo_fail "add_admin function exists (unexpected response: $result)"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo_fail "add_admin function exists (call failed)"
+    ((TESTS_FAILED++))
+fi
+
+echo_info "Testing: remove_admin function exists (update function)"
+if result=$(dfx canister call "$CANISTER_ID" remove_admin "(principal \"$TEST_PRINCIPAL\")" 2>&1); then
+    if echo "$result" | grep -q "Unauthorized"; then
+        echo_pass "remove_admin function exists (returns Unauthorized as expected)"
+        ((TESTS_PASSED++))
+    else
+        echo_fail "remove_admin function exists (unexpected response: $result)"
+        ((TESTS_FAILED++))
+    fi
+else
+    echo_fail "remove_admin function exists (call failed)"
+    ((TESTS_FAILED++))
+fi
+
 test_function "list_admins" "()" "list_admins function exists"
 test_function "list_superadmins" "()" "list_superadmins function exists"
-test_function "is_admin" "(principal \"$TEST_PRINCIPAL\")" "is_admin function exists"
 
 # Test that functions return expected types
 echo_info "Testing function return types..."
@@ -78,19 +105,8 @@ else
     ((TESTS_FAILED++))
 fi
 
-# Test is_admin returns boolean
-if result=$(dfx canister call "$CANISTER_ID" is_admin "(principal \"$TEST_PRINCIPAL\")" --query 2>/dev/null); then
-    if echo "$result" | grep -qE "(true|false)"; then
-        echo_pass "is_admin returns boolean"
-        ((TESTS_PASSED++))
-    else
-        echo_fail "is_admin should return boolean"
-        ((TESTS_FAILED++))
-    fi
-else
-    echo_fail "is_admin call failed"
-    ((TESTS_FAILED++))
-fi
+# Note: is_admin is not exposed in the public Candid interface
+# It's an internal function used for authorization checks
 
 # Summary
 echo_info "=== Admin Functions Test Summary ==="
