@@ -5,11 +5,12 @@
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "scripts/tests/backend/test_config.sh"
-source "scripts/tests/backend/test_utils.sh"
+source "$SCRIPT_DIR/../../test_utils.sh"
 
 # Test configuration
 TEST_NAME="Advanced Memory Tests"
+CANISTER_ID="backend"
+IDENTITY="default"
 TOTAL_TESTS=0
 PASSED_TESTS=0
 FAILED_TESTS=0
@@ -41,13 +42,15 @@ create_text_memory_data() {
     local encoded_content=$(echo -n "$content" | base64)
     
     cat << EOF
-(record {
-  blob_ref = record {
-    kind = variant { ICPCapsule };
-    locator = "memory_${name}";
-    hash = null;
-  };
-  data = opt blob "$encoded_content";
+(variant {
+  Inline = record {
+    bytes = blob "$encoded_content";
+    meta = record {
+      name = "memory_${name}";
+      description = opt "Test memory for advanced testing";
+      tags = vec { "test"; "advanced"; "text" };
+    };
+  }
 })
 EOF
 }
@@ -59,13 +62,15 @@ create_image_memory_data() {
     local test_image="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU8j8wAAAABJRU5ErkJggg=="
     
     cat << EOF
-(record {
-  blob_ref = record {
-    kind = variant { ICPCapsule };
-    locator = "image_${name}";
-    hash = null;
-  };
-  data = opt blob "$test_image";
+(variant {
+  Inline = record {
+    bytes = blob "$test_image";
+    meta = record {
+      name = "image_${name}";
+      description = opt "Test image memory for advanced testing";
+      tags = vec { "test"; "advanced"; "image" };
+    };
+  }
 })
 EOF
 }
@@ -77,13 +82,15 @@ create_document_memory_data() {
     local test_pdf="JVBERi0xLjQKJcOkw7zDtsOgCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSL0ZpbHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nCvkMlAwULCx0XfOzCtJzSvRy87MS9dLzs8rSc0rzi9KLMnMz1OwMDJQsLVVqK4FAIjNDLoKZW5kc3RyZWFtCmVuZG9iagoKMyAwIG9iago5CmVuZG9iagoKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDQgMCBSCi9NZWRpYUJveCBbMCAwIDYxMiA3OTJdCj4+CmVuZG9iagoKNCAwIG9iago8PAovVHlwZSAvUGFnZXMKL0tpZHMgWzUgMCBSXQovQ291bnQgMQo+PgplbmRvYmoKCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDQgMCBSCj4+CmVuZG9iagoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMjkzIDAwMDAwIG4gCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA3NCAwMDAwMCBuIAowMDAwMDAwMTc4IDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKdHJhaWxlcgo8PAovU2l6ZSA2Ci9Sb290IDEgMCBSCj4+CnN0YXJ0eHJlZgozNDIKJSVFT0Y="
     
     cat << EOF
-(record {
-  blob_ref = record {
-    kind = variant { ICPCapsule };
-    locator = "document_${name}";
-    hash = null;
-  };
-  data = opt blob "$test_pdf";
+(variant {
+  Inline = record {
+    bytes = blob "$test_pdf";
+    meta = record {
+      name = "document_${name}";
+      description = opt "Test document memory for advanced testing";
+      tags = vec { "test"; "advanced"; "document" };
+    };
+  }
 })
 EOF
 }
@@ -119,10 +126,11 @@ test_add_text_memory() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_advanced_$(date +%s)_$$"
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
     
     # Check if the call was successful
-    if echo "$result" | grep -q "success = true"; then
+    if echo "$result" | grep -q "Ok"; then
         echo_info "Text memory upload successful"
         return 0
     else
@@ -139,10 +147,11 @@ test_add_image_memory() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_advanced_$(date +%s)_$$"
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
     
     # Check if the call was successful
-    if echo "$result" | grep -q "success = true"; then
+    if echo "$result" | grep -q "Ok"; then
         echo_info "Image memory upload successful"
         return 0
     else
@@ -159,10 +168,11 @@ test_add_document_memory() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_advanced_$(date +%s)_$$"
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
     
     # Check if the call was successful
-    if echo "$result" | grep -q "success = true"; then
+    if echo "$result" | grep -q "Ok"; then
         echo_info "Document memory upload successful"
         return 0
     else
@@ -207,7 +217,7 @@ test_retrieve_uploaded_memory() {
     local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
     # Extract memory ID from upload result
-    local memory_id=$(echo "$upload_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
+    local memory_id=$(echo "$upload_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     if [ -z "$memory_id" ]; then
         echo_info "Failed to extract memory ID from upload result"
@@ -234,9 +244,9 @@ test_retrieve_nonexistent_memory() {
     local fake_id="nonexistent_memory_id_12345"
     local result=$(dfx canister call backend memories_read "\"$fake_id\"" 2>/dev/null)
     
-    # Should return null for non-existent memory
-    if echo "$result" | grep -q "(null)"; then
-        echo_info "Correctly returned null for non-existent memory"
+    # Should return Err for non-existent memory
+    if echo "$result" | grep -q "Err" || echo "$result" | grep -q "(null)"; then
+        echo_info "Correctly returned error for non-existent memory"
         return 0
     else
         echo_info "Unexpected result for non-existent memory: $result"
@@ -255,7 +265,7 @@ test_memory_storage_persistence() {
     
     local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
     
-    local memory_id=$(echo "$upload_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
+    local memory_id=$(echo "$upload_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     if [ -z "$memory_id" ]; then
         echo_info "Failed to extract memory ID for persistence test"
@@ -287,7 +297,8 @@ test_large_memory_upload() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_advanced_$(date +%s)_$$"
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
     
     if echo "$result" | grep -q "success = true"; then
         echo_info "Large memory upload successful"
@@ -349,12 +360,7 @@ main() {
     echo "========================================="
     echo ""
     
-    # Check if backend canister ID is set
-    if [ -z "$BACKEND_CANISTER_ID" ]; then
-        echo_fail "BACKEND_CANISTER_ID not set in test_config.sh"
-        echo_info "Please set the backend canister ID before running tests"
-        exit 1
-    fi
+    # Backend canister ID is set to "backend" above
     
     # Check if dfx is available
     if ! command -v dfx &> /dev/null; then

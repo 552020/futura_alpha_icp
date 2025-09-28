@@ -26,27 +26,31 @@ test_memories_update_valid() {
         return 1
     fi
     
-    # Create test memory data
-    local memory_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "test_memory_update_123";
-        hash = null;
-      };
-      data = opt blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+    # Create test memory data using new MemoryData format
+    local memory_data='(variant {
+      Inline = record {
+        bytes = blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+        meta = record {
+          name = "test_memory_update_123";
+          description = opt "Test memory for update operations";
+          tags = vec { "test"; "update" };
+        };
+      }
     })'
     
-    # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_update_$(date +%s)"
     
-    if [[ $create_result != *"success = true"* ]]; then
+    # Create the memory first
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    
+    if [[ $create_result != *"Ok"* ]]; then
         echo_error "Failed to create test memory"
         echo_debug "Create result: $create_result"
         return 1
     fi
     
     # Extract memory ID from creation result
-    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local memory_id=$(echo "$create_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     if [[ -z "$memory_id" ]]; then
         echo_error "Failed to extract memory ID from creation result"
@@ -127,19 +131,23 @@ test_memories_update_empty_data() {
         return 1
     fi
     
-    # Create test memory data
-    local memory_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "test_memory_update_empty";
-        hash = null;
-      };
-      data = opt blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+    # Create test memory data using new MemoryData format
+    local memory_data='(variant {
+      Inline = record {
+        bytes = blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+        meta = record {
+          name = "test_memory_update_empty";
+          description = opt "Test memory for empty update test";
+          tags = vec { "test"; "update"; "empty" };
+        };
+      }
     })'
     
+    local idem="test_update_empty_$(date +%s)"
+    
     # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
-    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local memory_id=$(echo "$create_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     # Create empty update data (all fields null)
     local empty_update_data='(record {
@@ -183,8 +191,8 @@ test_memories_update_access() {
     })'
     
     # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
-    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local memory_id=$(echo "$create_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     # Create update data with metadata changes (simplified)
     local update_data='(record {
@@ -242,16 +250,16 @@ test_memories_update_comprehensive_info() {
     })'
     
     # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
     
-    if [[ $create_result != *"success = true"* ]]; then
+    if [[ $create_result != *"Ok"* ]]; then
         echo_error "Failed to create test memory"
         echo_debug "Create result: $create_result"
         return 1
     fi
     
     # Extract memory ID from creation result
-    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local memory_id=$(echo "$create_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     if [[ -z "$memory_id" ]]; then
         echo_error "Failed to extract memory ID from creation result"

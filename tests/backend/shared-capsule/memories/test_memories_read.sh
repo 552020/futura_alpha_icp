@@ -26,27 +26,31 @@ test_memories_read_valid() {
         return 1
     fi
     
-    # Create test memory data
-    local memory_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "test_memory_read_123";
-        hash = null;
-      };
-      data = opt blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+    # Create test memory data using new MemoryData format
+    local memory_data='(variant {
+      Inline = record {
+        bytes = blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+        meta = record {
+          name = "test_memory_read_123";
+          description = opt "Test memory for read operations";
+          tags = vec { "test"; "read" };
+        };
+      }
     })'
     
-    # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_read_$(date +%s)"
     
-    if [[ $create_result != *"success = true"* ]]; then
+    # Create the memory first
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    
+    if [[ $create_result != *"Ok"* ]]; then
         echo_error "Failed to create test memory"
         echo_debug "Create result: $create_result"
         return 1
     fi
     
-    # Extract memory ID from creation result
-    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    # Extract memory ID from creation result (new format returns Ok = "memory_id")
+    local memory_id=$(echo "$create_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     if [[ -z "$memory_id" ]]; then
         echo_error "Failed to extract memory ID from creation result"
@@ -58,7 +62,7 @@ test_memories_read_valid() {
     # Call memories_read with the memory ID
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory_id\")" 2>/dev/null)
     
-    if [[ $result == *"opt record"* ]] && [[ $result == *"id = \"$memory_id\""* ]]; then
+    if [[ $result == *"Ok = record"* ]] && [[ $result == *"id = \"$memory_id\""* ]]; then
         echo_success "✅ memories_read with valid memory ID succeeded"
         echo_debug "Result: $result"
     else
@@ -74,7 +78,7 @@ test_memories_read_invalid() {
     
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"invalid_memory_id_123\")" 2>/dev/null)
     
-    if [[ $result == "(null)" ]]; then
+    if [[ $result == *"Err"* ]] || [[ $result == "(null)" ]]; then
         echo_success "✅ memories_read with invalid memory ID returned null as expected"
         echo_debug "Result: $result"
     else
@@ -90,7 +94,7 @@ test_memories_read_empty() {
     
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"\")" 2>/dev/null)
     
-    if [[ $result == "(null)" ]]; then
+    if [[ $result == *"Err"* ]] || [[ $result == "(null)" ]]; then
         echo_success "✅ memories_read with empty memory ID returned null as expected"
         echo_debug "Result: $result"
     else
@@ -114,36 +118,42 @@ test_memories_read_cross_capsules() {
     fi
     
     # Create memory in first capsule
-    local memory1_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "cross_capsule_test_1";
-        hash = null;
-      };
-      data = opt blob "VGVzdCBtZW1vcnkgMQ==";
+    local memory1_data='(variant {
+      Inline = record {
+        bytes = blob "VGVzdCBtZW1vcnkgMQ==";
+        meta = record {
+          name = "cross_capsule_test_1";
+          description = opt "Test memory 1 for cross-capsule test";
+          tags = vec { "test"; "cross-capsule" };
+        };
+      }
     })'
     
-    local create1_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule1_id\", $memory1_data)" 2>/dev/null)
-    local memory1_id=$(echo "$create1_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local idem1="test_cross_1_$(date +%s)"
+    local create1_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule1_id\", $memory1_data, \"$idem1\")" 2>/dev/null)
+    local memory1_id=$(echo "$create1_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     # Create memory in second capsule
-    local memory2_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "cross_capsule_test_2";
-        hash = null;
-      };
-      data = opt blob "VGVzdCBtZW1vcnkgMg==";
+    local memory2_data='(variant {
+      Inline = record {
+        bytes = blob "VGVzdCBtZW1vcnkgMg==";
+        meta = record {
+          name = "cross_capsule_test_2";
+          description = opt "Test memory 2 for cross-capsule test";
+          tags = vec { "test"; "cross-capsule" };
+        };
+      }
     })'
     
-    local create2_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule2_id\", $memory2_data)" 2>/dev/null)
-    local memory2_id=$(echo "$create2_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local idem2="test_cross_2_$(date +%s)"
+    local create2_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule2_id\", $memory2_data, \"$idem2\")" 2>/dev/null)
+    local memory2_id=$(echo "$create2_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     # Test reading both memories
     local read1_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory1_id\")" 2>/dev/null)
     local read2_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory2_id\")" 2>/dev/null)
     
-    if [[ $read1_result == *"id = \"$memory1_id\""* ]] && [[ $read2_result == *"id = \"$memory2_id\""* ]]; then
+    if [[ $read1_result == *"Ok = record"* ]] && [[ $read1_result == *"id = \"$memory1_id\""* ]] && [[ $read2_result == *"Ok = record"* ]] && [[ $read2_result == *"id = \"$memory2_id\""* ]]; then
         echo_success "✅ memories_read successfully retrieved memories from different capsules"
         echo_debug "Memory 1 result: $read1_result"
         echo_debug "Memory 2 result: $read2_result"
@@ -169,7 +179,7 @@ test_memories_read_persistence() {
     
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$saved_memory_id\")" 2>/dev/null)
     
-    if [[ $result == *"opt record"* ]] && [[ $result == *"id = \"$saved_memory_id\""* ]]; then
+    if [[ $result == *"Ok = record"* ]] && [[ $result == *"id = \"$saved_memory_id\""* ]]; then
         echo_success "✅ memories_read with saved memory ID succeeded (persistence verified)"
         echo_debug "Result: $result"
     else

@@ -13,12 +13,12 @@
 # 5. Verify old delete_memory_from_capsule endpoint is removed
 
 # Load test configuration and utilities
-source scripts/tests/backend/test_config.sh
-source scripts/tests/backend/test_utils.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../../test_utils.sh"
 
 # Test configuration
 TEST_NAME="memories_delete"
-CANISTER_ID="${BACKEND_CANISTER_ID:-backend}"
+CANISTER_ID="backend"
 IDENTITY="default"
 
 # ==========================================
@@ -37,19 +37,21 @@ test_memories_delete_valid() {
         return 1
     fi
     
-    # Create test memory data
-    local memory_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "test_memory_delete_valid";
-        hash = null;
-      };
-      data = opt blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+    # Create test memory data using new MemoryData format
+    local memory_data='(variant {
+      Inline = record {
+        bytes = blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+        meta = record {
+          name = "test_memory_delete_valid";
+          description = opt "Test memory for delete operations";
+          tags = vec { "test"; "delete" };
+        };
+      }
     })'
     
     # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
-    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local memory_id=$(echo "$create_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     if [[ -z "$memory_id" ]]; then
         echo_error "Failed to create test memory for deletion"
@@ -65,7 +67,7 @@ test_memories_delete_valid() {
     # Verify memory exists before deletion
     local read_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory_id\")" 2>/dev/null)
     
-    if [[ $read_result == *"opt record"* ]] || [[ $read_result == *"record {"* ]]; then
+    if [[ $read_result == *"Ok = record"* ]]; then
         echo_success "✅ Memory exists before deletion"
     else
         echo_error "❌ Memory not found before deletion"
@@ -82,7 +84,7 @@ test_memories_delete_valid() {
         # Verify the memory was actually deleted
         local read_result_after=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory_id\")" 2>/dev/null)
         
-        if [[ $read_result_after == *"(null)"* ]]; then
+        if [[ $read_result_after == *"Err"* ]] || [[ $read_result_after == *"(null)"* ]]; then
             echo_success "✅ Memory deletion verification successful"
             echo_debug "Read result: $read_result_after"
         else
@@ -153,19 +155,21 @@ test_memories_delete_cross_capsule() {
         return 1
     fi
     
-    # Create test memory data
-    local memory_data='(record {
-      blob_ref = record {
-        kind = variant { ICPCapsule };
-        locator = "test_memory_delete_cross";
-        hash = null;
-      };
-      data = opt blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+    # Create test memory data using new MemoryData format
+    local memory_data='(variant {
+      Inline = record {
+        bytes = blob "VGVzdCBtZW1vcnkgZGF0YQ==";
+        meta = record {
+          name = "test_memory_delete_cross";
+          description = opt "Test memory for cross-capsule deletion test";
+          tags = vec { "test"; "delete"; "cross-capsule" };
+        };
+      }
     })'
     
     # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
-    local memory_id=$(echo "$create_result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "//' | sed 's/"//')
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local memory_id=$(echo "$create_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
     if [[ -z "$memory_id" ]]; then
         echo_error "Failed to create test memory for cross-capsule deletion test"
@@ -182,7 +186,7 @@ test_memories_delete_cross_capsule() {
         # Verify the memory was actually deleted
         local read_result_after=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory_id\")" 2>/dev/null)
         
-        if [[ $read_result_after == *"(null)"* ]]; then
+        if [[ $read_result_after == *"Err"* ]] || [[ $read_result_after == *"(null)"* ]]; then
             echo_success "✅ Cross-capsule memory deletion verification successful"
             echo_debug "Read result: $read_result_after"
         else
@@ -224,12 +228,7 @@ main() {
     echo "=========================================="
     echo ""
     
-    # Check if backend canister ID is set
-    if [ -z "$BACKEND_CANISTER_ID" ]; then
-        echo_fail "BACKEND_CANISTER_ID not set in test_config.sh"
-        echo_info "Please set the backend canister ID before running tests"
-        exit 1
-    fi
+    # Backend canister ID is set to "backend" above
     
     # Check if dfx is available
     if ! command -v dfx &> /dev/null; then

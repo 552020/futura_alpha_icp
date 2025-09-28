@@ -6,7 +6,6 @@
 
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../test_config.sh"
 source "$SCRIPT_DIR/../../test_utils.sh"
 
 # Test configuration
@@ -54,13 +53,15 @@ create_test_memory_data() {
     local encoded_content=$(echo -n "$content" | base64)
     
     cat << EOF
-(record {
-  blob_ref = record {
-    kind = variant { ICPCapsule };
-    locator = "memory_${name}";
-    hash = null;
-  };
-  data = opt blob "$encoded_content";
+(variant {
+  Inline = record {
+    bytes = blob "$encoded_content";
+    meta = record {
+      name = "memory_${name}";
+      description = opt "Test memory for CRUD operations";
+      tags = vec { "test"; "crud" };
+    };
+  }
 })
 EOF
 }
@@ -77,14 +78,15 @@ upload_test_memory() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_crud_$(date +%s)_$$"
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
     
-    if is_success "$result"; then
-        local memory_id=$(echo "$result" | grep -o 'memory_id = opt "[^"]*"' | sed 's/memory_id = opt "\([^"]*\)"/\1/')
+    if echo "$result" | grep -q "Ok"; then
+        local memory_id=$(echo "$result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
         echo "$memory_id"
         return 0
     else
-        echo ""
+        echo_info "Memory creation failed: $result"
         return 1
     fi
 }
@@ -97,9 +99,9 @@ get_test_capsule_id() {
     if [[ $capsule_result == *"null"* ]]; then
         echo_info "No capsule found, creating one first..."
         local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+        capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | head -1 | sed 's/id = "//' | sed 's/"//')
     else
-        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+        capsule_id=$(echo "$capsule_result" | grep -o 'id = "[^"]*"' | head -1 | sed 's/id = "//' | sed 's/"//')
     fi
     
     if [[ -z "$capsule_id" ]]; then
@@ -202,9 +204,9 @@ test_list_empty_memories() {
     if [[ $capsule_result == *"null"* ]]; then
         echo_info "No capsule found, creating one first..."
         local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
+        capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | head -1 | sed 's/id = "//' | sed 's/"//')
     else
-        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+        capsule_id=$(echo "$capsule_result" | grep -o 'id = "[^"]*"' | head -1 | sed 's/id = "//' | sed 's/"//')
     fi
     
     if [[ -z "$capsule_id" ]]; then
@@ -321,11 +323,8 @@ main() {
     echo ""
     
     # Check if backend canister ID is set
-    if [ -z "$BACKEND_CANISTER_ID" ]; then
-        echo_fail "BACKEND_CANISTER_ID not set in test_config.sh"
-        echo_info "Please set the backend canister ID before running tests"
-        exit 1
-    fi
+    # Set canister ID
+    CANISTER_ID="backend"
     
     # Check if dfx is available
     if ! command -v dfx &> /dev/null; then
