@@ -410,6 +410,12 @@ fn debug_sha256(bytes: Vec<u8>) -> String {
     hex::encode(hash)
 }
 
+/// Read blob data by locator (for asset retrieval)
+#[ic_cdk::query]
+fn blob_read(locator: String) -> types::Result<Vec<u8>> {
+    upload::blob_read(locator)
+}
+
 /// Debug endpoint to upload chunk with base64 data (dev only)
 #[ic_cdk::update]
 async fn debug_put_chunk_b64(session_id: u64, chunk_idx: u32, b64: String) -> types::Result<()> {

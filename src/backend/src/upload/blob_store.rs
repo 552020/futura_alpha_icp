@@ -100,7 +100,10 @@ impl BlobStore {
             };
             ic_cdk::println!(
                 "STORE_FROM_CHUNKS: session_id={}, page_idx={}, data_len={}, first_10_bytes={}",
-                session_id.0, page_idx, chunk_data.len(), first_10_bytes
+                session_id.0,
+                page_idx,
+                chunk_data.len(),
+                first_10_bytes
             );
 
             hasher.update(&chunk_data);
@@ -247,5 +250,288 @@ impl BlobStore {
     /// Get total storage used by blobs (for monitoring)
     pub fn total_storage_used(&self) -> u64 {
         STABLE_BLOB_META.with(|metas| metas.borrow().iter().map(|(_, meta)| meta.size).sum())
+    }
+}
+
+/// Read blob data by locator (public API function)
+/// Automatically chooses between single response and chunked reading based on size
+pub fn blob_read(locator: String) -> crate::types::Result<Vec<u8>> {
+    use crate::upload::types::BlobId;
+    use hex;
+
+    // Parse locator to extract blob ID
+    // Format: "inline_{hex_hash_prefix}" or "blob_{blob_id}"
+    let blob_id = if locator.starts_with("inline_") {
+        // For inline blobs, we need to find the blob by hash prefix
+        let hash_prefix = locator.strip_prefix("inline_").unwrap_or("");
+        if let Ok(prefix_bytes) = hex::decode(hash_prefix) {
+            // Search through blob metadata to find matching blob
+            let blob_store = BlobStore::new();
+            let mut found_blob_id = None;
+
+            // We need to iterate through all blobs to find one with matching hash prefix
+            // This is not ideal for performance, but necessary for the current architecture
+            for blob_id_num in 0..blob_store.blob_count() {
+                let blob_id = BlobId(blob_id_num);
+                if let Ok(Some(meta)) = blob_store.get_blob_meta(&blob_id) {
+                    // Compare the first 8 bytes of the full checksum with the prefix
+                    if meta.checksum.len() >= prefix_bytes.len()
+                        && meta.checksum[..prefix_bytes.len()] == prefix_bytes[..]
+                    {
+                        found_blob_id = Some(blob_id);
+                        break;
+                    }
+                }
+            }
+
+            found_blob_id.ok_or(crate::types::Error::NotFound)?
+        } else {
+            return Err(crate::types::Error::InvalidArgument(
+                "Invalid hex in locator".to_string(),
+            ));
+        }
+    } else if locator.starts_with("blob_") {
+        // For blob_ format, extract the numeric ID
+        let id_str = locator.strip_prefix("blob_").unwrap_or("");
+        let blob_id_num: u64 = id_str.parse().map_err(|_| {
+            crate::types::Error::InvalidArgument("Invalid blob ID in locator".to_string())
+        })?;
+        BlobId(blob_id_num)
+    } else {
+        return Err(crate::types::Error::InvalidArgument(
+            "Unsupported locator format".to_string(),
+        ));
+    };
+
+    // Check blob size and choose reading strategy
+    let blob_store = BlobStore::new();
+    if let Ok(Some(meta)) = blob_store.get_blob_meta(&blob_id) {
+        const MAX_SINGLE_RESPONSE_SIZE: u64 = 2 * 1024 * 1024; // 2MB limit
+
+        if meta.size <= MAX_SINGLE_RESPONSE_SIZE {
+            // Small blob - read in one go
+            blob_store.read_blob(&blob_id).map_err(|e| match e {
+                crate::types::Error::NotFound => crate::types::Error::NotFound,
+                _ => crate::types::Error::Internal(format!("Failed to read blob: {:?}", e)),
+            })
+        } else {
+            // Large blob - use chunked reading
+            read_blob_chunked(&blob_store, &blob_id, meta.size)
+        }
+    } else {
+        Err(crate::types::Error::NotFound)
+    }
+}
+
+/// Read large blob data in chunks and combine into single response
+/// This is a fallback for blobs that are too large for single response
+fn read_blob_chunked(
+    blob_store: &BlobStore,
+    blob_id: &crate::upload::types::BlobId,
+    total_size: u64,
+) -> crate::types::Result<Vec<u8>> {
+    const CHUNK_SIZE: u32 = 1024 * 1024; // 1MB chunks
+    let mut result = Vec::with_capacity(total_size as usize);
+    let mut chunk_index = 0u32;
+
+    loop {
+        let chunk_data = read_blob_chunk(blob_store, blob_id, chunk_index)?;
+
+        if chunk_data.is_empty() {
+            // No more chunks
+            break;
+        }
+
+        result.extend_from_slice(&chunk_data);
+        chunk_index += 1;
+
+        // Safety check to prevent infinite loops
+        if chunk_index > 1000 {
+            return Err(crate::types::Error::Internal(
+                "Too many chunks - possible infinite loop".to_string(),
+            ));
+        }
+    }
+
+    Ok(result)
+}
+
+/// Read a single chunk of blob data
+fn read_blob_chunk(
+    blob_store: &BlobStore,
+    blob_id: &crate::upload::types::BlobId,
+    chunk_index: u32,
+) -> crate::types::Result<Vec<u8>> {
+    // Note: The stable blob store is accessed directly via STABLE_BLOB_STORE
+
+    let page_key = (blob_id.0, chunk_index);
+    let page_data = STABLE_BLOB_STORE.with(|store| store.borrow().get(&page_key));
+
+    Ok(page_data.unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::upload::types::BlobId;
+
+    // Helper function to create a test blob store with some data
+    fn create_test_blob_store() -> BlobStore {
+        let blob_store = BlobStore::new();
+
+        // Create a test blob with some data
+        let test_data = b"Hello, World! This is test data for blob reading.";
+        let blob_id = BlobId(0);
+
+        // Store the blob data in chunks
+        let chunk_size = 10;
+        let mut chunk_index = 0;
+        for chunk in test_data.chunks(chunk_size) {
+            let page_key = (blob_id.0, chunk_index);
+            STABLE_BLOB_STORE.with(|store| {
+                store.borrow_mut().insert(page_key, chunk.to_vec());
+            });
+            chunk_index += 1;
+        }
+
+        // Store blob metadata
+        let mut checksum = [0u8; 32];
+        checksum[0..5].copy_from_slice(&[1, 2, 3, 4, 5]);
+        let meta = crate::upload::types::BlobMeta {
+            size: test_data.len() as u64,
+            checksum,
+            created_at: 1234567890,
+        };
+
+        STABLE_BLOB_META.with(|store| {
+            store.borrow_mut().insert(blob_id.0, meta);
+        });
+
+        blob_store
+    }
+
+    #[test]
+    fn test_blob_read_success() {
+        let _blob_store = create_test_blob_store();
+
+        // Test reading blob by ID
+        let result = blob_read("blob_0".to_string());
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert_eq!(data, b"Hello, World! This is test data for blob reading.");
+    }
+
+    #[test]
+    fn test_blob_read_not_found() {
+        // Test reading non-existent blob
+        let result = blob_read("blob_999".to_string());
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            crate::types::Error::NotFound => {}
+            _ => panic!("Expected NotFound error"),
+        }
+    }
+
+    #[test]
+    fn test_blob_read_invalid_locator_format() {
+        // Test with invalid locator format
+        let result = blob_read("invalid_format".to_string());
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            crate::types::Error::InvalidArgument(_) => {}
+            _ => panic!("Expected InvalidArgument error"),
+        }
+    }
+
+    #[test]
+    fn test_blob_read_invalid_blob_id() {
+        // Test with invalid blob ID
+        let result = blob_read("blob_invalid".to_string());
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            crate::types::Error::InvalidArgument(_) => {}
+            _ => panic!("Expected InvalidArgument error"),
+        }
+    }
+
+    #[test]
+    fn test_blob_read_inline_locator() {
+        let _blob_store = create_test_blob_store();
+
+        // Test reading blob by inline hash prefix
+        let result = blob_read("inline_0102030405".to_string());
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert_eq!(data, b"Hello, World! This is test data for blob reading.");
+    }
+
+    #[test]
+    fn test_blob_read_inline_locator_invalid_hex() {
+        // Test with invalid hex in inline locator
+        let result = blob_read("inline_invalid_hex".to_string());
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            crate::types::Error::InvalidArgument(_) => {}
+            _ => panic!("Expected InvalidArgument error"),
+        }
+    }
+
+    #[test]
+    fn test_read_blob_chunked_large_blob() {
+        let blob_store = BlobStore::new();
+
+        // Create a large blob that exceeds MAX_SINGLE_RESPONSE_SIZE
+        let large_data = vec![0u8; 3 * 1024 * 1024]; // 3MB
+        let blob_id = BlobId(1);
+
+        // Store the blob data in chunks
+        let chunk_size = 1024 * 1024; // 1MB chunks
+        let mut chunk_index = 0;
+        for chunk in large_data.chunks(chunk_size) {
+            let page_key = (blob_id.0, chunk_index);
+            STABLE_BLOB_STORE.with(|store| {
+                store.borrow_mut().insert(page_key, chunk.to_vec());
+            });
+            chunk_index += 1;
+        }
+
+        // Store blob metadata
+        let mut checksum = [0u8; 32];
+        checksum[0..5].copy_from_slice(&[6, 7, 8, 9, 10]);
+        let meta = crate::upload::types::BlobMeta {
+            size: large_data.len() as u64,
+            checksum,
+            created_at: 1234567890,
+        };
+
+        STABLE_BLOB_META.with(|store| {
+            store.borrow_mut().insert(blob_id.0, meta);
+        });
+
+        // Test reading large blob (should use chunked reading)
+        let result = blob_read("blob_1".to_string());
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert_eq!(data.len(), large_data.len());
+        assert_eq!(data, large_data);
+    }
+
+    #[test]
+    fn test_read_blob_chunk_empty_chunk() {
+        let blob_id = BlobId(2);
+
+        // Test reading a chunk that doesn't exist (should return empty)
+        let result = read_blob_chunk(&BlobStore::new(), &blob_id, 0);
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert!(data.is_empty());
     }
 }

@@ -267,21 +267,22 @@ type PersonalCanisterCreationStats = record {
 };
 type ResourceType = variant { Memory; Capsule; Gallery };
 type Result = variant { Ok; Err : Error };
-type Result_1 = variant { Ok : Capsule; Err : Error };
-type Result_10 = variant { Ok : Memory; Err : Error };
-type Result_11 = variant { Ok : nat64; Err : Error };
-type Result_12 = variant { Ok : principal; Err : Error };
-type Result_2 = variant { Ok : CapsuleInfo; Err : Error };
-type Result_3 = variant { Ok : bool; Err : Error };
-type Result_4 = variant { Ok : text; Err : Error };
-type Result_5 = variant { Ok : Gallery; Err : Error };
-type Result_6 = variant {
+type Result_1 = variant { Ok : blob; Err : Error };
+type Result_10 = variant { Ok : vec MemoryPresenceResult; Err : Error };
+type Result_11 = variant { Ok : Memory; Err : Error };
+type Result_12 = variant { Ok : nat64; Err : Error };
+type Result_13 = variant { Ok : principal; Err : Error };
+type Result_2 = variant { Ok : Capsule; Err : Error };
+type Result_3 = variant { Ok : CapsuleInfo; Err : Error };
+type Result_4 = variant { Ok : bool; Err : Error };
+type Result_5 = variant { Ok : text; Err : Error };
+type Result_6 = variant { Ok : Gallery; Err : Error };
+type Result_7 = variant {
   Ok : vec record { principal; DetailedCreationStatus };
   Err : Error;
 };
-type Result_7 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
-type Result_8 = variant { Ok : opt DetailedCreationStatus; Err : Error };
-type Result_9 = variant { Ok : vec MemoryPresenceResult; Err : Error };
+type Result_8 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
+type Result_9 = variant { Ok : opt DetailedCreationStatus; Err : Error };
 type UploadConfig = record {
   inline_max : nat32;
   chunk_size : nat32;
@@ -296,37 +297,39 @@ type VideoMetadata = record {
 };
 service : {
   add_admin : (principal) -> (Result);
+  // Read blob data by locator (for asset retrieval)
+  blob_read : (text) -> (Result_1) query;
   // Calculate gallery size when stored in capsule context
   calculate_gallery_capsule_size : (Gallery) -> (nat64) query;
   // Calculate just the gallery size (without capsule overhead)
   calculate_gallery_size : (Gallery) -> (nat64) query;
   capsules_bind_neon : (ResourceType, text, bool) -> (Result);
-  capsules_create : (opt PersonRef) -> (Result_1);
+  capsules_create : (opt PersonRef) -> (Result_2);
   capsules_delete : (text) -> (Result);
   capsules_list : () -> (vec CapsuleHeader) query;
-  capsules_read_basic : (opt text) -> (Result_2) query;
-  capsules_read_full : (opt text) -> (Result_1) query;
-  capsules_update : (text, CapsuleUpdateData) -> (Result_1);
+  capsules_read_basic : (opt text) -> (Result_3) query;
+  capsules_read_full : (opt text) -> (Result_2) query;
+  capsules_update : (text, CapsuleUpdateData) -> (Result_2);
   // Emergency function to clear all stable memory data
   // WARNING: This will delete all stored data and should only be used for recovery
   clear_all_stable_memory : () -> (Result);
-  clear_creation_state : (principal) -> (Result_3);
-  clear_migration_state : (principal) -> (Result_3);
+  clear_creation_state : (principal) -> (Result_4);
+  clear_migration_state : (principal) -> (Result_4);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
   // Debug endpoint to finish upload with hex hash (dev only)
-  debug_finish_hex : (nat64, text, nat64) -> (Result_4);
+  debug_finish_hex : (nat64, text, nat64) -> (Result_5);
   // Debug endpoint to upload chunk with base64 data (dev only)
   debug_put_chunk_b64 : (nat64, nat32, text) -> (Result);
   // Debug endpoint to compute SHA256 hash of provided bytes
   debug_sha256 : (blob) -> (text) query;
-  galleries_create : (GalleryData) -> (Result_5);
-  galleries_create_with_memories : (GalleryData, bool) -> (Result_5);
+  galleries_create : (GalleryData) -> (Result_6);
+  galleries_create_with_memories : (GalleryData, bool) -> (Result_6);
   galleries_delete : (text) -> (Result);
   galleries_list : () -> (vec GalleryHeader) query;
-  galleries_read : (text) -> (Result_5) query;
-  galleries_update : (text, GalleryUpdateData) -> (Result_5);
+  galleries_read : (text) -> (Result_6) query;
+  galleries_update : (text, GalleryUpdateData) -> (Result_6);
   get_canister_size_stats : () -> (CanisterSizeStats) query;
-  get_creation_states_by_status : (CreationStatus) -> (Result_6) query;
+  get_creation_states_by_status : (CreationStatus) -> (Result_7) query;
   get_creation_status : () -> (opt CreationStatusResponse) query;
   get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
   get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
@@ -334,27 +337,27 @@ service : {
   get_gallery_size_breakdown : (Gallery) -> (GallerySizeInfo) query;
   // Get gallery size information for debugging stable memory limits
   get_gallery_size_info : (Gallery) -> (text) query;
-  get_migration_states_by_status : (CreationStatus) -> (Result_6) query;
-  get_migration_stats : () -> (Result_7) query;
+  get_migration_states_by_status : (CreationStatus) -> (Result_7) query;
+  get_migration_stats : () -> (Result_8) query;
   get_migration_status : () -> (opt CreationStatusResponse) query;
   get_my_personal_canister_id : () -> (opt principal) query;
-  get_personal_canister_creation_stats : () -> (Result_7) query;
+  get_personal_canister_creation_stats : () -> (Result_8) query;
   get_personal_canister_id : (principal) -> (opt principal) query;
-  get_user_creation_status : (principal) -> (Result_8) query;
-  get_user_migration_status : (principal) -> (Result_8) query;
+  get_user_creation_status : (principal) -> (Result_9) query;
+  get_user_migration_status : (principal) -> (Result_9) query;
   greet : (text) -> (text) query;
-  is_migration_enabled : () -> (Result_3) query;
-  is_personal_canister_creation_enabled : () -> (Result_3) query;
+  is_migration_enabled : () -> (Result_4) query;
+  is_personal_canister_creation_enabled : () -> (Result_4) query;
   list_admins : () -> (vec principal) query;
-  list_all_creation_states : () -> (Result_6) query;
-  list_all_migration_states : () -> (Result_6) query;
+  list_all_creation_states : () -> (Result_7) query;
+  list_all_migration_states : () -> (Result_7) query;
   list_superadmins : () -> (vec principal) query;
-  memories_create : (text, MemoryData, text) -> (Result_4);
+  memories_create : (text, MemoryData, text) -> (Result_5);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (Result_9) query;
-  memories_read : (text) -> (Result_10) query;
+  memories_ping : (vec text) -> (Result_10) query;
+  memories_read : (text) -> (Result_11) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   register_with_nonce : (text) -> (Result);
@@ -367,11 +370,11 @@ service : {
   // Abort upload session and cleanup
   uploads_abort : (nat64) -> (Result);
   // Begin chunked upload for large files
-  uploads_begin : (text, MemoryMeta, nat32, text) -> (Result_11);
+  uploads_begin : (text, MemoryMeta, nat32, text) -> (Result_12);
   // Commit chunks to create final memory
-  uploads_finish : (nat64, blob, nat64) -> (Result_4);
+  uploads_finish : (nat64, blob, nat64) -> (Result_5);
   // Upload a chunk for an active session
   uploads_put_chunk : (nat64, nat32, blob) -> (Result);
-  verify_nonce : (text) -> (Result_12) query;
+  verify_nonce : (text) -> (Result_13) query;
   whoami : () -> (principal) query;
 }
