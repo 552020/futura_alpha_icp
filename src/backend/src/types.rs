@@ -25,6 +25,16 @@ pub enum StorageEdgeDatabaseType {
     Neon, // Neon database
 }
 
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum StorageEdgeBlobType {
+    Icp,        // ICP canister storage
+    VercelBlob, // Vercel Blob storage
+    S3,         // AWS S3 storage
+    Arweave,    // Arweave storage
+    Ipfs,       // IPFS storage
+    Neon,       // Neon database - for small assets
+}
+
 /// Type alias for unified error handling - see Error enum below
 /// Simplified metadata for memory creation
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
@@ -93,113 +103,6 @@ impl Error {
 }
 
 // Helper functions to convert between error patterns
-impl MemoryResponse {
-    pub fn from_result<T>(result: Result<T>) -> Self {
-        match result {
-            Ok(_) => Self {
-                success: true,
-                data: None, // MemoryResponse doesn't carry typed data
-                error: None,
-            },
-            Err(error) => Self {
-                success: false,
-                data: None,
-                error: Some(error.to_string()),
-            },
-        }
-    }
-
-    pub fn from_error(error: Error) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(error.to_string()),
-        }
-    }
-}
-
-impl MemoryPresenceResponse {
-    pub fn ok(metadata_present: bool, asset_present: bool) -> Self {
-        Self {
-            success: true,
-            metadata_present,
-            asset_present,
-            error: None,
-        }
-    }
-
-    pub fn err(error: Error) -> Self {
-        Self {
-            success: false,
-            metadata_present: false,
-            asset_present: false,
-            error: Some(error),
-        }
-    }
-}
-
-impl MetadataResponse {
-    pub fn ok(memory_id: String, message: String) -> Self {
-        Self {
-            success: true,
-            memory_id: Some(memory_id),
-            message,
-            error: None,
-        }
-    }
-
-    pub fn err(error: Error, message: String) -> Self {
-        Self {
-            success: false,
-            memory_id: None,
-            message,
-            error: Some(error),
-        }
-    }
-}
-
-impl UploadSessionResponse {
-    pub fn ok(session: UploadSession, message: String) -> Self {
-        Self {
-            success: true,
-            session: Some(session),
-            message,
-            error: None,
-        }
-    }
-
-    pub fn err(error: Error, message: String) -> Self {
-        Self {
-            success: false,
-            session: None,
-            message,
-            error: Some(error),
-        }
-    }
-}
-
-impl ChunkResponse {
-    pub fn ok(chunk_index: u32, bytes_received: u32, message: String) -> Self {
-        Self {
-            success: true,
-            chunk_index,
-            bytes_received,
-            message,
-            error: None,
-        }
-    }
-
-    pub fn err(error: Error, chunk_index: u32, message: String) -> Self {
-        Self {
-            success: false,
-            chunk_index,
-            bytes_received: 0,
-            message,
-            error: Some(error),
-        }
-    }
-}
-
 impl CommitResponse {
     pub fn ok(memory_id: String, final_hash: String, total_bytes: u64, message: String) -> Self {
         Self {
@@ -224,28 +127,6 @@ impl CommitResponse {
     }
 }
 
-impl MemoryListPresenceResponse {
-    pub fn ok(results: Vec<MemoryPresenceResult>, cursor: Option<String>, has_more: bool) -> Self {
-        Self {
-            success: true,
-            results,
-            cursor,
-            has_more,
-            error: None,
-        }
-    }
-
-    pub fn err(error: Error) -> Self {
-        Self {
-            success: false,
-            results: vec![],
-            cursor: None,
-            has_more: false,
-            error: Some(error),
-        }
-    }
-}
-
 // HTTP types for serving content
 #[derive(Clone, Debug, CandidType, Deserialize)]
 pub struct HttpHeader(pub String, pub String);
@@ -258,32 +139,7 @@ pub struct HttpRequest {
     pub body: Vec<u8>,
 }
 
-// Response types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemoryResponse {
-    pub success: bool,
-    pub data: Option<String>,
-    pub error: Option<String>,
-}
-
 // Memory artifacts system removed - metadata stored in capsules instead
-
-// Enhanced response types for ICP operations
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemoryPresenceResponse {
-    pub success: bool,
-    pub metadata_present: bool,
-    pub asset_present: bool,
-    pub error: Option<Error>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MetadataResponse {
-    pub success: bool,
-    pub memory_id: Option<String>,
-    pub message: String,
-    pub error: Option<Error>,
-}
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct UploadSession {
@@ -305,32 +161,6 @@ pub struct ChunkData {
     pub chunk_index: u32,
     pub data: Vec<u8>,
     pub received_at: u64,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct UploadSessionResponse {
-    pub success: bool,
-    pub session: Option<UploadSession>,
-    pub message: String,
-    pub error: Option<Error>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct ChunkResponse {
-    pub success: bool,
-    pub chunk_index: u32,
-    pub bytes_received: u32,
-    pub message: String,
-    pub error: Option<Error>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemoryListPresenceResponse {
-    pub success: bool,
-    pub results: Vec<MemoryPresenceResult>,
-    pub cursor: Option<String>,
-    pub has_more: bool,
-    pub error: Option<Error>,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -770,7 +600,6 @@ pub struct Memory {
     pub access: MemoryAccess,                  // who can access + temporal rules
     pub inline_assets: Vec<MemoryAssetInline>, // 0 or more inline assets
     pub blob_assets: Vec<MemoryAssetBlob>,     // 0 or more blob assets
-    pub idempotency_key: Option<String>,       // idempotency key for deduplication
 }
 
 impl Memory {
@@ -813,7 +642,6 @@ impl Memory {
                 asset_type: AssetType::Original,
             }],
             blob_assets: vec![],
-            idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
 
@@ -861,7 +689,6 @@ impl Memory {
                 meta,
                 asset_type: AssetType::Original,
             }],
-            idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
 
@@ -1245,101 +1072,6 @@ mod tests {
         assert!(!result.is_ok());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), Error::NotFound);
-    }
-
-    #[test]
-    fn test_memory_response_from_error() {
-        let response = MemoryResponse::from_error(Error::Unauthorized);
-        assert!(!response.success);
-        assert_eq!(response.error, Some("unauthorized access".to_string()));
-    }
-
-    #[test]
-    fn test_memory_presence_response() {
-        let ok_response = MemoryPresenceResponse::ok(true, false);
-        assert!(ok_response.success);
-        assert!(ok_response.metadata_present);
-        assert!(!ok_response.asset_present);
-        assert_eq!(ok_response.error, None);
-
-        let err_response = MemoryPresenceResponse::err(Error::NotFound);
-        assert!(!err_response.success);
-        assert!(!err_response.metadata_present);
-        assert!(!err_response.asset_present);
-        assert_eq!(err_response.error, Some(Error::NotFound));
-    }
-
-    #[test]
-    fn test_metadata_response() {
-        let ok_response = MetadataResponse::ok("memory_123".to_string(), "Success".to_string());
-        assert!(ok_response.success);
-        assert_eq!(ok_response.memory_id, Some("memory_123".to_string()));
-        assert_eq!(ok_response.message, "Success");
-        assert_eq!(ok_response.error, None);
-
-        let err_response = MetadataResponse::err(
-            Error::InvalidArgument("invalid hash".to_string()),
-            "Hash validation failed".to_string(),
-        );
-        assert!(!err_response.success);
-        assert_eq!(err_response.memory_id, None);
-        assert_eq!(err_response.message, "Hash validation failed");
-        assert_eq!(
-            err_response.error,
-            Some(Error::InvalidArgument("invalid hash".to_string()))
-        );
-    }
-
-    #[test]
-    fn test_upload_session_response() {
-        let session = UploadSession {
-            session_id: "session_123".to_string(),
-            memory_id: "memory_456".to_string(),
-            memory_type: MemoryType::Image,
-            expected_hash: "abc123".to_string(),
-            chunk_count: 5,
-            total_size: 1024,
-            created_at: 1234567890,
-            chunks_received: vec![false; 5],
-            bytes_received: 0,
-        };
-
-        let ok_response = UploadSessionResponse::ok(session.clone(), "Session created".to_string());
-        assert!(ok_response.success);
-        assert_eq!(ok_response.session, Some(session));
-        assert_eq!(ok_response.message, "Session created");
-        assert_eq!(ok_response.error, None);
-
-        let err_response =
-            UploadSessionResponse::err(Error::Unauthorized, "Access denied".to_string());
-        assert!(!err_response.success);
-        assert_eq!(err_response.session, None);
-        assert_eq!(err_response.message, "Access denied");
-        assert_eq!(err_response.error, Some(Error::Unauthorized));
-    }
-
-    #[test]
-    fn test_chunk_response() {
-        let ok_response = ChunkResponse::ok(2, 1024, "Chunk received".to_string());
-        assert!(ok_response.success);
-        assert_eq!(ok_response.chunk_index, 2);
-        assert_eq!(ok_response.bytes_received, 1024);
-        assert_eq!(ok_response.message, "Chunk received");
-        assert_eq!(ok_response.error, None);
-
-        let err_response = ChunkResponse::err(
-            Error::InvalidArgument("invalid hash".to_string()),
-            1,
-            "Invalid chunk hash".to_string(),
-        );
-        assert!(!err_response.success);
-        assert_eq!(err_response.chunk_index, 1);
-        assert_eq!(err_response.bytes_received, 0);
-        assert_eq!(err_response.message, "Invalid chunk hash");
-        assert_eq!(
-            err_response.error,
-            Some(Error::InvalidArgument("invalid hash".to_string()))
-        );
     }
 
     #[test]

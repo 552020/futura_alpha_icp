@@ -261,7 +261,7 @@ mod tests {
             galleries: std::collections::HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
-            // bound_to_neon removed - now tracked in database_storage_edges
+            bound_to_neon: false, // Default to not bound to Neon
             inline_bytes_used: 0,
         }
     }
@@ -290,7 +290,7 @@ mod tests {
                     date_of_memory: Some("2023-01-01".to_string()),
                     people_in_memory: None,
                     format: Some("text".to_string()),
-                    // bound_to_neon removed - now tracked in database_storage_edges
+                    storage_duration: None, // Default to permanent storage
                 },
                 tags: Some(vec!["test".to_string()]),
             }),
@@ -312,8 +312,6 @@ mod tests {
                 },
                 asset_type: types::AssetType::Original,
             }],
-            parent_folder_id: None, // Default to root folder
-            idempotency_key: None,
         }
     }
 

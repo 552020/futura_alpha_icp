@@ -511,9 +511,9 @@ pub fn verify_export_against_manifest(
 mod tests {
     use super::*;
     use crate::types::{
-        AudioMetadata, BlobRef, Connection, ConnectionStatus, ImageMetadata, Memory, MemoryAccess,
-        MemoryBlobKind, MemoryData, MemoryInfo, MemoryMeta, MemoryMetadata, MemoryMetadataBase,
-        MemoryType, OwnerState, PersonRef,
+        AudioMetadata, AssetType, BlobRef, Connection, ConnectionStatus, ImageMetadata, Memory, MemoryAccess,
+        MemoryAssetBlob, MemoryBlobKind, MemoryInfo, MemoryMeta, MemoryMetadata, MemoryMetadataBase,
+        MemoryType, OwnerState, PersonRef, StorageEdgeDatabaseType,
     };
     use candid::Principal;
     use std::collections::HashMap;
@@ -563,7 +563,7 @@ mod tests {
             galleries: HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
-            // bound_to_neon removed - now tracked in database_storage_edges
+            bound_to_neon: false, // Default to not bound to Neon
             inline_bytes_used: 0,
         }
     }
@@ -584,7 +584,7 @@ mod tests {
             date_of_memory: Some("2024-01-01".to_string()),
             people_in_memory: Some(vec!["test_person".to_string()]),
             format: Some("test_format".to_string()),
-            // bound_to_neon removed - now tracked in database_storage_edges
+            storage_duration: None, // Default to permanent storage
         };
 
         let metadata = match memory_type {
@@ -641,8 +641,6 @@ mod tests {
                 },
                 asset_type: AssetType::Original,
             }],
-            parent_folder_id: None, // Default to root folder
-            idempotency_key: None,
         }
     }
 
@@ -1488,8 +1486,8 @@ mod tests {
         );
 
         // Modify the blob locator to be empty
-        if let MemoryData::BlobRef { blob, .. } = &mut memory.data {
-            blob.locator = "".to_string();
+        if let Some(blob_asset) = memory.blob_assets.first_mut() {
+            blob_asset.blob.locator = "".to_string();
         }
 
         let result = validate_memory_data(&memory);

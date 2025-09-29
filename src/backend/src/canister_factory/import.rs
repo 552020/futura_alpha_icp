@@ -611,7 +611,6 @@ fn create_memory_from_assembled_data(
                     storage_duration: None, // Default to permanent storage
                 },
             }),
-            idempotency_key: None, // No idempotency key for imported memories
         }
     };
 

@@ -18,13 +18,7 @@ fn compute_sha256(data: &[u8]) -> [u8; 32] {
 
 /// Create a Memory object from the given parameters
 /// This function handles all the memory construction logic
-pub fn create_memory_object(
-    memory_id: &str,
-    blob: BlobRef,
-    meta: MemoryMeta,
-    now: u64,
-    idempotency_key: Option<String>,
-) -> Memory {
+pub fn create_memory_object(memory_id: &str, blob: BlobRef, meta: MemoryMeta, now: u64) -> Memory {
     use crate::types::{
         ImageMetadata, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase,
     };
@@ -74,7 +68,6 @@ pub fn create_memory_object(
         access: memory_access,
         inline_assets: vec![],
         blob_assets: vec![blob_asset],
-        idempotency_key,
     }
 }
 
@@ -132,13 +125,7 @@ pub fn create_inline(
             let now = ic_cdk::api::time();
 
             // Create the memory object
-            let memory = create_memory_object(
-                &memory_id,
-                blob.clone(),
-                payload.meta.clone(),
-                now,
-                Some(idem.clone()),
-            );
+            let memory = create_memory_object(&memory_id, blob.clone(), payload.meta.clone(), now);
 
             // Insert the memory into the capsule
             cap.memories.insert(memory_id.clone(), memory);
@@ -181,15 +168,6 @@ pub fn ping(memory_ids: Vec<String>) -> Result<Vec<crate::types::MemoryPresenceR
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_is_valid_memory_type() {
-        assert!(is_valid_memory_type(&MemoryType::Image));
-        assert!(is_valid_memory_type(&MemoryType::Video));
-        assert!(is_valid_memory_type(&MemoryType::Audio));
-        assert!(is_valid_memory_type(&MemoryType::Document));
-        assert!(is_valid_memory_type(&MemoryType::Note));
-    }
 
     #[test]
     fn test_memories_ping_not_found() {
@@ -251,18 +229,6 @@ mod tests {
     }
 }
 
-/// Validate memory type
-fn is_valid_memory_type(memory_type: &MemoryType) -> bool {
-    matches!(
-        memory_type,
-        MemoryType::Image
-            | MemoryType::Video
-            | MemoryType::Audio
-            | MemoryType::Document
-            | MemoryType::Note
-    )
-}
-
 /// Generate a new unique memory ID
 fn generate_memory_id() -> MemoryId {
     format!("mem_{}", ic_cdk::api::time())
@@ -270,25 +236,18 @@ fn generate_memory_id() -> MemoryId {
 
 // ensure_capsule_access helper removed - authorization logic is inline in create()
 
-/// Helper: Find existing memory by content hash, length, and idempotency key within a capsule
+/// Helper: Find existing memory by content hash and length within a capsule
 /// This version works on a single capsule for use within update_with closures
 fn find_existing_memory_by_content_in_capsule(
     cap: &crate::types::Capsule,
     sha256: &[u8; 32],
     len: u64,
-    idem: &str,
+    _idem: &str, // Keep parameter for API compatibility but don't use it
 ) -> Option<MemoryId> {
     cap.memories
         .values()
         .find(|memory| {
-            // Check idempotency key first (most specific)
-            if let Some(ref memory_idem) = memory.idempotency_key {
-                if memory_idem == idem {
-                    return true; // Same idempotency key = same request
-                }
-            }
-
-            // Fallback to content-based deduplication
+            // Content-based deduplication
             // Check inline assets first
             for inline_asset in &memory.inline_assets {
                 let memory_sha256 = compute_sha256(&inline_asset.bytes);
