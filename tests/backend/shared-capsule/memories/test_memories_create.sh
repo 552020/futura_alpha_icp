@@ -1,12 +1,15 @@
 #!/bin/bash
 
 # Test script for memories_create endpoint
-# Tests the new memories_create(capsule_id, memory_data, idem) endpoint with unified Inline/BlobRef support
+# Tests the enhanced memories_create endpoint with optional parameters for all memory types:
+# memories_create(capsule_id, bytes, blob_ref, external_location, external_storage_key, external_url, external_size, external_hash, asset_metadata, idem)
 
 set -e
 
 # Source test utilities
+unset -f get_test_capsule_id 2>/dev/null || true
 source "$(dirname "$0")/../../test_utils.sh"
+source "$(dirname "$0")/../upload/upload_test_utils.sh"
 
 # Configuration
 CANISTER_ID="backend"
@@ -17,19 +20,11 @@ echo_header "🧪 Testing memories_create endpoint"
 # Test 1: Test memories_create with Inline data (small file)
 test_memories_create_inline() {
     echo_debug "Testing memories_create with Inline data (small file ≤32KB)..."
+    echo_debug "Function variables: CANISTER_ID=$CANISTER_ID, IDENTITY=$IDENTITY"
 
-    # First, get a capsule ID to test with
-    local capsule_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "(null)" 2>/dev/null)
-    local capsule_id=""
-
-    if [[ $capsule_result == *"null"* ]] || [[ $capsule_result == *"NotFound"* ]]; then
-        echo_debug "No capsule found, creating one first..."
-        local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_create "(null)" 2>/dev/null)
-        capsule_id=$(echo "$create_result" | grep -o 'capsule_id = opt "[^"]*"' | sed 's/capsule_id = opt "//' | sed 's/"//')
-    else
-        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
-    fi
-
+    # Get a capsule ID to test with using the helper function
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
+    
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
@@ -70,8 +65,8 @@ test_memories_create_inline() {
 
     local idem="test_inline_$(date +%s)"
 
-    # Call memories_create with the new API format: (capsule_id, bytes, asset_metadata, idem)
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
+    # Call memories_create with the new API format: (capsule_id, bytes, blob_ref, external_location, external_storage_key, external_url, external_size, external_hash, asset_metadata, idem)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Check for successful Result<MemoryId, Error> response
     if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
@@ -94,11 +89,13 @@ test_memories_create_inline() {
 # Test 2: Test memories_create with BlobRef data (existing blob)
 test_memories_create_blobref() {
     echo_debug "Testing memories_create with BlobRef data (reference to existing blob)..."
+    echo_debug "SKIPPING: BlobRef test requires a blob to exist in the blob store first"
+    echo_debug "This test will be enabled when we have a proper blob upload workflow"
+    return 0
 
     # Get a valid capsule ID first
-    local capsule_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "(null)" 2>/dev/null)
-    local capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
-
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
+    
     if [[ -z "$capsule_id" ]]; then
         echo_debug "No capsule found, skipping BlobRef test"
         return 0
@@ -106,46 +103,121 @@ test_memories_create_blobref() {
 
     echo_debug "Testing with capsule ID: $capsule_id"
 
-    # For now, skip BlobRef test since we need to create a valid blob first
-    # This test requires creating an actual blob via upload process first
-    echo_debug "Skipping BlobRef test - requires valid blob creation first"
-    echo_success "✅ BlobRef test skipped (requires blob creation setup)"
-    return 0
+    # Create test blob reference
+    local blob_ref='(record {
+      locator = "test_blob_locator_123";
+      hash = opt blob "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3";
+      len = 1024;
+    })'
 
-    # TODO: Uncomment and fix when blob creation is set up
-    # Create test memory data using BlobRef variant (reference to existing blob)
-    # local memory_data='(variant {
-    #   BlobRef = record {
-    #     blob = record {
-    #       kind = variant { ICPCapsule };
-    #       locator = "existing_blob_123";
-    #       hash = opt blob "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3";
-    #       len = 1024;
-    #     };
-    #     meta = record {
-    #       name = "test_blobref_memory.jpg";
-    #       description = opt "Test BlobRef memory creation";
-    #       tags = vec { "test"; "blobref"; "reference" };
-    #     };
-    #   }
-    # })'
+    local asset_metadata='(variant {
+      Image = record {
+        base = record {
+          name = "test_blobref_image.jpg";
+          description = opt "Test BlobRef memory creation";
+          tags = vec { "test"; "blobref"; "image" };
+          asset_type = variant { Original };
+          bytes = 1024;
+          mime_type = "image/jpeg";
+          sha256 = opt blob "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3";
+          width = opt 1920;
+          height = opt 1080;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
+        };
+        color_space = null;
+        compression_ratio = null;
+        dpi = null;
+        format = null;
+        has_transparency = null;
+      }
+    })'
 
-    # local idem="test_blobref_$(date +%s)"
+    local idem="test_blobref_$(date +%s)"
 
-    # Call memories_create with BlobRef variant
-    # local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    # Call memories_create with BlobRef: (capsule_id, null, blob_ref, null, null, null, null, null, asset_metadata, idem)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", null, opt $blob_ref, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
-    # if [[ $result == *"Ok"* ]] && [[ $result == *"memory_"* ]]; then
-    #     echo_success "✅ memories_create with BlobRef data succeeded"
-    #     echo_debug "Result: $result"
-    # else
-    #     echo_error "❌ memories_create with BlobRef data failed"
-    #     echo_debug "Result: $result"
-    #     return 1
-    # fi
+    if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
+        echo_success "✅ memories_create with BlobRef data succeeded"
+        echo_debug "Result: $result"
+    else
+        echo_error "❌ memories_create with BlobRef data failed"
+        echo_debug "Result: $result"
+        return 1
+    fi
 }
 
-# Test 3: Test memories_create with invalid capsule ID
+# Test 3: Test memories_create with external asset (S3)
+test_memories_create_external() {
+    echo_debug "Testing memories_create with external asset (S3)..."
+
+    # Get a valid capsule ID first
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
+    
+    if [[ -z "$capsule_id" ]]; then
+        echo_debug "No capsule found, skipping external asset test"
+        return 0
+    fi
+
+    echo_debug "Testing with capsule ID: $capsule_id"
+
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
+          name = "test_external_video.mp4";
+          description = opt "Test external asset creation";
+          tags = vec { "test"; "external"; "video" };
+          asset_type = variant { Original };
+          bytes = 5000000;
+          mime_type = "video/mp4";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
+        };
+        format = null;
+        language = null;
+        word_count = null;
+      }
+    })'
+
+    local idem="test_external_$(date +%s)"
+
+    # Create a proper 32-byte hash for external asset
+    local external_hash=$(create_test_hash "test_external_hash")
+    echo_debug "Created external hash: '$external_hash'"
+
+    # Call memories_create with external asset: (capsule_id, null, null, external_location, external_storage_key, external_url, external_size, external_hash, asset_metadata, idem)
+    echo_debug "Calling memories_create with external asset..."
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", null, null, opt variant { S3 }, opt \"s3://bucket/test_video.mp4\", opt \"https://s3.amazonaws.com/bucket/test_video.mp4\", opt 5000000, opt blob \"$external_hash\", $asset_metadata, \"$idem\")" 2>/dev/null)
+
+    if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
+        echo_success "✅ memories_create with external asset succeeded"
+        echo_debug "Result: $result"
+    else
+        echo_error "❌ memories_create with external asset failed"
+        echo_debug "Result: $result"
+        return 1
+    fi
+}
+
+# Test 4: Test memories_create with invalid capsule ID
 test_memories_create_invalid_capsule() {
     echo_debug "Testing memories_create with invalid capsule ID..."
 
@@ -181,7 +253,7 @@ test_memories_create_invalid_capsule() {
 
     local idem="test_invalid_$(date +%s)"
 
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"invalid_capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"invalid_capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Check for error response (Result<MemoryId, Error>)
     if [[ $result == *"Err"* ]] && [[ $result == *"NotFound"* ]]; then
@@ -194,14 +266,13 @@ test_memories_create_invalid_capsule() {
     fi
 }
 
-# Test 4: Test memories_create with large inline data (should fail)
+# Test 5: Test memories_create with large inline data (should fail)
 test_memories_create_large_inline() {
     echo_debug "Testing memories_create with large inline data (>32KB, should fail)..."
 
     # Get a valid capsule ID first
-    local capsule_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "(null)" 2>/dev/null)
-    local capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
-
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
+    
     if [[ -z "$capsule_id" ]]; then
         echo_debug "No capsule found, skipping large inline test"
         return 0
@@ -245,7 +316,7 @@ test_memories_create_large_inline() {
 
     local idem="test_large_$(date +%s)"
 
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Should fail with InvalidArgument error
     if [[ $result == *"Err"* ]] && [[ $result == *"InvalidArgument"* ]]; then
@@ -258,14 +329,13 @@ test_memories_create_large_inline() {
     fi
 }
 
-# Test 5: Test memories_create idempotency with same idem key
+# Test 6: Test memories_create idempotency with same idem key
 test_memories_create_idempotency() {
     echo_debug "Testing memories_create idempotency with same idem key..."
 
     # Get a valid capsule ID first
-    local capsule_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID capsules_read_basic "(null)" 2>/dev/null)
-    local capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
-
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
+    
     if [[ -z "$capsule_id" ]]; then
         echo_debug "No capsule found, skipping idempotency test"
         return 0
@@ -305,7 +375,7 @@ test_memories_create_idempotency() {
     })'
 
     # First call
-    local first_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
+    local first_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     if [[ $first_result != *"Ok"* ]]; then
         echo_error "❌ First memories_create call failed"
@@ -317,7 +387,7 @@ test_memories_create_idempotency() {
     local first_memory_id=$(echo "$first_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
 
     # Second call with same idem key (should return same memory ID)
-    local second_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
+    local second_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     if [[ $second_result == *"Ok"* ]]; then
         local second_memory_id=$(echo "$second_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
@@ -342,6 +412,7 @@ main() {
 
     run_test "Inline memory creation (small file)" test_memories_create_inline
     run_test "BlobRef memory creation (existing blob)" test_memories_create_blobref
+    run_test "External asset creation (S3)" test_memories_create_external
     run_test "Invalid capsule ID" test_memories_create_invalid_capsule
     run_test "Large inline data rejection" test_memories_create_large_inline
     run_test "Idempotency with same idem key" test_memories_create_idempotency
