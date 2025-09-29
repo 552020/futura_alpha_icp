@@ -790,11 +790,11 @@ pub fn read(memory_id: String) -> Result<crate::types::Memory> {
         all_capsules
             .items
             .into_iter()
-            .find(|capsule| {
+            .filter(|capsule| {
                 // Check if caller has access to this capsule
                 capsule.owners.contains_key(&caller) || capsule.subject == caller
             })
-            .and_then(|capsule| capsule.memories.get(&memory_id).cloned())
+            .find_map(|capsule| capsule.memories.get(&memory_id).cloned())
             .ok_or(crate::types::Error::NotFound)
     })
 }
