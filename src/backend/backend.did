@@ -8,20 +8,44 @@ type AccessEvent = variant {
   ConnectionCount : nat32;
   Anniversary : nat32;
 };
-type AudioMetadata = record {
-  duration : opt nat32;
-  base : MemoryMetadataBase;
+type AssetMetadata = variant {
+  Note : NoteAssetMetadata;
+  Image : ImageAssetMetadata;
+  Document : DocumentAssetMetadata;
+  Audio : AudioAssetMetadata;
+  Video : VideoAssetMetadata;
+};
+type AssetMetadataBase = record {
+  url : opt text;
+  height : opt nat32;
+  updated_at : nat64;
+  asset_type : AssetType;
+  sha256 : opt blob;
+  name : text;
+  storage_key : opt text;
+  tags : vec text;
+  processing_error : opt text;
+  mime_type : text;
+  description : opt text;
+  created_at : nat64;
+  deleted_at : opt nat64;
+  bytes : nat64;
+  asset_location : opt text;
+  width : opt nat32;
+  processing_status : opt text;
+  bucket : opt text;
+};
+type AssetType = variant { Preview; Metadata; Derivative; Original; Thumbnail };
+type AudioAssetMetadata = record {
+  duration : opt nat64;
+  base : AssetMetadataBase;
+  codec : opt text;
   channels : opt nat8;
   sample_rate : opt nat32;
-  bitrate : opt nat32;
-  format : opt text;
+  bit_depth : opt nat8;
+  bitrate : opt nat64;
 };
-type BlobRef = record {
-  len : nat64;
-  locator : text;
-  hash : opt blob;
-  kind : MemoryBlobKind;
-};
+type BlobRef = record { len : nat64; locator : text; hash : opt blob };
 type CanisterSizeStats = record {
   remaining_capacity_bytes : nat64;
   max_size_bytes : nat64;
@@ -105,7 +129,13 @@ type DetailedCreationStatus = record {
   cycles_consumed : nat;
   completed_at : opt nat64;
 };
-type DocumentMetadata = record { base : MemoryMetadataBase };
+type DocumentAssetMetadata = record {
+  document_type : opt text;
+  base : AssetMetadataBase;
+  language : opt text;
+  page_count : opt nat32;
+  word_count : opt nat32;
+};
 type Error = variant {
   Internal : text;
   NotFound;
@@ -163,33 +193,52 @@ type GalleryUpdateData = record {
   memory_entries : opt vec GalleryMemoryEntry;
   description : opt text;
 };
-type ImageMetadata = record {
-  base : MemoryMetadataBase;
-  dimensions : opt record { nat32; nat32 };
+type ImageAssetMetadata = record {
+  dpi : opt nat32;
+  color_space : opt text;
+  base : AssetMetadataBase;
+  exif_data : opt text;
+  compression_ratio : opt float32;
+  orientation : opt nat8;
 };
 type Memory = record {
   id : text;
+  inline_assets : vec MemoryAssetInline;
   access : MemoryAccess;
   metadata : MemoryMetadata;
-  data : MemoryData;
-  info : MemoryInfo;
-  idempotency_key : opt text;
+  blob_internal_assets : vec MemoryAssetBlobInternal;
+  blob_external_assets : vec MemoryAssetBlobExternal;
 };
 type MemoryAccess = variant {
-  Private;
-  Custom : record { groups : vec text; individuals : vec PersonRef };
+  Private : record { owner_secure_code : text };
+  Custom : record {
+    groups : vec text;
+    individuals : vec PersonRef;
+    owner_secure_code : text;
+  };
   EventTriggered : record {
     access : MemoryAccess;
     trigger_event : AccessEvent;
+    owner_secure_code : text;
   };
-  Public;
-  Scheduled : record { access : MemoryAccess; accessible_after : nat64 };
+  Public : record { owner_secure_code : text };
+  Scheduled : record {
+    access : MemoryAccess;
+    accessible_after : nat64;
+    owner_secure_code : text;
+  };
 };
-type MemoryBlobKind = variant { MemoryBlobKindExternal; ICPCapsule };
-type MemoryData = variant {
-  BlobRef : record { "blob" : BlobRef; meta : MemoryMeta };
-  Inline : record { meta : MemoryMeta; bytes : blob };
+type MemoryAssetBlobExternal = record {
+  url : opt text;
+  metadata : AssetMetadata;
+  storage_key : text;
+  location : StorageEdgeBlobType;
 };
+type MemoryAssetBlobInternal = record {
+  metadata : AssetMetadata;
+  blob_ref : BlobRef;
+};
+type MemoryAssetInline = record { metadata : AssetMetadata; bytes : blob };
 type MemoryHeader = record {
   id : text;
   access : MemoryAccess;
@@ -199,41 +248,29 @@ type MemoryHeader = record {
   size : nat64;
   created_at : nat64;
 };
-type MemoryInfo = record {
-  updated_at : nat64;
-  date_of_memory : opt nat64;
-  memory_type : MemoryType;
-  name : text;
-  content_type : text;
-  created_at : nat64;
-  uploaded_at : nat64;
-};
 type MemoryListResponse = record {
   memories : vec MemoryHeader;
   message : text;
   success : bool;
 };
-type MemoryMeta = record {
-  name : text;
+type MemoryMetadata = record {
+  title : opt text;
+  updated_at : nat64;
+  date_of_memory : opt nat64;
+  memory_type : MemoryType;
   tags : vec text;
-  description : opt text;
-};
-type MemoryMetadata = variant {
-  Note : NoteMetadata;
-  Image : ImageMetadata;
-  Document : DocumentMetadata;
-  Audio : AudioMetadata;
-  Video : VideoMetadata;
-};
-type MemoryMetadataBase = record {
-  date_of_memory : opt text;
-  size : nat64;
+  content_type : text;
   people_in_memory : opt vec text;
-  mime_type : text;
-  bound_to_neon : bool;
-  original_name : text;
-  uploaded_at : text;
-  format : opt text;
+  database_storage_edges : vec StorageEdgeDatabaseType;
+  description : opt text;
+  created_at : nat64;
+  created_by : opt text;
+  parent_folder_id : opt text;
+  deleted_at : opt nat64;
+  file_created_at : opt nat64;
+  location : opt text;
+  memory_notes : opt text;
+  uploaded_at : nat64;
 };
 type MemoryOperationResponse = record {
   memory_id : opt text;
@@ -251,7 +288,12 @@ type MemoryUpdateData = record {
   metadata : opt MemoryMetadata;
   name : opt text;
 };
-type NoteMetadata = record { base : MemoryMetadataBase; tags : opt vec text };
+type NoteAssetMetadata = record {
+  base : AssetMetadataBase;
+  language : opt text;
+  word_count : opt nat32;
+  format : opt text;
+};
 type OwnerState = record { last_activity_at : nat64; since : nat64 };
 type PersonRef = variant { Opaque : text; Principal : principal };
 type PersonalCanisterCreationResponse = record {
@@ -283,17 +325,21 @@ type Result_7 = variant {
 };
 type Result_8 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
 type Result_9 = variant { Ok : opt DetailedCreationStatus; Err : Error };
+type StorageEdgeBlobType = variant { S3; Icp; VercelBlob; Ipfs; Neon; Arweave };
+type StorageEdgeDatabaseType = variant { Icp; Neon };
 type UploadConfig = record {
   inline_max : nat32;
   chunk_size : nat32;
   inline_budget_per_capsule : nat32;
 };
-type VideoMetadata = record {
-  height : opt nat32;
-  duration : opt nat32;
-  thumbnail : opt text;
-  base : MemoryMetadataBase;
-  width : opt nat32;
+type VideoAssetMetadata = record {
+  duration : opt nat64;
+  base : AssetMetadataBase;
+  codec : opt text;
+  frame_rate : opt float32;
+  resolution : opt text;
+  bitrate : opt nat64;
+  aspect_ratio : opt float32;
 };
 service : {
   add_admin : (principal) -> (Result);
@@ -352,7 +398,7 @@ service : {
   list_all_creation_states : () -> (Result_7) query;
   list_all_migration_states : () -> (Result_7) query;
   list_superadmins : () -> (vec principal) query;
-  memories_create : (text, MemoryData, text) -> (Result_5);
+  memories_create : (text, blob, AssetMetadata, text) -> (Result_5);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
@@ -370,7 +416,7 @@ service : {
   // Abort upload session and cleanup
   uploads_abort : (nat64) -> (Result);
   // Begin chunked upload for large files
-  uploads_begin : (text, MemoryMeta, nat32, text) -> (Result_12);
+  uploads_begin : (text, AssetMetadata, nat32, text) -> (Result_12);
   // Commit chunks to create final memory
   uploads_finish : (nat64, blob, nat64) -> (Result_5);
   // Upload a chunk for an active session
