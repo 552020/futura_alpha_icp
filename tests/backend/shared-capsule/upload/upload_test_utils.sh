@@ -27,15 +27,24 @@ echo_info() {
 
 # Helper function to get a capsule ID for testing
 get_test_capsule_id() {
-    local capsule_result=$(dfx canister call backend capsules_read_basic "(null)" 2>/dev/null)
+    local canister_id="${1:-backend}"
+    local identity="${2:-default}"
+    
+    local capsule_result=$(dfx canister call --identity "$identity" "$canister_id" capsules_read_basic "(null)" 2>/dev/null)
     local capsule_id=""
     
-    if [[ $capsule_result == *"null"* ]]; then
-        echo_info "No capsule found, creating one first..."
-        local create_result=$(dfx canister call backend capsules_create "(null)" 2>/dev/null)
-        capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+    if [[ $capsule_result == *"null"* ]] || [[ $capsule_result == *"NotFound"* ]]; then
+        echo_debug "No capsule found, creating one first..."
+        local create_result=$(dfx canister call --identity "$identity" "$canister_id" capsules_create "(null)" 2>/dev/null)
+        if is_success "$create_result"; then
+            # Extract capsule ID from the new Result<Capsule> format
+            capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+        fi
     else
-        capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+        if is_success "$capsule_result"; then
+            # For capsules_read_basic, extract the capsule_id field
+            capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+        fi
     fi
     
     if [[ -z "$capsule_id" ]]; then

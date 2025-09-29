@@ -210,20 +210,32 @@ get_test_capsule_id() {
     local canister_id="${1:-backend}"
     local identity="${2:-default}"
     
+    echo_debug "get_test_capsule_id: canister_id=$canister_id, identity=$identity"
     local capsule_result=$(dfx canister call --identity "$identity" "$canister_id" capsules_read_basic "(null)" 2>/dev/null)
+    echo_debug "get_test_capsule_id: capsule_result='$capsule_result'"
     local capsule_id=""
     
     if [[ $capsule_result == *"null"* ]] || [[ $capsule_result == *"NotFound"* ]]; then
         echo_debug "No capsule found, creating one first..."
         local create_result=$(dfx canister call --identity "$identity" "$canister_id" capsules_create "(null)" 2>/dev/null)
+        echo_debug "get_test_capsule_id: create_result='$create_result'"
         if is_success "$create_result"; then
+            echo_debug "get_test_capsule_id: create success detected"
             # Extract capsule ID from the new Result<Capsule> format
             capsule_id=$(echo "$create_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+            echo_debug "get_test_capsule_id: extracted from create: '$capsule_id'"
+        else
+            echo_debug "get_test_capsule_id: create failed"
         fi
     else
+        echo_debug "get_test_capsule_id: checking if result is success"
         if is_success "$capsule_result"; then
+            echo_debug "get_test_capsule_id: success detected"
             # For capsules_read_basic, extract the capsule_id field
             capsule_id=$(echo "$capsule_result" | grep -o 'capsule_id = "[^"]*"' | sed 's/capsule_id = "//' | sed 's/"//')
+            echo_debug "get_test_capsule_id: extracted from read: '$capsule_id'"
+        else
+            echo_debug "get_test_capsule_id: no success detected"
         fi
     fi
     
