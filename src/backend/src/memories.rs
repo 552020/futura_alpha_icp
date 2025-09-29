@@ -1,8 +1,9 @@
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
-    AssetMetadata, BlobRef, CapsuleId, Error, Memory, MemoryAssetBlobInternal, MemoryId,
-    MemoryType, PersonRef, Result, StorageEdgeDatabaseType,
+    AssetMetadata, BlobRef, CapsuleId, Error, Memory, MemoryAccess, MemoryAssetBlobExternal,
+    MemoryAssetBlobInternal, MemoryAssetInline, MemoryId, MemoryType, PersonRef, Result,
+    StorageEdgeBlobType, StorageEdgeDatabaseType,
 };
 use crate::upload::blob_store::BlobStore;
 use crate::upload::types::{CAPSULE_INLINE_BUDGET, INLINE_MAX};
@@ -24,64 +25,20 @@ pub fn create_memory_object(
     asset_metadata: AssetMetadata,
     now: u64,
 ) -> Memory {
-    use crate::types::{MemoryAccess, MemoryMetadata};
-
-    let memory_metadata = MemoryMetadata {
-        memory_type: match &asset_metadata {
-            AssetMetadata::Image(_) => MemoryType::Image,
-            AssetMetadata::Video(_) => MemoryType::Video,
-            AssetMetadata::Audio(_) => MemoryType::Audio,
-            AssetMetadata::Document(_) => MemoryType::Document,
-            AssetMetadata::Note(_) => MemoryType::Note,
-        },
-        title: None,
-        description: None,
-        content_type: match &asset_metadata {
-            AssetMetadata::Image(img) => img.base.mime_type.clone(),
-            AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
-            AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
-            AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
-            AssetMetadata::Note(note) => note.base.mime_type.clone(),
-        },
-        created_at: now,
-        updated_at: now,
-        uploaded_at: now,
-        date_of_memory: None,
-        file_created_at: None,
-        parent_folder_id: None, // Default to root folder
-        tags: match &asset_metadata {
-            AssetMetadata::Image(img) => img.base.tags.clone(),
-            AssetMetadata::Video(vid) => vid.base.tags.clone(),
-            AssetMetadata::Audio(audio) => audio.base.tags.clone(),
-            AssetMetadata::Document(doc) => doc.base.tags.clone(),
-            AssetMetadata::Note(note) => note.base.tags.clone(),
-        },
-        deleted_at: None,
-        people_in_memory: None,
-        location: None,
-        memory_notes: None,
-        created_by: None,
-        database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
-    };
-
-    let memory_access = MemoryAccess::Private {
-        owner_secure_code: format!("mem_{}_{:x}", memory_id, now % 0xFFFF), // Generate secure code
-    };
-
     // Create blob assets for ICP capsule storage
     let blob_internal_assets = vec![MemoryAssetBlobInternal {
         blob_ref: blob,
-        metadata: asset_metadata,
+        metadata: asset_metadata.clone(),
     }];
 
-    Memory {
-        id: memory_id.to_string(),
-        metadata: memory_metadata,
-        access: memory_access,
-        inline_assets: vec![],
+    create_memory_struct(
+        memory_id,
+        asset_metadata,
+        now,
+        vec![], // inline_assets
         blob_internal_assets,
-        blob_external_assets: vec![],
-    }
+        vec![], // blob_external_assets
+    )
 }
 
 pub fn create_inline(
@@ -138,7 +95,7 @@ pub fn create_inline(
             let memory_id = generate_memory_id();
             let now = ic_cdk::api::time();
 
-            // Create the memory object
+            // Create the memory object using the existing function
             let memory =
                 create_memory_object(&memory_id, blob.clone(), asset_metadata.clone(), now);
 
@@ -159,6 +116,252 @@ pub fn create_inline(
             }
 
             // Return the generated ID
+            Ok(memory_id)
+        })
+    })
+}
+
+/// Pure memory creation function - just creates the Memory struct without capsule operations
+fn create_memory_struct(
+    memory_id: &str,
+    asset_metadata: AssetMetadata,
+    now: u64,
+    inline_assets: Vec<MemoryAssetInline>,
+    blob_internal_assets: Vec<MemoryAssetBlobInternal>,
+    blob_external_assets: Vec<MemoryAssetBlobExternal>,
+) -> Memory {
+    // Extract metadata from AssetMetadata
+    let content_type = match &asset_metadata {
+        AssetMetadata::Image(img) => img.base.mime_type.clone(),
+        AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
+        AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
+        AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
+        AssetMetadata::Note(note) => note.base.mime_type.clone(),
+    };
+
+    let tags = match &asset_metadata {
+        AssetMetadata::Image(img) => img.base.tags.clone(),
+        AssetMetadata::Video(vid) => vid.base.tags.clone(),
+        AssetMetadata::Audio(audio) => audio.base.tags.clone(),
+        AssetMetadata::Document(doc) => doc.base.tags.clone(),
+        AssetMetadata::Note(note) => note.base.tags.clone(),
+    };
+
+    let memory_type = match &asset_metadata {
+        AssetMetadata::Image(_) => MemoryType::Image,
+        AssetMetadata::Video(_) => MemoryType::Video,
+        AssetMetadata::Audio(_) => MemoryType::Audio,
+        AssetMetadata::Document(_) => MemoryType::Document,
+        AssetMetadata::Note(_) => MemoryType::Note,
+    };
+
+    Memory {
+        id: memory_id.to_string(),
+        metadata: crate::types::MemoryMetadata {
+            memory_type,
+            title: None,
+            description: None,
+            content_type,
+            created_at: now,
+            updated_at: now,
+            uploaded_at: now,
+            date_of_memory: None,
+            file_created_at: None,
+            parent_folder_id: None,
+            tags,
+            deleted_at: None,
+            people_in_memory: None,
+            location: None,
+            memory_notes: None,
+            created_by: None,
+            database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
+        },
+        access: MemoryAccess::Private {
+            owner_secure_code: format!("mem_{}_{:x}", memory_id, now % 0xFFFF),
+        },
+        inline_assets,
+        blob_internal_assets,
+        blob_external_assets,
+    }
+}
+
+/// Create memory with any type of asset (inline, blob, or external)
+pub fn create_memory(
+    capsule_id: CapsuleId,
+    bytes: Option<Vec<u8>>,
+    blob_ref: Option<BlobRef>,
+    external_location: Option<StorageEdgeBlobType>,
+    external_storage_key: Option<String>,
+    external_url: Option<String>,
+    external_size: Option<u64>,
+    external_hash: Option<Vec<u8>>,
+    asset_metadata: AssetMetadata,
+    idem: String,
+) -> Result<MemoryId> {
+    let caller = PersonRef::from_caller();
+    let now = ic_cdk::api::time();
+
+    // Validate that exactly one asset type is provided
+    let asset_count =
+        bytes.is_some() as u8 + blob_ref.is_some() as u8 + external_location.is_some() as u8;
+    if asset_count != 1 {
+        return Err(Error::InvalidArgument(
+            "Exactly one asset type must be provided (bytes, blob_ref, or external_location)"
+                .to_string(),
+        ));
+    }
+
+    // Handle inline assets (existing behavior)
+    if let Some(bytes_data) = bytes {
+        return create_inline(capsule_id, bytes_data, asset_metadata, idem);
+    }
+
+    // Handle blob assets
+    if let Some(blob) = blob_ref {
+        return create_blob_memory(capsule_id, blob, asset_metadata, idem, caller, now);
+    }
+
+    // Handle external assets
+    if let Some(location) = external_location {
+        let storage_key = external_storage_key.ok_or_else(|| {
+            Error::InvalidArgument(
+                "external_storage_key is required for external assets".to_string(),
+            )
+        })?;
+        let size = external_size.ok_or_else(|| {
+            Error::InvalidArgument("external_size is required for external assets".to_string())
+        })?;
+
+        let hash_array = if let Some(hash_vec) = external_hash {
+            if hash_vec.len() != 32 {
+                return Err(Error::InvalidArgument(
+                    "external_hash must be 32 bytes".to_string(),
+                ));
+            }
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(&hash_vec);
+            Some(hash)
+        } else {
+            None
+        };
+
+        return create_external_memory(
+            capsule_id,
+            location,
+            storage_key,
+            external_url,
+            size,
+            hash_array,
+            asset_metadata,
+            idem,
+            caller,
+            now,
+        );
+    }
+
+    // This should never be reached due to validation above
+    Err(Error::InvalidArgument("No asset type provided".to_string()))
+}
+
+/// Create memory with blob reference
+fn create_blob_memory(
+    capsule_id: CapsuleId,
+    blob_ref: BlobRef,
+    asset_metadata: AssetMetadata,
+    idem: String,
+    caller: PersonRef,
+    now: u64,
+) -> Result<MemoryId> {
+    with_capsule_store_mut(|store| {
+        store.update_with(&capsule_id, |cap| {
+            // Check authorization
+            if !cap.owners.contains_key(&caller) && cap.subject != caller {
+                return Err(Error::Unauthorized);
+            }
+
+            // Generate memory ID
+            let memory_id = format!("mem_{now}");
+
+            // Create blob assets
+            let blob_internal_assets = vec![MemoryAssetBlobInternal {
+                blob_ref: blob_ref.clone(),
+                metadata: asset_metadata.clone(),
+            }];
+
+            // Create memory using pure function
+            let memory = create_memory_struct(
+                &memory_id,
+                asset_metadata,
+                now,
+                vec![], // inline_assets
+                blob_internal_assets,
+                vec![], // blob_external_assets
+            );
+
+            // Insert memory
+            cap.memories.insert(memory_id.clone(), memory);
+            cap.updated_at = now;
+
+            // Update owner activity
+            if let Some(owner_state) = cap.owners.get_mut(&caller) {
+                owner_state.last_activity_at = now;
+            }
+
+            Ok(memory_id)
+        })
+    })
+}
+
+/// Create memory with external asset reference
+fn create_external_memory(
+    capsule_id: CapsuleId,
+    location: StorageEdgeBlobType,
+    storage_key: String,
+    url: Option<String>,
+    _size: u64,
+    _hash: Option<[u8; 32]>,
+    asset_metadata: AssetMetadata,
+    idem: String,
+    caller: PersonRef,
+    now: u64,
+) -> Result<MemoryId> {
+    with_capsule_store_mut(|store| {
+        store.update_with(&capsule_id, |cap| {
+            // Check authorization
+            if !cap.owners.contains_key(&caller) && cap.subject != caller {
+                return Err(Error::Unauthorized);
+            }
+
+            // Generate memory ID
+            let memory_id = format!("mem_{now}");
+
+            // Create external assets
+            let blob_external_assets = vec![MemoryAssetBlobExternal {
+                location,
+                storage_key,
+                url,
+                metadata: asset_metadata.clone(),
+            }];
+
+            // Create memory using pure function
+            let memory = create_memory_struct(
+                &memory_id,
+                asset_metadata,
+                now,
+                vec![], // inline_assets
+                vec![], // blob_internal_assets
+                blob_external_assets,
+            );
+
+            // Insert memory
+            cap.memories.insert(memory_id.clone(), memory);
+            cap.updated_at = now;
+
+            // Update owner activity
+            if let Some(owner_state) = cap.owners.get_mut(&caller) {
+                owner_state.last_activity_at = now;
+            }
+
             Ok(memory_id)
         })
     })
@@ -246,6 +449,72 @@ mod tests {
     // ============================================================================
     // MEMORY CREATION TESTS
     // ============================================================================
+
+    #[test]
+    fn test_create_memory_struct_pure_function() {
+        use crate::types::{
+            AssetMetadata, AssetMetadataBase, AssetType, MemoryAssetInline, NoteAssetMetadata,
+        };
+
+        let memory_id = "test_pure_memory";
+        let now = 1234567890;
+
+        let asset_metadata = AssetMetadata::Note(NoteAssetMetadata {
+            base: AssetMetadataBase {
+                name: "test_note.txt".to_string(),
+                description: Some("Test note".to_string()),
+                tags: vec!["note".to_string(), "test".to_string()],
+                asset_type: AssetType::Original,
+                bytes: 100,
+                mime_type: "text/plain".to_string(),
+                sha256: None,
+                width: None,
+                height: None,
+                url: None,
+                storage_key: None,
+                bucket: None,
+                asset_location: None,
+                processing_status: None,
+                processing_error: None,
+                created_at: now,
+                updated_at: now,
+                deleted_at: None,
+            },
+            format: None,
+            language: None,
+            word_count: None,
+        });
+
+        // Test with inline assets
+        let inline_assets = vec![MemoryAssetInline {
+            bytes: vec![1, 2, 3, 4],
+            metadata: asset_metadata.clone(),
+        }];
+
+        let memory = create_memory_struct(
+            memory_id,
+            asset_metadata.clone(),
+            now,
+            inline_assets.clone(),
+            vec![],
+            vec![],
+        );
+
+        // Verify memory structure
+        assert_eq!(memory.id, memory_id);
+        assert_eq!(memory.metadata.memory_type, crate::types::MemoryType::Note);
+        assert_eq!(memory.metadata.content_type, "text/plain".to_string());
+        assert_eq!(
+            memory.metadata.tags,
+            vec!["note".to_string(), "test".to_string()]
+        );
+        assert_eq!(memory.metadata.created_at, now);
+        assert_eq!(memory.metadata.updated_at, now);
+        assert_eq!(memory.metadata.uploaded_at, now);
+        assert_eq!(memory.inline_assets.len(), 1);
+        assert_eq!(memory.blob_internal_assets.len(), 0);
+        assert_eq!(memory.blob_external_assets.len(), 0);
+    }
 
     // #[test]
     fn _test_create_inline_memory() {
@@ -347,8 +616,7 @@ mod tests {
     #[test]
     fn test_create_memory_object_with_external_blob_asset() {
         use crate::types::{
-            AssetMetadata, AssetMetadataBase, AssetType, BlobRef, StorageEdgeBlobType,
-            VideoAssetMetadata,
+            AssetMetadata, AssetMetadataBase, AssetType, BlobRef, VideoAssetMetadata,
         };
 
         let memory_id = "test_memory_external";
@@ -403,7 +671,7 @@ mod tests {
         use crate::types::{
             AssetMetadata, AssetMetadataBase, AssetType, AudioAssetMetadata, BlobRef,
             ImageAssetMetadata, MemoryAssetBlobExternal, MemoryAssetBlobInternal,
-            MemoryAssetInline, NoteAssetMetadata, StorageEdgeBlobType, VideoAssetMetadata,
+            NoteAssetMetadata, VideoAssetMetadata,
         };
 
         let memory_id = "test_memory_multi";

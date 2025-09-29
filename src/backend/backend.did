@@ -398,7 +398,18 @@ service : {
   list_all_creation_states : () -> (Result_7) query;
   list_all_migration_states : () -> (Result_7) query;
   list_superadmins : () -> (vec principal) query;
-  memories_create : (text, blob, AssetMetadata, text) -> (Result_5);
+  memories_create : (
+      text,
+      opt blob,
+      opt BlobRef,
+      opt StorageEdgeBlobType,
+      opt text,
+      opt text,
+      opt nat64,
+      opt blob,
+      AssetMetadata,
+      text,
+    ) -> (Result_5);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)

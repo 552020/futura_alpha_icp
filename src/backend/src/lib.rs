@@ -248,11 +248,28 @@ fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
 #[ic_cdk::update]
 async fn memories_create(
     capsule_id: types::CapsuleId,
-    bytes: Vec<u8>,
+    bytes: Option<Vec<u8>>,
+    blob_ref: Option<types::BlobRef>,
+    external_location: Option<types::StorageEdgeBlobType>,
+    external_storage_key: Option<String>,
+    external_url: Option<String>,
+    external_size: Option<u64>,
+    external_hash: Option<Vec<u8>>,
     asset_metadata: types::AssetMetadata,
     idem: String,
 ) -> types::Result<types::MemoryId> {
-    crate::memories::create_inline(capsule_id, bytes, asset_metadata, idem)
+    crate::memories::create_memory(
+        capsule_id,
+        bytes,
+        blob_ref,
+        external_location,
+        external_storage_key,
+        external_url,
+        external_size,
+        external_hash,
+        asset_metadata,
+        idem,
+    )
 }
 
 #[ic_cdk::query]
