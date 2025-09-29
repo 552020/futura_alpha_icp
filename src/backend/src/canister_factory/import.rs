@@ -569,6 +569,7 @@ fn create_memory_from_assembled_data(
                 uploaded_at: now,
                 date_of_memory: Some(now),
                 parent_folder_id: None, // Default to root folder
+                deleted_at: None, // Default to not deleted
             },
             data: types::MemoryData::Inline {
                 bytes: data,
@@ -595,6 +596,7 @@ fn create_memory_from_assembled_data(
                     people_in_memory: None,
                     format: Some("binary".to_string()),
                     bound_to_neon: false,
+                    storage_duration: None, // Default to permanent storage
                 },
             }),
             idempotency_key: None,  // No idempotency key for imported memories

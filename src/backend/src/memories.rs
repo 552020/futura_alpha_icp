@@ -38,6 +38,7 @@ pub fn create_memory_object(
         uploaded_at: now,
         date_of_memory: None,
         parent_folder_id: None, // Default to root folder
+        deleted_at: None,       // Default to not deleted
     };
 
     let memory_metadata = MemoryMetadata::Image(ImageMetadata {
@@ -50,6 +51,7 @@ pub fn create_memory_object(
             people_in_memory: None,
             format: None,
             bound_to_neon: false,
+            storage_duration: None, // Default to permanent storage
         },
         dimensions: None,
     });

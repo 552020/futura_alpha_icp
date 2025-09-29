@@ -572,7 +572,8 @@ pub struct MemoryMetadataBase {
     pub date_of_memory: Option<String>,
     pub people_in_memory: Option<Vec<String>>,
     pub format: Option<String>,
-    pub bound_to_neon: bool, // whether linked to Neon database
+    pub bound_to_neon: bool,           // whether linked to Neon database
+    pub storage_duration: Option<u64>, // TTL support in seconds (matches database schema)
 }
 
 // Extended metadata for specific memory types
@@ -691,6 +692,7 @@ pub struct MemoryInfo {
     pub uploaded_at: u64,
     pub date_of_memory: Option<u64>, // when the actual event happened
     pub parent_folder_id: Option<String>, // folder organization (matches database schema)
+    pub deleted_at: Option<u64>,     // soft delete support (matches database schema)
 }
 
 // External blob storage types
@@ -763,6 +765,7 @@ impl Memory {
                 uploaded_at: now,
                 date_of_memory: None,
                 parent_folder_id: None, // Default to root folder
+                deleted_at: None,       // Default to not deleted
             },
             metadata: MemoryMetadata::Note(NoteMetadata {
                 base: MemoryMetadataBase {
@@ -774,6 +777,7 @@ impl Memory {
                     people_in_memory: None,
                     format: Some("binary".to_string()),
                     bound_to_neon: false,
+                    storage_duration: None, // Default to permanent storage
                 },
                 tags: Some(meta.tags.clone()),
             }),
@@ -799,6 +803,7 @@ impl Memory {
                 uploaded_at: now,
                 date_of_memory: None,
                 parent_folder_id: None, // Default to root folder
+                deleted_at: None,       // Default to not deleted
             },
             metadata: MemoryMetadata::Note(NoteMetadata {
                 base: MemoryMetadataBase {
@@ -810,6 +815,7 @@ impl Memory {
                     people_in_memory: None,
                     format: Some("binary".to_string()),
                     bound_to_neon: false,
+                    storage_duration: None, // Default to permanent storage
                 },
                 tags: Some(meta.tags.clone()),
             }),
