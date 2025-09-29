@@ -40,16 +40,47 @@ create_text_memory_data() {
     
     # Convert text to base64 for binary data
     local encoded_content=$(echo -n "$content" | base64)
+    local content_size=$(echo -n "$content" | wc -c)
+    
+    cat << EOF
+blob "$encoded_content"
+EOF
+}
+
+# Helper function to create test asset metadata
+create_text_asset_metadata() {
+    local name="$1"
+    local content="$2"
+    
+    local content_size=$(echo -n "$content" | wc -c)
     
     cat << EOF
 (variant {
-  Inline = record {
-    bytes = blob "$encoded_content";
-    meta = record {
+  Document = record {
+    base = record {
       name = "memory_${name}";
       description = opt "Test memory for advanced testing";
       tags = vec { "test"; "advanced"; "text" };
+      asset_type = variant { Original };
+      bytes = $content_size;
+      mime_type = "text/plain";
+      sha256 = null;
+      width = null;
+      height = null;
+      url = null;
+      storage_key = null;
+      bucket = null;
+      asset_location = null;
+      processing_status = null;
+      processing_error = null;
+      created_at = 0;
+      updated_at = 0;
+      deleted_at = null;
     };
+    page_count = null;
+    document_type = null;
+    language = null;
+    word_count = null;
   }
 })
 EOF
@@ -62,14 +93,41 @@ create_image_memory_data() {
     local test_image="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU8j8wAAAABJRU5ErkJggg=="
     
     cat << EOF
+blob "$test_image"
+EOF
+}
+
+create_image_asset_metadata() {
+    local name="$1"
+    
+    cat << EOF
 (variant {
-  Inline = record {
-    bytes = blob "$test_image";
-    meta = record {
+  Image = record {
+    base = record {
       name = "image_${name}";
       description = opt "Test image memory for advanced testing";
       tags = vec { "test"; "advanced"; "image" };
+      asset_type = variant { Original };
+      bytes = 68;
+      mime_type = "image/png";
+      sha256 = null;
+      width = opt 1;
+      height = opt 1;
+      url = null;
+      storage_key = null;
+      bucket = null;
+      asset_location = null;
+      processing_status = null;
+      processing_error = null;
+      created_at = 0;
+      updated_at = 0;
+      deleted_at = null;
     };
+    color_space = null;
+    exif_data = null;
+    compression_ratio = null;
+    dpi = null;
+    orientation = null;
   }
 })
 EOF
@@ -82,14 +140,40 @@ create_document_memory_data() {
     local test_pdf="JVBERi0xLjQKJcOkw7zDtsOgCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSL0ZpbHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nCvkMlAwULCx0XfOzCtJzSvRy87MS9dLzs8rSc0rzi9KLMnMz1OwMDJQsLVVqK4FAIjNDLoKZW5kc3RyZWFtCmVuZG9iagoKMyAwIG9iago5CmVuZG9iagoKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDQgMCBSCi9NZWRpYUJveCBbMCAwIDYxMiA3OTJdCj4+CmVuZG9iagoKNCAwIG9iago8PAovVHlwZSAvUGFnZXMKL0tpZHMgWzUgMCBSXQovQ291bnQgMQo+PgplbmRvYmoKCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDQgMCBSCj4+CmVuZG9iagoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMjkzIDAwMDAwIG4gCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA3NCAwMDAwMCBuIAowMDAwMDAwMTc4IDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKdHJhaWxlcgo8PAovU2l6ZSA2Ci9Sb290IDEgMCBSCj4+CnN0YXJ0eHJlZgozNDIKJSVFT0Y="
     
     cat << EOF
+blob "$test_pdf"
+EOF
+}
+
+create_document_asset_metadata() {
+    local name="$1"
+    
+    cat << EOF
 (variant {
-  Inline = record {
-    bytes = blob "$test_pdf";
-    meta = record {
+  Document = record {
+    base = record {
       name = "document_${name}";
       description = opt "Test document memory for advanced testing";
       tags = vec { "test"; "advanced"; "document" };
+      asset_type = variant { Original };
+      bytes = 342;
+      mime_type = "application/pdf";
+      sha256 = null;
+      width = null;
+      height = null;
+      url = null;
+      storage_key = null;
+      bucket = null;
+      asset_location = null;
+      processing_status = null;
+      processing_error = null;
+      created_at = 0;
+      updated_at = 0;
+      deleted_at = null;
     };
+    page_count = opt 1;
+    document_type = opt "PDF";
+    language = null;
+    word_count = null;
   }
 })
 EOF
@@ -119,7 +203,8 @@ get_test_capsule_id() {
 # Test functions
 
 test_add_text_memory() {
-    local memory_data=$(create_text_memory_data "This is a test note" "test_note_1")
+    local memory_bytes=$(create_text_memory_data "This is a test note" "test_note_1")
+    local asset_metadata=$(create_text_asset_metadata "test_note_1" "This is a test note")
     local capsule_id=$(get_test_capsule_id)
     
     if [[ -z "$capsule_id" ]]; then
@@ -127,7 +212,7 @@ test_add_text_memory() {
     fi
     
     local idem="test_advanced_$(date +%s)_$$"
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
     
     # Check if the call was successful
     if echo "$result" | grep -q "Ok"; then
@@ -140,7 +225,8 @@ test_add_text_memory() {
 }
 
 test_add_image_memory() {
-    local memory_data=$(create_image_memory_data "test_image_1")
+    local memory_bytes=$(create_image_memory_data "test_image_1")
+    local asset_metadata=$(create_image_asset_metadata "test_image_1")
     local capsule_id=$(get_test_capsule_id)
     
     if [[ -z "$capsule_id" ]]; then
@@ -148,7 +234,7 @@ test_add_image_memory() {
     fi
     
     local idem="test_advanced_$(date +%s)_$$"
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
     
     # Check if the call was successful
     if echo "$result" | grep -q "Ok"; then
@@ -161,7 +247,8 @@ test_add_image_memory() {
 }
 
 test_add_document_memory() {
-    local memory_data=$(create_document_memory_data "test_doc_1")
+    local memory_bytes=$(create_document_memory_data "test_doc_1")
+    local asset_metadata=$(create_document_asset_metadata "test_doc_1")
     local capsule_id=$(get_test_capsule_id)
     
     if [[ -z "$capsule_id" ]]; then
@@ -169,7 +256,7 @@ test_add_document_memory() {
     fi
     
     local idem="test_advanced_$(date +%s)_$$"
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
     
     # Check if the call was successful
     if echo "$result" | grep -q "Ok"; then
@@ -207,14 +294,16 @@ test_memory_metadata_validation() {
 
 test_retrieve_uploaded_memory() {
     # First upload a memory
-    local memory_data=$(create_text_memory_data "Retrieval test content" "retrieval_test")
+    local memory_bytes=$(create_text_memory_data "Retrieval test content" "retrieval_test")
+    local asset_metadata=$(create_text_asset_metadata "retrieval_test" "Retrieval test content")
     local capsule_id=$(get_test_capsule_id)
     
     if [[ -z "$capsule_id" ]]; then
         return 1
     fi
     
-    local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_retrieve_$(date +%s)_$$"
+    local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
     
     # Extract memory ID from upload result
     local memory_id=$(echo "$upload_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
@@ -256,14 +345,16 @@ test_retrieve_nonexistent_memory() {
 
 test_memory_storage_persistence() {
     # Upload a memory and verify it persists across multiple retrievals
-    local memory_data=$(create_text_memory_data "Persistence test content" "persistence_test")
+    local memory_bytes=$(create_text_memory_data "Persistence test content" "persistence_test")
+    local asset_metadata=$(create_text_asset_metadata "persistence_test" "Persistence test content")
     local capsule_id=$(get_test_capsule_id)
     
     if [[ -z "$capsule_id" ]]; then
         return 1
     fi
     
-    local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data)" 2>/dev/null)
+    local idem="test_persistence_$(date +%s)_$$"
+    local upload_result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
     
     local memory_id=$(echo "$upload_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
     
@@ -289,7 +380,8 @@ test_memory_storage_persistence() {
 test_large_memory_upload() {
     # Test uploading a larger text memory (simulate a long note)
     local large_content=$(printf 'A%.0s' {1..1000})  # 1000 character string
-    local memory_data=$(create_text_memory_data "$large_content" "large_test")
+    local memory_bytes=$(create_text_memory_data "$large_content" "large_test")
+    local asset_metadata=$(create_text_asset_metadata "large_test" "$large_content")
     
     local capsule_id=$(get_test_capsule_id)
     
@@ -298,9 +390,9 @@ test_large_memory_upload() {
     fi
     
     local idem="test_advanced_$(date +%s)_$$"
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
     
-    if echo "$result" | grep -q "success = true"; then
+    if echo "$result" | grep -q "Ok"; then
         echo_info "Large memory upload successful"
         return 0
     else

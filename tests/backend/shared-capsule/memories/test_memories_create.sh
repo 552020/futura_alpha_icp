@@ -37,22 +37,41 @@ test_memories_create_inline() {
 
     echo_debug "Testing with capsule ID: $capsule_id"
 
-    # Create test memory data using Inline variant (small file)
-    local memory_data='(variant {
-      Inline = record {
-        bytes = blob "SGVsbG8gV29ybGQgLSBUaGlzIGlzIGEgdGVzdCBmaWxl";
-        meta = record {
+    # Create test memory data using new API format
+    local memory_bytes='blob "SGVsbG8gV29ybGQgLSBUaGlzIGlzIGEgdGVzdCBmaWxl"'
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
           name = "test_inline_memory.txt";
           description = opt "Test inline memory creation";
           tags = vec { "test"; "inline"; "small" };
+          asset_type = variant { Original };
+          bytes = 40;
+          mime_type = "text/plain";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
         };
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
       }
     })'
 
     local idem="test_inline_$(date +%s)"
 
-    # Call memories_create with the new API format: (capsule_id, memory_data, idem)
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    # Call memories_create with the new API format: (capsule_id, bytes, asset_metadata, idem)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Check for successful Result<MemoryId, Error> response
     if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
@@ -130,20 +149,39 @@ test_memories_create_blobref() {
 test_memories_create_invalid_capsule() {
     echo_debug "Testing memories_create with invalid capsule ID..."
 
-    local memory_data='(variant {
-      Inline = record {
-        bytes = blob "VGVzdCBtZW1vcnkgZGF0YQ==";
-        meta = record {
+    local memory_bytes='blob "VGVzdCBtZW1vcnkgZGF0YQ=="'
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
           name = "test_invalid.txt";
           description = null;
           tags = vec {};
+          asset_type = variant { Original };
+          bytes = 16;
+          mime_type = "text/plain";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
         };
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
       }
     })'
 
     local idem="test_invalid_$(date +%s)"
 
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"invalid_capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"invalid_capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Check for error response (Result<MemoryId, Error>)
     if [[ $result == *"Err"* ]] && [[ $result == *"NotFound"* ]]; then
@@ -175,20 +213,39 @@ test_memories_create_large_inline() {
         large_data="${large_data}This is a test line to make the data larger than 32KB limit for inline uploads. "
     done
 
-    local memory_data='(variant {
-      Inline = record {
-        bytes = blob "'$(echo -n "$large_data" | base64)'";
-        meta = record {
+    local memory_bytes='blob "'$(echo -n "$large_data" | base64)'"'
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
           name = "test_large_file.txt";
           description = opt "Test large inline file that should fail";
           tags = vec { "test"; "large"; "should-fail" };
+          asset_type = variant { Original };
+          bytes = '$(echo -n "$large_data" | wc -c)';
+          mime_type = "text/plain";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
         };
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
       }
     })'
 
     local idem="test_large_$(date +%s)"
 
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Should fail with InvalidArgument error
     if [[ $result == *"Err"* ]] && [[ $result == *"InvalidArgument"* ]]; then
@@ -217,19 +274,38 @@ test_memories_create_idempotency() {
     # Use same idem key for both calls
     local idem="test_idempotent_$(date +%s)"
 
-    local memory_data='(variant {
-      Inline = record {
-        bytes = blob "VGVzdCBpZGVtcG90ZW5jeSBkYXRh";
-        meta = record {
+    local memory_bytes='blob "VGVzdCBpZGVtcG90ZW5jeSBkYXRh"'
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
           name = "test_idempotent.txt";
           description = opt "Test idempotency with same idem key";
           tags = vec { "test"; "idempotent" };
+          asset_type = variant { Original };
+          bytes = 20;
+          mime_type = "text/plain";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
         };
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
       }
     })'
 
     # First call
-    local first_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local first_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     if [[ $first_result != *"Ok"* ]]; then
         echo_error "❌ First memories_create call failed"
@@ -241,7 +317,7 @@ test_memories_create_idempotency() {
     local first_memory_id=$(echo "$first_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
 
     # Second call with same idem key (should return same memory ID)
-    local second_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local second_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     if [[ $second_result == *"Ok"* ]]; then
         local second_memory_id=$(echo "$second_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
