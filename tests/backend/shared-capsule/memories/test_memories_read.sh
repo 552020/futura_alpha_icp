@@ -26,22 +26,41 @@ test_memories_read_valid() {
         return 1
     fi
     
-    # Create test memory data using new MemoryData format
-    local memory_data='(variant {
-      Inline = record {
-        bytes = blob "VGVzdCBtZW1vcnkgZGF0YQ==";
-        meta = record {
+    # Create test memory data using new API format
+    local memory_bytes='blob "VGVzdCBtZW1vcnkgZGF0YQ=="'
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
           name = "test_memory_read_123";
           description = opt "Test memory for read operations";
           tags = vec { "test"; "read" };
+          asset_type = variant { Original };
+          bytes = 16;
+          mime_type = "text/plain";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
         };
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
       }
     })'
     
     local idem="test_read_$(date +%s)"
     
     # Create the memory first
-    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    local create_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
     
     if [[ $create_result != *"Ok"* ]]; then
         echo_error "Failed to create test memory"
