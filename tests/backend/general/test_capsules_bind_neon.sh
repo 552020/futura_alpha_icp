@@ -118,7 +118,7 @@ test_capsules_bind_neon_gallery() {
             owner_principal = principal \"$caller_principal\";
             storage_location = variant { ICPOnly };
             memory_entries = vec {};
-            // bound_to_neon removed - now tracked in database_storage_edges
+            bound_to_neon = false;
         };
         owner_principal = principal \"$caller_principal\";
     })"
@@ -169,13 +169,13 @@ test_capsules_bind_neon_memory() {
     fi
     echo_info "Using accessible capsule: $capsule_id"
     
-    # Create a memory in the capsule with minimal data
-    local memory_data='(variant { Inline = record { meta = record { name = "test_memory_binding"; tags = vec {}; description = null }; bytes = blob "" } })'
-    
+    # Create a memory in the capsule with minimal data using new signature
+    local memory_bytes="blob \"\""
+    local asset_metadata='(variant { Document = record { base = record { name = "test_memory_binding"; description = null; tags = vec {}; asset_type = variant { Original }; bytes = 0; mime_type = "text/plain"; sha256 = null; width = null; height = null; url = null; storage_key = null; bucket = null; asset_location = null; processing_status = null; processing_error = null; created_at = 0; updated_at = 0; deleted_at = null; }; page_count = null; document_type = null; language = null; word_count = null; } })'
     local idempotency_key="test_idem_$(date +%s)"
     echo_info "Creating memory with capsule_id: $capsule_id, idempotency_key: $idempotency_key"
     
-    local memory_result=$(dfx canister call $CANISTER_ID memories_create "(\"$capsule_id\", $memory_data, \"$idempotency_key\")" $NETWORK_FLAG 2>&1)
+    local memory_result=$(dfx canister call $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idempotency_key\")" $NETWORK_FLAG 2>&1)
     echo_info "Memory creation result: $memory_result"
     
     if ! is_success "$memory_result"; then

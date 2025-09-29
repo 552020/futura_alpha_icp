@@ -45,14 +45,42 @@ create_test_memory_data() {
     local encoded_content=$(echo -n "$content" | base64)
     
     cat << EOF
+blob "$encoded_content"
+EOF
+}
+
+# Helper function to create test asset metadata
+create_test_asset_metadata() {
+    local name="$1"
+    local content="$2"
+    
+    cat << EOF
 (variant {
-  Inline = record {
-    bytes = blob "$encoded_content";
-    meta = record {
+  Document = record {
+    base = record {
       name = "test_${name}.txt";
       description = opt "Test memory for gallery testing";
       tags = vec { "test"; "gallery"; };
+      asset_type = variant { Original };
+      bytes = $(echo -n "$content" | wc -c);
+      mime_type = "text/plain";
+      sha256 = null;
+      width = null;
+      height = null;
+      url = null;
+      storage_key = null;
+      bucket = null;
+      asset_location = null;
+      processing_status = null;
+      processing_error = null;
+      created_at = 0;
+      updated_at = 0;
+      deleted_at = null;
     };
+    page_count = null;
+    document_type = null;
+    language = null;
+    word_count = null;
   }
 })
 EOF
@@ -67,15 +95,16 @@ upload_test_memory() {
     local timestamp=$(date +%s)
     local idem="gallery_test_${timestamp}_${RANDOM}_${name}"
     
-    local memory_data=$(create_test_memory_data "$content" "$name")
+    local memory_bytes=$(create_test_memory_data "$content" "$name")
+    local asset_metadata=$(create_test_asset_metadata "$name" "$content")
     local capsule_id=$(get_test_capsule_id)
     
     if [[ -z "$capsule_id" ]]; then
         return 1
     fi
     
-    # Use the correct API format: memories_create(capsule_id, memory_data, idem)
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_data, \"$idem\")" 2>/dev/null)
+    # Use the new API format: memories_create(capsule_id, bytes, asset_metadata, idem)
+    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Check for successful Result<MemoryId, Error> response
     if echo "$result" | grep -q "variant {" && echo "$result" | grep -q "Ok =" && echo "$result" | grep -q "mem_"; then
@@ -115,7 +144,7 @@ create_basic_gallery_data() {
     updated_at = $timestamp;
     storage_location = variant { $storage_status };
     memory_entries = vec {};
-    // bound_to_neon removed - now tracked in database_storage_edges
+    bound_to_neon = false;
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
@@ -175,7 +204,7 @@ create_gallery_data_with_memories() {
     updated_at = $timestamp;
     storage_location = variant { $storage_status };
     memory_entries = $memory_entries;
-    // bound_to_neon removed - now tracked in database_storage_edges
+    bound_to_neon = false;
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })

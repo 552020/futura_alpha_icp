@@ -297,8 +297,8 @@ test_get_my_galleries_empty() {
     # This test checks the structure when user has no galleries or few galleries
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return a vector (empty or with galleries) - Result<Vec<Gallery>, Error> format
-    if is_success "$result" && (echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"); then
+    # Should return a vector (empty or with gallery headers) - Vec<GalleryHeader> format
+    if echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"; then
         echo_info "galleries_list query successful - returned vector structure"
         return 0
     else
@@ -326,9 +326,9 @@ test_get_my_galleries_with_data() {
     # Query my galleries
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return a vector with gallery data - Result<Vec<Gallery>, Error> format
-    if is_success "$result" && echo "$result" | grep -q "vec {" && echo "$result" | grep -q "record {"; then
-        echo_info "galleries_list returned galleries successfully"
+    # Should return a vector with gallery headers - Vec<GalleryHeader> format
+    if echo "$result" | grep -q "vec {" && echo "$result" | grep -q "record {"; then
+        echo_info "galleries_list returned gallery headers successfully"
         return 0
     else
         echo_info "galleries_list returned unexpected format: $result"
@@ -357,9 +357,9 @@ test_get_user_galleries_self() {
     # Query galleries for current user using galleries_list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return a vector with gallery data - Result<Vec<Gallery>, Error> format
-    if is_success "$result" && (echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"); then
-        echo_info "galleries_list returned galleries successfully for self"
+    # Should return a vector with gallery headers - Vec<GalleryHeader> format
+    if echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{}"; then
+        echo_info "galleries_list returned gallery headers successfully for self"
         return 0
     else
         echo_info "galleries_list returned unexpected format: $result"
@@ -371,8 +371,8 @@ test_get_user_galleries_nonexistent_user() {
     # Since get_user_galleries was removed, test that galleries_list works correctly
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
 
-    # Should return empty or populated vector - galleries_list always succeeds - Result<Vec<Gallery>, Error> format
-    if is_success "$result" && (echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{" || echo "$result" | grep -q "(vec {})" || echo "$result" | grep -q "(vec{})"); then
+    # Should return empty or populated vector - galleries_list always succeeds - Vec<GalleryHeader> format
+    if echo "$result" | grep -q "vec {" || echo "$result" | grep -q "vec{" || echo "$result" | grep -q "(vec {})" || echo "$result" | grep -q "(vec{})"; then
         echo_info "galleries_list correctly returned result"
         return 0
     else
