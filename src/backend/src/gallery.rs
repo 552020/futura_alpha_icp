@@ -482,7 +482,7 @@ mod gallery_tests {
                 updated_at: mock_time,
                 storage_location: GalleryStorageLocation::Web2Only,
                 memory_entries: vec![],
-                bound_to_neon: false,
+                // bound_to_neon removed - now tracked in database_storage_edges
             },
             owner_principal: candid::Principal::anonymous(),
         }

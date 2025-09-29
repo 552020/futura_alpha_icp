@@ -548,8 +548,8 @@ fn create_memory_from_assembled_data(
     let memory = if let Some(existing_memory) = metadata {
         // Clone existing memory and update data
         let mut memory = existing_memory.clone();
-        if let types::MemoryData::Inline { meta, .. } = &memory.data {
-            memory.data = types::MemoryData::Inline {
+        if let types::MemoryAssets::Inline { meta, .. } = &memory.assets {
+            memory.assets = types::MemoryAssets::Inline {
                 bytes: data,
                 meta: meta.clone(),
             };
@@ -570,8 +570,9 @@ fn create_memory_from_assembled_data(
                 date_of_memory: Some(now),
                 parent_folder_id: None, // Default to root folder
                 deleted_at: None, // Default to not deleted
+                database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
             },
-            data: types::MemoryData::Inline {
+            assets: types::MemoryAssets::Inline {
                 bytes: data,
                 meta: types::MemoryMeta {
                     name: format!("Imported memory {memory_id}"),
@@ -595,7 +596,7 @@ fn create_memory_from_assembled_data(
                     date_of_memory: Some(now.to_string()),
                     people_in_memory: None,
                     format: Some("binary".to_string()),
-                    bound_to_neon: false,
+                    // bound_to_neon removed - now tracked in database_storage_edges
                     storage_duration: None, // Default to permanent storage
                 },
             }),
@@ -657,9 +658,9 @@ fn validate_import_against_manifest(
             .ok_or_else(|| format!("Memory '{memory_id}' not found in manifest"))?;
 
         // Calculate checksum for imported memory
-        let memory_data = match &memory.data {
-            types::MemoryData::Inline { bytes, .. } => bytes,
-            types::MemoryData::BlobRef { .. } => &Vec::new(), // No inline data for blob refs
+        let memory_data = match &memory.assets {
+            types::MemoryAssets::Inline { bytes, .. } => bytes,
+            types::MemoryAssets::BlobRef { .. } => &Vec::new(), // No inline data for blob refs
         };
         let calculated_checksum = calculate_sha256(memory_data);
 

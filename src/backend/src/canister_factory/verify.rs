@@ -261,7 +261,7 @@ mod tests {
             galleries: std::collections::HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
-            bound_to_neon: false,
+            // bound_to_neon removed - now tracked in database_storage_edges
             inline_bytes_used: 0,
         }
     }
@@ -277,6 +277,9 @@ mod tests {
                 updated_at: 1000000000,
                 uploaded_at: 1000000000,
                 date_of_memory: Some(1000000000),
+                parent_folder_id: None,
+                deleted_at: None,
+                database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
             },
             metadata: types::MemoryMetadata::Note(types::NoteMetadata {
                 base: types::MemoryMetadataBase {
@@ -287,12 +290,14 @@ mod tests {
                     date_of_memory: Some("2023-01-01".to_string()),
                     people_in_memory: None,
                     format: Some("text".to_string()),
-                    bound_to_neon: false,
+                    // bound_to_neon removed - now tracked in database_storage_edges
                 },
                 tags: Some(vec!["test".to_string()]),
             }),
-            access: types::MemoryAccess::Private,
-            data: types::MemoryData::BlobRef {
+            access: types::MemoryAccess::Private {
+                owner_secure_code: format!("test_{}", id),
+            },
+            assets: types::MemoryAssets::BlobRef {
                 blob: types::BlobRef {
                     kind: types::MemoryBlobKind::ICPCapsule,
                     locator: format!("memory_{}", id),

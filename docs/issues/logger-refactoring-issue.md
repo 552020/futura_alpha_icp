@@ -185,33 +185,36 @@ Group by actual functionality, not arbitrary service names:
 ## 🎯 NEW SEMANTIC CONTROL SYSTEM
 
 ### Control Flags (in logger.ts)
+
 ```typescript
-const ENABLE_UPLOAD_LOGGING = true;    // Upload, S3, Vercel Blob, ICP storage
-const ENABLE_DATABASE_LOGGING = true;  // Database operations, memory management
-const ENABLE_AUTH_LOGGING = true;      // Authentication, user management, II coauth
+const ENABLE_UPLOAD_LOGGING = true; // Upload, S3, Vercel Blob, ICP storage
+const ENABLE_DATABASE_LOGGING = true; // Database operations, memory management
+const ENABLE_AUTH_LOGGING = true; // Authentication, user management, II coauth
 ```
 
 ### Usage Examples
+
 ```typescript
 // Upload operations - controlled by ENABLE_UPLOAD_LOGGING
-logger.info('File uploaded', { service: 'upload' });
-logger.error('S3 upload failed', { service: 's3' });
+logger.info("File uploaded", { service: "upload" });
+logger.error("S3 upload failed", { service: "s3" });
 
-// Database operations - controlled by ENABLE_DATABASE_LOGGING  
-logger.info('Memory created', { service: 'memory' });
-logger.error('DB query failed', { service: 'database' });
+// Database operations - controlled by ENABLE_DATABASE_LOGGING
+logger.info("Memory created", { service: "memory" });
+logger.error("DB query failed", { service: "database" });
 
 // Auth operations - controlled by ENABLE_AUTH_LOGGING
-logger.info('User logged in', { service: 'auth' });
-logger.error('II coauth failed', { service: 'ii-coauth' });
+logger.info("User logged in", { service: "auth" });
+logger.error("II coauth failed", { service: "ii-coauth" });
 ```
 
 ### Control Functions
+
 ```typescript
-import { disableUploadLogging, disableDatabaseLogging, disableAuthLogging } from '@/lib/logger';
+import { disableUploadLogging, disableDatabaseLogging, disableAuthLogging } from "@/lib/logger";
 
 // Disable specific service categories
-disableUploadLogging();    // Stops all upload/storage logs
-disableDatabaseLogging();  // Stops all database logs  
-disableAuthLogging();      // Stops all auth logs
+disableUploadLogging(); // Stops all upload/storage logs
+disableDatabaseLogging(); // Stops all database logs
+disableAuthLogging(); // Stops all auth logs
 ```

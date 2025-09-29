@@ -110,7 +110,7 @@ fn calculate_export_data_size(
         total_size += 512; // Memory metadata estimate
 
         // Memory blob data if stored inline
-        if let types::MemoryData::Inline { bytes, .. } = &memory.data {
+        if let types::MemoryAssets::Inline { bytes, .. } = &memory.assets {
             total_size += bytes.len() as u64;
         }
 
@@ -333,7 +333,7 @@ fn validate_memory_data(memory: &types::Memory) -> Result<(), String> {
     }
 
     // Validate blob reference
-    if let types::MemoryData::BlobRef { blob, .. } = &memory.data {
+    if let types::MemoryAssets::BlobRef { blob, .. } = &memory.assets {
         if blob.locator.is_empty() {
             return Err(format!("Memory '{}' has empty blob locator", memory.id));
         }
@@ -362,9 +362,9 @@ fn generate_capsule_checksum(capsule: &types::Capsule) -> Result<String, String>
 /// Generate checksum for memory data
 fn generate_memory_checksum(memory_id: &str, memory: &types::Memory) -> Result<String, String> {
     // Create a deterministic representation of memory for hashing
-    let (locator, data_len) = match &memory.data {
-        types::MemoryData::Inline { bytes, .. } => ("inline".to_string(), bytes.len()),
-        types::MemoryData::BlobRef { blob, .. } => (blob.locator.clone(), 0),
+    let (locator, data_len) = match &memory.assets {
+        types::MemoryAssets::Inline { bytes, .. } => ("inline".to_string(), bytes.len()),
+        types::MemoryAssets::BlobRef { blob, .. } => (blob.locator.clone(), 0),
     };
 
     let memory_data = format!(
@@ -552,7 +552,7 @@ mod tests {
             galleries: HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
-            bound_to_neon: false,
+            // bound_to_neon removed - now tracked in database_storage_edges
             inline_bytes_used: 0,
         }
     }
@@ -573,7 +573,7 @@ mod tests {
             date_of_memory: Some("2024-01-01".to_string()),
             people_in_memory: Some(vec!["test_person".to_string()]),
             format: Some("test_format".to_string()),
-            bound_to_neon: false,
+            // bound_to_neon removed - now tracked in database_storage_edges
         };
 
         let metadata = match memory_type {
@@ -607,10 +607,15 @@ mod tests {
                 updated_at: 1000000000,
                 uploaded_at: 1000000000,
                 date_of_memory: Some(1000000000),
+                parent_folder_id: None,
+                deleted_at: None,
+                database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
             },
             metadata,
-            access: MemoryAccess::Private,
-            data: MemoryData::BlobRef {
+            access: MemoryAccess::Private {
+                owner_secure_code: format!("test_{}", id),
+            },
+            assets: MemoryAssets::BlobRef {
                 blob: BlobRef {
                     kind: MemoryBlobKind::ICPCapsule,
                     locator: format!("test_locator_{}", id),

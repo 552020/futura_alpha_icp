@@ -248,10 +248,10 @@ fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
 #[ic_cdk::update]
 async fn memories_create(
     capsule_id: types::CapsuleId,
-    memory_data: types::MemoryData,
+    memory_assets: types::MemoryAssets,
     idem: String,
 ) -> types::Result<types::MemoryId> {
-    crate::memories::create(capsule_id, memory_data, idem)
+    crate::memories::create(capsule_id, memory_assets, idem)
 }
 
 #[ic_cdk::query]

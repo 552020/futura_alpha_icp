@@ -1,7 +1,7 @@
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
-    BlobRef, CapsuleId, Error, Memory, MemoryData, MemoryId, MemoryMeta, MemoryType, PersonRef,
+    BlobRef, CapsuleId, Error, Memory, MemoryAssets, MemoryId, MemoryMeta, MemoryType, PersonRef, StorageEdgeDatabaseType,
     Result,
 };
 use crate::upload::blob_store::BlobStore;
@@ -39,6 +39,7 @@ pub fn create_memory_object(
         date_of_memory: None,
         parent_folder_id: None, // Default to root folder
         deleted_at: None,       // Default to not deleted
+        database_storage_edges: vec![StorageEdgeDatabaseType::Icp], // Default to ICP only
     };
 
     let memory_metadata = MemoryMetadata::Image(ImageMetadata {
@@ -50,7 +51,7 @@ pub fn create_memory_object(
             date_of_memory: None,
             people_in_memory: None,
             format: None,
-            bound_to_neon: false,
+            // bound_to_neon removed - now tracked in database_storage_edges
             storage_duration: None, // Default to permanent storage
         },
         dimensions: None,
@@ -60,7 +61,7 @@ pub fn create_memory_object(
         owner_secure_code: format!("mem_{}_{:x}", memory_id, now % 0xFFFF), // Generate secure code
     };
 
-    let memory_data = MemoryData::BlobRef {
+    let memory_data = MemoryAssets::BlobRef {
         blob,
         meta: meta.clone(),
     };
@@ -70,16 +71,16 @@ pub fn create_memory_object(
         info: memory_info,
         metadata: memory_metadata,
         access: memory_access,
-        data: memory_data,
+        assets: memory_data,
         idempotency_key,
     }
 }
 
-pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Result<MemoryId> {
+pub fn create(capsule_id: CapsuleId, payload: MemoryAssets, idem: String) -> Result<MemoryId> {
     let caller = PersonRef::from_caller();
 
     match payload {
-        MemoryData::Inline { bytes, meta } => {
+        MemoryAssets::Inline { bytes, meta } => {
             // 1) Size check
             let len_u64 = bytes.len() as u64;
             if len_u64 > INLINE_MAX {
@@ -149,7 +150,7 @@ pub fn create(capsule_id: CapsuleId, payload: MemoryData, idem: String) -> Resul
             })
         }
 
-        MemoryData::BlobRef { blob, meta } => {
+        MemoryAssets::BlobRef { blob, meta } => {
             // Verify blob exists and matches provided hash/length
             {
                 let blob_store = BlobStore::new();
@@ -351,12 +352,12 @@ fn find_existing_memory_by_content_in_capsule(
             }
 
             // Fallback to content-based deduplication
-            match &memory.data {
-                MemoryData::Inline { bytes, .. } => {
+            match &memory.assets {
+                MemoryAssets::Inline { bytes, .. } => {
                     let memory_sha256 = compute_sha256(bytes);
                     memory_sha256 == *sha256 && bytes.len() as u64 == len
                 }
-                MemoryData::BlobRef { blob: mem_blob, .. } => {
+                MemoryAssets::BlobRef { blob: mem_blob, .. } => {
                     // For existing blob refs, compare hash AND length
                     if let Some(ref hash) = mem_blob.hash {
                         *hash == *sha256 && mem_blob.len == len

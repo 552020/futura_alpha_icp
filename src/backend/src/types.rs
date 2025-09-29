@@ -14,6 +14,17 @@ pub type CapsuleId = String;
 /// Type alias for memory identifiers
 pub type MemoryId = String;
 
+// ============================================================================
+// STORAGE EDGE TYPES
+// ============================================================================
+
+/// Database storage edge types - where memory metadata/records are stored
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum StorageEdgeDatabaseType {
+    Icp,   // ICP canister storage
+    Neon,  // Neon database
+}
+
 /// Type alias for unified error handling - see Error enum below
 /// Simplified metadata for memory creation
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
@@ -572,7 +583,6 @@ pub struct MemoryMetadataBase {
     pub date_of_memory: Option<String>,
     pub people_in_memory: Option<Vec<String>>,
     pub format: Option<String>,
-    pub bound_to_neon: bool,           // whether linked to Neon database
     pub storage_duration: Option<u64>, // TTL support in seconds (matches database schema)
 }
 
@@ -693,6 +703,7 @@ pub struct MemoryInfo {
     pub date_of_memory: Option<u64>, // when the actual event happened
     pub parent_folder_id: Option<String>, // folder organization (matches database schema)
     pub deleted_at: Option<u64>,     // soft delete support (matches database schema)
+    pub database_storage_edges: Vec<StorageEdgeDatabaseType>, // where memory metadata is stored
 }
 
 // External blob storage types
@@ -726,7 +737,7 @@ pub struct BlobRef {
 // }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub enum MemoryData {
+pub enum MemoryAssets {
     /// Inline upload (for small files ≤ INLINE_MAX).
     Inline {
         bytes: Vec<u8>,
@@ -746,7 +757,7 @@ pub struct Memory {
     pub info: MemoryInfo,                // basic info (name, type, timestamps, folder)
     pub metadata: MemoryMetadata,        // rich metadata (size, dimensions, etc.)
     pub access: MemoryAccess,            // who can access + temporal rules
-    pub data: MemoryData,                // actual data + storage location
+    pub assets: MemoryAssets,            // actual assets + storage location
     pub idempotency_key: Option<String>, // idempotency key for deduplication
 }
 
@@ -766,6 +777,7 @@ impl Memory {
                 date_of_memory: None,
                 parent_folder_id: None, // Default to root folder
                 deleted_at: None,       // Default to not deleted
+                database_storage_edges: vec![StorageEdgeDatabaseType::Icp], // Default to ICP only
             },
             metadata: MemoryMetadata::Note(NoteMetadata {
                 base: MemoryMetadataBase {
@@ -776,7 +788,6 @@ impl Memory {
                     date_of_memory: None,
                     people_in_memory: None,
                     format: Some("binary".to_string()),
-                    bound_to_neon: false,
                     storage_duration: None, // Default to permanent storage
                 },
                 tags: Some(meta.tags.clone()),
@@ -784,7 +795,7 @@ impl Memory {
             access: MemoryAccess::Private {
                 owner_secure_code: format!("mem_{now}_{:x}", now % 0xFFFF), // Generate secure code
             }, // Default to private access
-            data: MemoryData::Inline { bytes, meta },
+            assets: MemoryAssets::Inline { bytes, meta },
             idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
@@ -804,6 +815,7 @@ impl Memory {
                 date_of_memory: None,
                 parent_folder_id: None, // Default to root folder
                 deleted_at: None,       // Default to not deleted
+                database_storage_edges: vec![StorageEdgeDatabaseType::Icp], // Default to ICP only
             },
             metadata: MemoryMetadata::Note(NoteMetadata {
                 base: MemoryMetadataBase {
@@ -814,7 +826,6 @@ impl Memory {
                     date_of_memory: None,
                     people_in_memory: None,
                     format: Some("binary".to_string()),
-                    bound_to_neon: false,
                     storage_duration: None, // Default to permanent storage
                 },
                 tags: Some(meta.tags.clone()),
@@ -822,7 +833,7 @@ impl Memory {
             access: MemoryAccess::Private {
                 owner_secure_code: format!("blob_{blob_id}_{:x}", now % 0xFFFF), // Generate secure code
             }, // Default to private access
-            data: MemoryData::BlobRef {
+            assets: MemoryAssets::BlobRef {
                 blob: BlobRef {
                     kind: MemoryBlobKind::ICPCapsule,
                     locator: format!("blob_{blob_id}"),
@@ -837,9 +848,9 @@ impl Memory {
 
     /// Get memory header for listing
     pub fn to_header(&self) -> MemoryHeader {
-        let size = match &self.data {
-            MemoryData::Inline { bytes, .. } => bytes.len() as u64,
-            MemoryData::BlobRef { blob, .. } => blob.len,
+        let size = match &self.assets {
+            MemoryAssets::Inline { bytes, .. } => bytes.len() as u64,
+            MemoryAssets::BlobRef { blob, .. } => blob.len,
         };
 
         MemoryHeader {

@@ -56,9 +56,9 @@ impl UploadService {
                 capsule
                     .memories
                     .values()
-                    .filter_map(|m| match &m.data {
-                        crate::types::MemoryData::Inline { bytes, .. } => Some(bytes.len()),
-                        crate::types::MemoryData::BlobRef { .. } => None,
+                    .filter_map(|m| match &m.assets {
+                        crate::types::MemoryAssets::Inline { bytes, .. } => Some(bytes.len()),
+                        crate::types::MemoryAssets::BlobRef { .. } => None,
                     })
                     .sum::<usize>()
             })

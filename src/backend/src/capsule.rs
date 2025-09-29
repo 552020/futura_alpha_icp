@@ -451,15 +451,15 @@ pub fn capsules_bind_neon(
                         // Found the capsule containing the memory
                         let update_result = store.update(&capsule.id, |capsule| {
                             if let Some(memory) = capsule.memories.get_mut(&resource_id) {
-                                // Update the bound_to_neon field in the memory's metadata
-                                match &mut memory.metadata {
-                                    MemoryMetadata::Image(meta) => meta.base.bound_to_neon = bind,
-                                    MemoryMetadata::Video(meta) => meta.base.bound_to_neon = bind,
-                                    MemoryMetadata::Audio(meta) => meta.base.bound_to_neon = bind,
-                                    MemoryMetadata::Document(meta) => {
-                                        meta.base.bound_to_neon = bind
+                                // Update the database_storage_edges field in the memory's info
+                                if bind {
+                                    // Add Neon to storage edges if not already present
+                                    if !memory.info.database_storage_edges.contains(&StorageEdgeDatabaseType::Neon) {
+                                        memory.info.database_storage_edges.push(StorageEdgeDatabaseType::Neon);
                                     }
-                                    MemoryMetadata::Note(meta) => meta.base.bound_to_neon = bind,
+                                } else {
+                                    // Remove Neon from storage edges
+                                    memory.info.database_storage_edges.retain(|edge| *edge != StorageEdgeDatabaseType::Neon);
                                 }
 
                                 capsule.updated_at = time();

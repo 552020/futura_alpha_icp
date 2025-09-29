@@ -118,7 +118,7 @@ test_capsules_bind_neon_gallery() {
             owner_principal = principal \"$caller_principal\";
             storage_location = variant { ICPOnly };
             memory_entries = vec {};
-            bound_to_neon = false;
+            // bound_to_neon removed - now tracked in database_storage_edges
         };
         owner_principal = principal \"$caller_principal\";
     })"

@@ -115,7 +115,7 @@ create_basic_gallery_data() {
     updated_at = $timestamp;
     storage_location = variant { $storage_status };
     memory_entries = vec {};
-    bound_to_neon = false;
+    // bound_to_neon removed - now tracked in database_storage_edges
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
@@ -175,7 +175,7 @@ create_gallery_data_with_memories() {
     updated_at = $timestamp;
     storage_location = variant { $storage_status };
     memory_entries = $memory_entries;
-    bound_to_neon = false;
+    // bound_to_neon removed - now tracked in database_storage_edges
   };
   owner_principal = principal "$(dfx identity get-principal)";
 })
