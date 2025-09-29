@@ -633,23 +633,30 @@ pub enum MemoryType {
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum MemoryAccess {
-    Public,
-    Private,
+    Public {
+        owner_secure_code: String, // secure code for owner access control
+    },
+    Private {
+        owner_secure_code: String, // secure code for owner access control
+    },
     Custom {
         individuals: Vec<PersonRef>, // direct individual access
         groups: Vec<String>,         // group access (group IDs)
+        owner_secure_code: String,   // secure code for owner access control
     },
 
     // Time-based access
     Scheduled {
         accessible_after: u64,     // nanoseconds since Unix epoch
         access: Box<MemoryAccess>, // what it becomes after the time
+        owner_secure_code: String, // secure code for owner access control
     },
 
     // Event-based access
     EventTriggered {
         trigger_event: AccessEvent,
         access: Box<MemoryAccess>, // what it becomes after the event
+        owner_secure_code: String, // secure code for owner access control
     },
 }
 
@@ -683,6 +690,7 @@ pub struct MemoryInfo {
     pub updated_at: u64,
     pub uploaded_at: u64,
     pub date_of_memory: Option<u64>, // when the actual event happened
+    pub parent_folder_id: Option<String>, // folder organization (matches database schema)
 }
 
 // External blob storage types
@@ -733,7 +741,7 @@ pub enum MemoryData {
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct Memory {
     pub id: String,                      // unique identifier
-    pub info: MemoryInfo,                // basic info (name, type, timestamps)
+    pub info: MemoryInfo,                // basic info (name, type, timestamps, folder)
     pub metadata: MemoryMetadata,        // rich metadata (size, dimensions, etc.)
     pub access: MemoryAccess,            // who can access + temporal rules
     pub data: MemoryData,                // actual data + storage location
@@ -754,6 +762,7 @@ impl Memory {
                 updated_at: now,
                 uploaded_at: now,
                 date_of_memory: None,
+                parent_folder_id: None, // Default to root folder
             },
             metadata: MemoryMetadata::Note(NoteMetadata {
                 base: MemoryMetadataBase {
@@ -768,7 +777,9 @@ impl Memory {
                 },
                 tags: Some(meta.tags.clone()),
             }),
-            access: MemoryAccess::Private, // Default to private access
+            access: MemoryAccess::Private {
+                owner_secure_code: format!("mem_{now}_{:x}", now % 0xFFFF), // Generate secure code
+            }, // Default to private access
             data: MemoryData::Inline { bytes, meta },
             idempotency_key: None, // No idempotency key for legacy constructor
         }
@@ -787,6 +798,7 @@ impl Memory {
                 updated_at: now,
                 uploaded_at: now,
                 date_of_memory: None,
+                parent_folder_id: None, // Default to root folder
             },
             metadata: MemoryMetadata::Note(NoteMetadata {
                 base: MemoryMetadataBase {
@@ -801,7 +813,9 @@ impl Memory {
                 },
                 tags: Some(meta.tags.clone()),
             }),
-            access: MemoryAccess::Private, // Default to private access
+            access: MemoryAccess::Private {
+                owner_secure_code: format!("blob_{blob_id}_{:x}", now % 0xFFFF), // Generate secure code
+            }, // Default to private access
             data: MemoryData::BlobRef {
                 blob: BlobRef {
                     kind: MemoryBlobKind::ICPCapsule,

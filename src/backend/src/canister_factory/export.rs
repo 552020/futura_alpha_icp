@@ -623,6 +623,7 @@ mod tests {
                     tags: vec![],
                 },
             },
+            parent_folder_id: None, // Default to root folder
             idempotency_key: None,
         }
     }

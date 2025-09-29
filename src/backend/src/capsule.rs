@@ -73,11 +73,12 @@ impl Capsule {
     /// Core access checking logic - handles all access types including recursive cases
     fn check_memory_access(&self, person: &PersonRef, access: &MemoryAccess) -> bool {
         match access {
-            MemoryAccess::Public => true,
-            MemoryAccess::Private => self.has_write_access(person),
+            MemoryAccess::Public { owner_secure_code: _ } => true,
+            MemoryAccess::Private { owner_secure_code: _ } => self.has_write_access(person),
             MemoryAccess::Custom {
                 individuals,
                 groups,
+                owner_secure_code: _,
             } => {
                 // Check if person has write access (owners/controllers always have access)
                 if self.has_write_access(person) {
@@ -103,6 +104,7 @@ impl Capsule {
             MemoryAccess::Scheduled {
                 accessible_after,
                 access,
+                owner_secure_code: _,
             } => {
                 // Check if time has passed, if so use the nested access rule
                 let current_time = ic_cdk::api::time();

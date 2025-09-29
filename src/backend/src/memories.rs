@@ -37,6 +37,7 @@ pub fn create_memory_object(
         updated_at: now,
         uploaded_at: now,
         date_of_memory: None,
+        parent_folder_id: None, // Default to root folder
     };
 
     let memory_metadata = MemoryMetadata::Image(ImageMetadata {
@@ -53,7 +54,9 @@ pub fn create_memory_object(
         dimensions: None,
     });
 
-    let memory_access = MemoryAccess::Private;
+    let memory_access = MemoryAccess::Private {
+        owner_secure_code: format!("mem_{}_{:x}", memory_id, now % 0xFFFF), // Generate secure code
+    };
 
     let memory_data = MemoryData::BlobRef {
         blob,

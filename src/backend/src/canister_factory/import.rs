@@ -568,6 +568,7 @@ fn create_memory_from_assembled_data(
                 updated_at: now,
                 uploaded_at: now,
                 date_of_memory: Some(now),
+                parent_folder_id: None, // Default to root folder
             },
             data: types::MemoryData::Inline {
                 bytes: data,
@@ -577,7 +578,13 @@ fn create_memory_from_assembled_data(
                     tags: vec![],
                 },
             },
-            access: types::MemoryAccess::Private,
+            access: types::MemoryAccess::Private {
+                owner_secure_code: format!(
+                    "import_mem_{}_{:x}",
+                    memory_id,
+                    ic_cdk::api::time() % 0xFFFF
+                ),
+            },
             metadata: types::MemoryMetadata::Document(types::DocumentMetadata {
                 base: types::MemoryMetadataBase {
                     size: data_size,
@@ -590,7 +597,7 @@ fn create_memory_from_assembled_data(
                     bound_to_neon: false,
                 },
             }),
-            idempotency_key: None, // No idempotency key for imported memories
+            idempotency_key: None,  // No idempotency key for imported memories
         }
     };
 
