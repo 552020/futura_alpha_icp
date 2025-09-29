@@ -549,18 +549,39 @@ fn create_memory_from_assembled_data(
         // Clone existing memory and update data
         let mut memory = existing_memory.clone();
         // Update inline assets with new data
+        let data_size = data.len() as u64;
         if let Some(inline_asset) = memory.inline_assets.first_mut() {
             inline_asset.bytes = data;
         } else {
             // Create new inline asset if none exists
             memory.inline_assets.push(types::MemoryAssetInline {
                 bytes: data,
-                meta: types::MemoryMeta {
-                    name: format!("Imported memory {}", memory_id),
-                    description: None,
-                    tags: vec![],
-                },
-                asset_type: types::AssetType::Original,
+                metadata: types::AssetMetadata::Document(types::DocumentAssetMetadata {
+                    base: types::AssetMetadataBase {
+                        name: format!("Imported memory {}", memory_id),
+                        description: None,
+                        tags: vec![],
+                        asset_type: types::AssetType::Original,
+                        bytes: data_size,
+                        mime_type: "application/octet-stream".to_string(),
+                        sha256: None,
+                        width: None,
+                        height: None,
+                        url: None,
+                        storage_key: None,
+                        bucket: None,
+                        processing_status: None,
+                        processing_error: None,
+                        created_at: now,
+                        updated_at: now,
+                        deleted_at: None,
+                        asset_location: None,
+                    },
+                    page_count: None,
+                    document_type: None,
+                    language: None,
+                    word_count: None,
+                }),
             });
         }
         memory
@@ -569,28 +590,56 @@ fn create_memory_from_assembled_data(
         let data_size = data.len() as u64;
         types::Memory {
             id: memory_id.to_string(),
-            info: types::MemoryInfo {
+            metadata: types::MemoryMetadata {
                 memory_type: types::MemoryType::Document,
-                name: format!("Imported Memory {memory_id}"),
+                title: Some(format!("Imported Memory {memory_id}")),
+                description: None,
                 content_type: "application/octet-stream".to_string(),
                 created_at: now,
                 updated_at: now,
                 uploaded_at: now,
                 date_of_memory: Some(now),
+                file_created_at: Some(now),
                 parent_folder_id: None, // Default to root folder
-                deleted_at: None,       // Default to not deleted
+                tags: vec![],
+                deleted_at: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
             },
             inline_assets: vec![types::MemoryAssetInline {
                 bytes: data,
-                meta: types::MemoryMeta {
-                    name: format!("Imported memory {memory_id}"),
-                    description: None,
-                    tags: vec![],
-                },
-                asset_type: types::AssetType::Original,
+                metadata: types::AssetMetadata::Document(types::DocumentAssetMetadata {
+                    base: types::AssetMetadataBase {
+                        name: format!("Imported memory {memory_id}"),
+                        description: None,
+                        tags: vec![],
+                        asset_type: types::AssetType::Original,
+                        bytes: data_size,
+                        mime_type: "application/octet-stream".to_string(),
+                        sha256: None,
+                        width: None,
+                        height: None,
+                        url: None,
+                        storage_key: None,
+                        bucket: None,
+                        processing_status: None,
+                        processing_error: None,
+                        created_at: now,
+                        updated_at: now,
+                        deleted_at: None,
+                        asset_location: None,
+                    },
+                    page_count: None,
+                    document_type: None,
+                    language: None,
+                    word_count: None,
+                }),
             }],
-            blob_assets: vec![],
+            blob_internal_assets: vec![],
+            blob_external_assets: vec![],
             access: types::MemoryAccess::Private {
                 owner_secure_code: format!(
                     "import_mem_{}_{:x}",
@@ -598,19 +647,6 @@ fn create_memory_from_assembled_data(
                     ic_cdk::api::time() % 0xFFFF
                 ),
             },
-            metadata: types::MemoryMetadata::Document(types::DocumentMetadata {
-                base: types::MemoryMetadataBase {
-                    size: data_size,
-                    mime_type: "application/octet-stream".to_string(),
-                    original_name: format!("imported_{memory_id}.bin"),
-                    uploaded_at: now.to_string(),
-                    date_of_memory: Some(now.to_string()),
-                    people_in_memory: None,
-                    format: Some("binary".to_string()),
-                    // bound_to_neon removed - now tracked in database_storage_edges
-                    storage_duration: None, // Default to permanent storage
-                },
-            }),
         }
     };
 

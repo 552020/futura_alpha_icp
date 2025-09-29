@@ -1,8 +1,8 @@
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
-    AssetType, BlobRef, CapsuleId, Error, Memory, MemoryAssetBlob, MemoryAssetInline, MemoryId,
-    MemoryMeta, MemoryType, PersonRef, Result, StorageEdgeDatabaseType,
+    AssetMetadata, BlobRef, CapsuleId, Error, Memory, MemoryAssetBlobInternal, MemoryId,
+    MemoryType, PersonRef, Result, StorageEdgeDatabaseType,
 };
 use crate::upload::blob_store::BlobStore;
 use crate::upload::types::{CAPSULE_INLINE_BUDGET, INLINE_MAX};
@@ -18,68 +18,82 @@ fn compute_sha256(data: &[u8]) -> [u8; 32] {
 
 /// Create a Memory object from the given parameters
 /// This function handles all the memory construction logic
-pub fn create_memory_object(memory_id: &str, blob: BlobRef, meta: MemoryMeta, now: u64) -> Memory {
-    use crate::types::{
-        ImageMetadata, MemoryAccess, MemoryInfo, MemoryMetadata, MemoryMetadataBase,
-    };
+pub fn create_memory_object(
+    memory_id: &str,
+    blob: BlobRef,
+    asset_metadata: AssetMetadata,
+    now: u64,
+) -> Memory {
+    use crate::types::{MemoryAccess, MemoryMetadata};
 
-    let memory_info = MemoryInfo {
-        memory_type: MemoryType::Image, // Default, can be updated later
-        name: meta.name.clone(),
-        content_type: "application/octet-stream".to_string(),
+    let memory_metadata = MemoryMetadata {
+        memory_type: match &asset_metadata {
+            AssetMetadata::Image(_) => MemoryType::Image,
+            AssetMetadata::Video(_) => MemoryType::Video,
+            AssetMetadata::Audio(_) => MemoryType::Audio,
+            AssetMetadata::Document(_) => MemoryType::Document,
+            AssetMetadata::Note(_) => MemoryType::Note,
+        },
+        title: None,
+        description: None,
+        content_type: match &asset_metadata {
+            AssetMetadata::Image(img) => img.base.mime_type.clone(),
+            AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
+            AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
+            AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
+            AssetMetadata::Note(note) => note.base.mime_type.clone(),
+        },
         created_at: now,
         updated_at: now,
         uploaded_at: now,
         date_of_memory: None,
+        file_created_at: None,
         parent_folder_id: None, // Default to root folder
-        deleted_at: None,       // Default to not deleted
-        database_storage_edges: vec![StorageEdgeDatabaseType::Icp], // Default to ICP only
-    };
-
-    let memory_metadata = MemoryMetadata::Image(ImageMetadata {
-        base: MemoryMetadataBase {
-            size: blob.hash.map_or(0, |_| 32), // Use hash length as size indicator, or calculate properly
-            mime_type: "application/octet-stream".to_string(),
-            original_name: meta.name.clone(),
-            uploaded_at: now.to_string(),
-            date_of_memory: None,
-            people_in_memory: None,
-            format: None,
-            // bound_to_neon removed - now tracked in database_storage_edges
-            storage_duration: None, // Default to permanent storage
+        tags: match &asset_metadata {
+            AssetMetadata::Image(img) => img.base.tags.clone(),
+            AssetMetadata::Video(vid) => vid.base.tags.clone(),
+            AssetMetadata::Audio(audio) => audio.base.tags.clone(),
+            AssetMetadata::Document(doc) => doc.base.tags.clone(),
+            AssetMetadata::Note(note) => note.base.tags.clone(),
         },
-        dimensions: None,
-    });
+        deleted_at: None,
+        people_in_memory: None,
+        location: None,
+        memory_notes: None,
+        created_by: None,
+        database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
+    };
 
     let memory_access = MemoryAccess::Private {
         owner_secure_code: format!("mem_{}_{:x}", memory_id, now % 0xFFFF), // Generate secure code
     };
 
-    let blob_asset = MemoryAssetBlob {
-        blob,
-        meta: meta.clone(),
-        asset_type: AssetType::Original,
-    };
+    // Create blob assets for ICP capsule storage
+    let blob_internal_assets = vec![MemoryAssetBlobInternal {
+        blob_ref: blob,
+        metadata: asset_metadata,
+    }];
 
     Memory {
         id: memory_id.to_string(),
-        info: memory_info,
         metadata: memory_metadata,
         access: memory_access,
         inline_assets: vec![],
-        blob_assets: vec![blob_asset],
+        blob_internal_assets,
+        blob_external_assets: vec![],
     }
 }
 
 pub fn create_inline(
     capsule_id: CapsuleId,
-    payload: MemoryAssetInline,
+    bytes: Vec<u8>,
+    asset_metadata: AssetMetadata,
     idem: String,
 ) -> Result<MemoryId> {
     let caller = PersonRef::from_caller();
 
     // 1) Size check
-    let len_u64 = payload.bytes.len() as u64;
+    let len_u64 = bytes.len() as u64;
     if len_u64 > INLINE_MAX {
         return Err(Error::InvalidArgument(format!(
             "inline_too_large: {len_u64} > {INLINE_MAX}"
@@ -90,7 +104,7 @@ pub fn create_inline(
     // Trust blob store as single source of truth for hash and length
     let blob_store = BlobStore::new();
     let blob = blob_store
-        .put_inline(&payload.bytes)
+        .put_inline(&bytes)
         .map_err(|e| Error::Internal(format!("blob_store_put_inline: {e:?}")))?;
 
     // Use the hash and length from blob store directly
@@ -125,7 +139,8 @@ pub fn create_inline(
             let now = ic_cdk::api::time();
 
             // Create the memory object
-            let memory = create_memory_object(&memory_id, blob.clone(), payload.meta.clone(), now);
+            let memory =
+                create_memory_object(&memory_id, blob.clone(), asset_metadata.clone(), now);
 
             // Insert the memory into the capsule
             cap.memories.insert(memory_id.clone(), memory);
@@ -227,6 +242,342 @@ mod tests {
             assert!(!response[0].asset_present);
         }
     }
+
+    // ============================================================================
+    // MEMORY CREATION TESTS
+    // ============================================================================
+
+    // #[test]
+    fn _test_create_inline_memory() {
+        // This test is commented out because it calls ic_cdk::api::msg_caller() which can only be called inside canisters
+        // use crate::types::{
+        //     AssetMetadata, AssetMetadataBase, AssetType, DocumentAssetMetadata, MemoryAccess,
+        //     MemoryType,
+        // };
+
+        // let capsule_id = "test_capsule".to_string();
+        // let bytes = vec![1, 2, 3, 4, 5]; // Small file for inline storage
+        // let asset_metadata = AssetMetadata::Document(DocumentAssetMetadata {
+        //     base: AssetMetadataBase {
+        //         name: "test_document.txt".to_string(),
+        //         description: Some("Test document".to_string()),
+        //         tags: vec!["test".to_string()],
+        //         asset_type: AssetType::Original,
+        //         bytes: bytes.len() as u64,
+        //         mime_type: "text/plain".to_string(),
+        //         sha256: Some(compute_sha256(&bytes)),
+        //         width: None,
+        //         height: None,
+        //         url: None,
+        //         storage_key: None,
+        //         bucket: None,
+        //         asset_location: None,
+        //         processing_status: None,
+        //         processing_error: None,
+        //         created_at: 1000000000,
+        //         updated_at: 1000000000,
+        //         deleted_at: None,
+        //     },
+        //     page_count: None,
+        //     document_type: Some("text".to_string()),
+        //     language: Some("en".to_string()),
+        //     word_count: Some(5),
+        // });
+        // let idem = "test_idem".to_string();
+
+        // let result = create_inline(capsule_id, bytes, asset_metadata, idem);
+
+        // assert!(result.is_ok());
+        // let memory_id = result.unwrap();
+        // assert!(!memory_id.is_empty());
+    }
+
+    #[test]
+    fn test_create_memory_object_with_inline_asset() {
+        use crate::types::{
+            AssetMetadata, AssetMetadataBase, AssetType, BlobRef, ImageAssetMetadata,
+        };
+
+        let memory_id = "test_memory_inline";
+        let blob = BlobRef {
+            locator: "inline_test".to_string(),
+            hash: None,
+            len: 100,
+        };
+        let asset_metadata = AssetMetadata::Image(ImageAssetMetadata {
+            base: AssetMetadataBase {
+                name: "test_image.jpg".to_string(),
+                description: Some("Test image".to_string()),
+                tags: vec!["image".to_string(), "test".to_string()],
+                asset_type: AssetType::Thumbnail,
+                bytes: 1024,
+                mime_type: "image/jpeg".to_string(),
+                sha256: Some([1u8; 32]),
+                width: Some(800),
+                height: Some(600),
+                url: None,
+                storage_key: None,
+                bucket: None,
+                asset_location: None,
+                processing_status: Some("completed".to_string()),
+                processing_error: None,
+                created_at: 1000000000,
+                updated_at: 1000000000,
+                deleted_at: None,
+            },
+            color_space: Some("sRGB".to_string()),
+            exif_data: Some("test_exif".to_string()),
+            compression_ratio: Some(0.8),
+            dpi: Some(300),
+            orientation: Some(1),
+        });
+        let now = 1000000000;
+
+        let memory = create_memory_object(memory_id, blob, asset_metadata, now);
+
+        // Verify memory structure
+        assert_eq!(memory.id, memory_id);
+        assert_eq!(memory.metadata.memory_type, MemoryType::Image);
+        assert_eq!(memory.metadata.content_type, "image/jpeg");
+        assert_eq!(memory.inline_assets.len(), 0); // No inline assets in this test
+        assert_eq!(memory.blob_internal_assets.len(), 1); // One blob asset created by create_memory_object
+        assert_eq!(memory.blob_external_assets.len(), 0);
+    }
+
+    #[test]
+    fn test_create_memory_object_with_external_blob_asset() {
+        use crate::types::{
+            AssetMetadata, AssetMetadataBase, AssetType, BlobRef, StorageEdgeBlobType,
+            VideoAssetMetadata,
+        };
+
+        let memory_id = "test_memory_external";
+        let blob = BlobRef {
+            locator: "external_test".to_string(),
+            hash: Some([2u8; 32]),
+            len: 5000000, // 5MB file
+        };
+        let asset_metadata = AssetMetadata::Video(VideoAssetMetadata {
+            base: AssetMetadataBase {
+                name: "test_video.mp4".to_string(),
+                description: Some("Test video".to_string()),
+                tags: vec!["video".to_string(), "test".to_string()],
+                asset_type: AssetType::Original,
+                bytes: 5000000,
+                mime_type: "video/mp4".to_string(),
+                sha256: Some([2u8; 32]),
+                width: Some(1920),
+                height: Some(1080),
+                url: Some("https://example.com/video.mp4".to_string()),
+                storage_key: Some("video_key_123".to_string()),
+                bucket: Some("video-bucket".to_string()),
+                asset_location: Some("S3".to_string()),
+                processing_status: Some("processing".to_string()),
+                processing_error: None,
+                created_at: 1000000000,
+                updated_at: 1000000000,
+                deleted_at: None,
+            },
+            duration: Some(120000), // 2 minutes
+            frame_rate: Some(30.0),
+            codec: Some("H.264".to_string()),
+            bitrate: Some(5000000),
+            resolution: Some("1920x1080".to_string()),
+            aspect_ratio: Some(16.0 / 9.0),
+        });
+        let now = 1000000000;
+
+        let memory = create_memory_object(memory_id, blob, asset_metadata, now);
+
+        // Verify memory structure
+        assert_eq!(memory.id, memory_id);
+        assert_eq!(memory.metadata.memory_type, MemoryType::Video);
+        assert_eq!(memory.metadata.content_type, "video/mp4");
+        assert_eq!(memory.inline_assets.len(), 0);
+        assert_eq!(memory.blob_internal_assets.len(), 1); // One blob asset created by create_memory_object
+        assert_eq!(memory.blob_external_assets.len(), 0);
+    }
+
+    #[test]
+    fn test_memory_with_multiple_asset_types() {
+        use crate::types::{
+            AssetMetadata, AssetMetadataBase, AssetType, AudioAssetMetadata, BlobRef,
+            ImageAssetMetadata, MemoryAssetBlobExternal, MemoryAssetBlobInternal,
+            MemoryAssetInline, NoteAssetMetadata, StorageEdgeBlobType, VideoAssetMetadata,
+        };
+
+        let memory_id = "test_memory_multi";
+        let blob = BlobRef {
+            locator: "multi_test".to_string(),
+            hash: None,
+            len: 100,
+        };
+        let asset_metadata = AssetMetadata::Audio(AudioAssetMetadata {
+            base: AssetMetadataBase {
+                name: "test_audio.mp3".to_string(),
+                description: Some("Test audio".to_string()),
+                tags: vec!["audio".to_string(), "test".to_string()],
+                asset_type: AssetType::Original,
+                bytes: 2000000, // 2MB
+                mime_type: "audio/mpeg".to_string(),
+                sha256: Some([3u8; 32]),
+                width: None,
+                height: None,
+                url: None,
+                storage_key: None,
+                bucket: None,
+                asset_location: None,
+                processing_status: Some("completed".to_string()),
+                processing_error: None,
+                created_at: 1000000000,
+                updated_at: 1000000000,
+                deleted_at: None,
+            },
+            duration: Some(180000), // 3 minutes
+            sample_rate: Some(44100),
+            channels: Some(2),
+            bitrate: Some(320000),
+            codec: Some("MP3".to_string()),
+            bit_depth: Some(16),
+        });
+        let now = 1000000000;
+
+        let mut memory = create_memory_object(memory_id, blob, asset_metadata, now);
+
+        // Add multiple asset types to test the multi-asset capability
+        memory.inline_assets.push(MemoryAssetInline {
+            bytes: vec![1, 2, 3, 4],
+            metadata: AssetMetadata::Note(NoteAssetMetadata {
+                base: AssetMetadataBase {
+                    name: "note.txt".to_string(),
+                    description: None,
+                    tags: vec!["note".to_string()],
+                    asset_type: AssetType::Metadata,
+                    bytes: 4,
+                    mime_type: "text/plain".to_string(),
+                    sha256: None,
+                    width: None,
+                    height: None,
+                    url: None,
+                    storage_key: None,
+                    bucket: None,
+                    asset_location: None,
+                    processing_status: None,
+                    processing_error: None,
+                    created_at: now,
+                    updated_at: now,
+                    deleted_at: None,
+                },
+                word_count: Some(1),
+                language: Some("en".to_string()),
+                format: Some("plain".to_string()),
+            }),
+        });
+
+        memory.blob_internal_assets.push(MemoryAssetBlobInternal {
+            blob_ref: BlobRef {
+                locator: "internal_blob_123".to_string(),
+                hash: Some([4u8; 32]),
+                len: 1000000,
+            },
+            metadata: AssetMetadata::Image(ImageAssetMetadata {
+                base: AssetMetadataBase {
+                    name: "thumbnail.jpg".to_string(),
+                    description: None,
+                    tags: vec!["thumbnail".to_string()],
+                    asset_type: AssetType::Thumbnail,
+                    bytes: 1000000,
+                    mime_type: "image/jpeg".to_string(),
+                    sha256: Some([4u8; 32]),
+                    width: Some(200),
+                    height: Some(200),
+                    url: None,
+                    storage_key: None,
+                    bucket: None,
+                    asset_location: None,
+                    processing_status: Some("completed".to_string()),
+                    processing_error: None,
+                    created_at: now,
+                    updated_at: now,
+                    deleted_at: None,
+                },
+                color_space: Some("sRGB".to_string()),
+                exif_data: None,
+                compression_ratio: Some(0.9),
+                dpi: Some(72),
+                orientation: Some(1),
+            }),
+        });
+
+        memory.blob_external_assets.push(MemoryAssetBlobExternal {
+            location: StorageEdgeBlobType::S3,
+            storage_key: "external_video_456".to_string(),
+            url: Some("https://s3.amazonaws.com/bucket/video.mp4".to_string()),
+            metadata: AssetMetadata::Video(VideoAssetMetadata {
+                base: AssetMetadataBase {
+                    name: "external_video.mp4".to_string(),
+                    description: None,
+                    tags: vec!["external".to_string()],
+                    asset_type: AssetType::Original,
+                    bytes: 10000000, // 10MB
+                    mime_type: "video/mp4".to_string(),
+                    sha256: Some([5u8; 32]),
+                    width: Some(1920),
+                    height: Some(1080),
+                    url: Some("https://s3.amazonaws.com/bucket/video.mp4".to_string()),
+                    storage_key: Some("external_video_456".to_string()),
+                    bucket: Some("video-bucket".to_string()),
+                    asset_location: Some("S3".to_string()),
+                    processing_status: Some("completed".to_string()),
+                    processing_error: None,
+                    created_at: now,
+                    updated_at: now,
+                    deleted_at: None,
+                },
+                duration: Some(300000), // 5 minutes
+                frame_rate: Some(24.0),
+                codec: Some("H.264".to_string()),
+                bitrate: Some(8000000),
+                resolution: Some("1920x1080".to_string()),
+                aspect_ratio: Some(16.0 / 9.0),
+            }),
+        });
+
+        // Verify the multi-asset memory structure
+        assert_eq!(memory.id, memory_id);
+        assert_eq!(memory.metadata.memory_type, MemoryType::Audio);
+        assert_eq!(memory.metadata.content_type, "audio/mpeg");
+
+        // Verify all asset types are present
+        assert_eq!(memory.inline_assets.len(), 1);
+        assert_eq!(memory.blob_internal_assets.len(), 2); // 1 from create_memory_object + 1 manually added
+        assert_eq!(memory.blob_external_assets.len(), 1);
+
+        // Verify asset types
+        match &memory.inline_assets[0].metadata {
+            AssetMetadata::Note(note) => {
+                assert_eq!(note.base.name, "note.txt");
+                assert_eq!(note.base.asset_type, AssetType::Metadata);
+            }
+            _ => panic!("Expected Note asset metadata"),
+        }
+
+        match &memory.blob_internal_assets[1].metadata {
+            AssetMetadata::Image(img) => {
+                assert_eq!(img.base.name, "thumbnail.jpg");
+                assert_eq!(img.base.asset_type, AssetType::Thumbnail);
+            }
+            _ => panic!("Expected Image asset metadata"),
+        }
+
+        match &memory.blob_external_assets[0].metadata {
+            AssetMetadata::Video(vid) => {
+                assert_eq!(vid.base.name, "external_video.mp4");
+                assert_eq!(vid.base.asset_type, AssetType::Original);
+            }
+            _ => panic!("Expected Video asset metadata"),
+        }
+    }
 }
 
 /// Generate a new unique memory ID
@@ -256,10 +607,26 @@ fn find_existing_memory_by_content_in_capsule(
                 }
             }
 
-            // Check blob assets
-            for blob_asset in &memory.blob_assets {
-                if let Some(ref hash) = blob_asset.blob.hash {
-                    if *hash == *sha256 && blob_asset.blob.len == len {
+            // Check blob internal assets
+            for blob_asset in &memory.blob_internal_assets {
+                if let Some(ref hash) = blob_asset.blob_ref.hash {
+                    if *hash == *sha256 && blob_asset.blob_ref.len == len {
+                        return true;
+                    }
+                }
+            }
+
+            // Check blob external assets
+            for blob_asset in &memory.blob_external_assets {
+                let (hash, bytes) = match &blob_asset.metadata {
+                    AssetMetadata::Image(img) => (img.base.sha256.as_ref(), img.base.bytes),
+                    AssetMetadata::Video(vid) => (vid.base.sha256.as_ref(), vid.base.bytes),
+                    AssetMetadata::Audio(audio) => (audio.base.sha256.as_ref(), audio.base.bytes),
+                    AssetMetadata::Document(doc) => (doc.base.sha256.as_ref(), doc.base.bytes),
+                    AssetMetadata::Note(note) => (note.base.sha256.as_ref(), note.base.bytes),
+                };
+                if let Some(hash) = hash {
+                    if hash == sha256 && bytes == len {
                         return true;
                     }
                 }
@@ -299,7 +666,7 @@ pub fn update(
                     memory_found = true;
                     let mut updated_memory = memory.clone();
                     if let Some(name) = updates.name.clone() {
-                        updated_memory.info.name = name;
+                        updated_memory.metadata.title = Some(name);
                     }
                     if let Some(metadata) = updates.metadata.clone() {
                         updated_memory.metadata = metadata;
@@ -307,7 +674,7 @@ pub fn update(
                     if let Some(access) = updates.access.clone() {
                         updated_memory.access = access;
                     }
-                    updated_memory.info.updated_at = time();
+                    updated_memory.metadata.updated_at = time();
                     capsule.memories.insert(memory_id.clone(), updated_memory);
                     capsule.updated_at = time();
                 }

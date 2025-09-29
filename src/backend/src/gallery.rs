@@ -6,8 +6,8 @@ use crate::capsule::capsules_create;
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
-    Error, Gallery, GalleryData, GalleryHeader, GalleryStorageLocation,
-    GalleryUpdateData, PersonRef, Result,
+    Error, Gallery, GalleryData, GalleryHeader, GalleryStorageLocation, GalleryUpdateData,
+    PersonRef, Result,
 };
 
 /// Create a gallery in the caller's capsule (replaces store_gallery_forever)
@@ -31,9 +31,7 @@ pub fn galleries_create(gallery_data: GalleryData) -> Result<Gallery> {
             match capsules_create(None) {
                 Ok(capsule) => Some(capsule),
                 Err(e) => {
-                    return Err(Error::Internal(format!(
-                        "Failed to create capsule: {e}"
-                    )));
+                    return Err(Error::Internal(format!("Failed to create capsule: {e}")));
                 }
             }
         }
@@ -101,9 +99,7 @@ pub fn galleries_create_with_memories(
             match capsules_create(None) {
                 Ok(capsule) => Some(capsule),
                 Err(e) => {
-                    return Err(Error::Internal(format!(
-                        "Failed to create capsule: {e}"
-                    )));
+                    return Err(Error::Internal(format!("Failed to create capsule: {e}")));
                 }
             }
         }
@@ -482,7 +478,7 @@ mod gallery_tests {
                 updated_at: mock_time,
                 storage_location: GalleryStorageLocation::Web2Only,
                 memory_entries: vec![],
-                // bound_to_neon removed - now tracked in database_storage_edges
+                bound_to_neon: false,
             },
             owner_principal: candid::Principal::anonymous(),
         }

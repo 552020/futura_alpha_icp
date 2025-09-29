@@ -575,7 +575,7 @@ mod tests {
             galleries: HashMap::new(),
             created_at: 1234567890,
             updated_at: 1234567890,
-            // bound_to_neon removed - now tracked in database_storage_edges
+            bound_to_neon: false,
             inline_bytes_used: 0,
         }
     }

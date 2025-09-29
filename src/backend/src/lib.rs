@@ -248,10 +248,11 @@ fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
 #[ic_cdk::update]
 async fn memories_create(
     capsule_id: types::CapsuleId,
-    memory_assets: types::MemoryAssetInline,
+    bytes: Vec<u8>,
+    asset_metadata: types::AssetMetadata,
     idem: String,
 ) -> types::Result<types::MemoryId> {
-    crate::memories::create_inline(capsule_id, memory_assets, idem)
+    crate::memories::create_inline(capsule_id, bytes, asset_metadata, idem)
 }
 
 #[ic_cdk::query]
@@ -304,13 +305,13 @@ fn upload_config() -> types::UploadConfig {
 #[ic_cdk::update]
 fn uploads_begin(
     capsule_id: types::CapsuleId,
-    meta: types::MemoryMeta,
+    asset_metadata: types::AssetMetadata,
     expected_chunks: u32,
     idem: String,
 ) -> types::Result<upload::types::SessionId> {
     with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new();
-        upload_service.begin_upload(store, capsule_id, meta, expected_chunks, idem)
+        upload_service.begin_upload(store, capsule_id, asset_metadata, expected_chunks, idem)
     })
 }
 

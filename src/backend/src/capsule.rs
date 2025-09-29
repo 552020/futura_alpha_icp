@@ -73,8 +73,12 @@ impl Capsule {
     /// Core access checking logic - handles all access types including recursive cases
     fn check_memory_access(&self, person: &PersonRef, access: &MemoryAccess) -> bool {
         match access {
-            MemoryAccess::Public { owner_secure_code: _ } => true,
-            MemoryAccess::Private { owner_secure_code: _ } => self.has_write_access(person),
+            MemoryAccess::Public {
+                owner_secure_code: _,
+            } => true,
+            MemoryAccess::Private {
+                owner_secure_code: _,
+            } => self.has_write_access(person),
             MemoryAccess::Custom {
                 individuals,
                 groups,
@@ -454,12 +458,22 @@ pub fn capsules_bind_neon(
                                 // Update the database_storage_edges field in the memory's info
                                 if bind {
                                     // Add Neon to storage edges if not already present
-                                    if !memory.info.database_storage_edges.contains(&StorageEdgeDatabaseType::Neon) {
-                                        memory.info.database_storage_edges.push(StorageEdgeDatabaseType::Neon);
+                                    if !memory
+                                        .metadata
+                                        .database_storage_edges
+                                        .contains(&StorageEdgeDatabaseType::Neon)
+                                    {
+                                        memory
+                                            .metadata
+                                            .database_storage_edges
+                                            .push(StorageEdgeDatabaseType::Neon);
                                     }
                                 } else {
                                     // Remove Neon from storage edges
-                                    memory.info.database_storage_edges.retain(|edge| *edge != StorageEdgeDatabaseType::Neon);
+                                    memory
+                                        .metadata
+                                        .database_storage_edges
+                                        .retain(|edge| *edge != StorageEdgeDatabaseType::Neon);
                                 }
 
                                 capsule.updated_at = time();

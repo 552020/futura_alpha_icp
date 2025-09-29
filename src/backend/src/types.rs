@@ -36,12 +36,99 @@ pub enum StorageEdgeBlobType {
 }
 
 /// Type alias for unified error handling - see Error enum below
-/// Simplified metadata for memory creation
+/// Enhanced asset metadata with all fields from database memory_assets table
+// Base asset metadata (shared across all asset types)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct MemoryMeta {
+pub struct AssetMetadataBase {
+    // Basic info
     pub name: String,
     pub description: Option<String>,
     pub tags: Vec<String>,
+
+    // Asset classification
+    pub asset_type: AssetType, // Moved from asset struct to metadata
+
+    // File properties
+    pub bytes: u64,                  // File size
+    pub mime_type: String,           // MIME type
+    pub sha256: Option<[u8; 32]>,    // File hash
+    pub width: Option<u32>,          // Image/video width
+    pub height: Option<u32>,         // Image/video height
+    pub url: Option<String>,         // External URL
+    pub storage_key: Option<String>, // Storage identifier
+    pub bucket: Option<String>,      // Storage bucket
+
+    // Processing status
+    pub processing_status: Option<String>,
+    pub processing_error: Option<String>,
+
+    // Timestamps
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub deleted_at: Option<u64>,
+
+    // Storage location
+    pub asset_location: Option<String>, // Where the asset is stored
+}
+
+// Type-specific asset metadata extensions
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct ImageAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub color_space: Option<String>,
+    pub exif_data: Option<String>,
+    pub compression_ratio: Option<f32>,
+    pub dpi: Option<u32>,
+    pub orientation: Option<u8>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct VideoAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub duration: Option<u64>,      // Duration in milliseconds
+    pub frame_rate: Option<f32>,    // Frames per second
+    pub codec: Option<String>,      // Video codec (H.264, VP9, etc.)
+    pub bitrate: Option<u64>,       // Bitrate in bits per second
+    pub resolution: Option<String>, // Resolution string (e.g., "1920x1080")
+    pub aspect_ratio: Option<f32>,  // Aspect ratio
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct AudioAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub duration: Option<u64>,    // Duration in milliseconds
+    pub sample_rate: Option<u32>, // Sample rate in Hz
+    pub channels: Option<u8>,     // Number of audio channels
+    pub bitrate: Option<u64>,     // Bitrate in bits per second
+    pub codec: Option<String>,    // Audio codec (MP3, AAC, etc.)
+    pub bit_depth: Option<u8>,    // Bit depth (16, 24, 32)
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct DocumentAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub page_count: Option<u32>,       // Number of pages
+    pub document_type: Option<String>, // PDF, DOCX, etc.
+    pub language: Option<String>,      // Document language
+    pub word_count: Option<u32>,       // Word count
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct NoteAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub word_count: Option<u32>,  // Word count
+    pub language: Option<String>, // Note language
+    pub format: Option<String>,   // Markdown, plain text, etc.
+}
+
+// Unified asset metadata enum
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub enum AssetMetadata {
+    Image(ImageAssetMetadata),
+    Video(VideoAssetMetadata),
+    Audio(AudioAssetMetadata),
+    Document(DocumentAssetMetadata),
+    Note(NoteAssetMetadata),
 }
 
 /// Upload configuration for TS client discoverability
@@ -403,65 +490,7 @@ pub struct GalleryHeader {
 }
 
 // New unified memory system
-// Base metadata that all memory types share
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct MemoryMetadataBase {
-    pub size: u64,
-    pub mime_type: String,
-    pub original_name: String,
-    pub uploaded_at: String,
-    pub date_of_memory: Option<String>,
-    pub people_in_memory: Option<Vec<String>>,
-    pub format: Option<String>,
-    pub storage_duration: Option<u64>, // TTL support in seconds (matches database schema)
-}
-
-// Extended metadata for specific memory types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct ImageMetadata {
-    pub base: MemoryMetadataBase,
-    pub dimensions: Option<(u32, u32)>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct VideoMetadata {
-    pub base: MemoryMetadataBase,
-    pub duration: Option<u32>, // Duration in seconds
-    pub width: Option<u32>,
-    pub height: Option<u32>,
-    pub thumbnail: Option<String>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct AudioMetadata {
-    pub base: MemoryMetadataBase,
-    pub duration: Option<u32>, // Duration in seconds
-    pub format: Option<String>,
-    pub bitrate: Option<u32>,
-    pub sample_rate: Option<u32>,
-    pub channels: Option<u8>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct DocumentMetadata {
-    pub base: MemoryMetadataBase,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct NoteMetadata {
-    pub base: MemoryMetadataBase,
-    pub tags: Option<Vec<String>>,
-}
-
-// Enum for different metadata types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub enum MemoryMetadata {
-    Image(ImageMetadata),
-    Video(VideoMetadata),
-    Audio(AudioMetadata),
-    Document(DocumentMetadata),
-    Note(NoteMetadata),
-}
+// Old metadata structures removed - replaced with new AssetMetadata enum and AssetMetadataBase
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum MemoryType {
@@ -522,18 +551,35 @@ pub enum AccessEvent {
 }
 
 // New memory structures
+// Enhanced MemoryMetadata (Memory-Level Metadata)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct MemoryInfo {
+pub struct MemoryMetadata {
+    // Basic info
     pub memory_type: MemoryType,
-    pub name: String,
+    pub title: Option<String>,       // Optional title (matches database)
+    pub description: Option<String>, // Optional description (matches database)
     pub content_type: String,
+
+    // Timestamps
     pub created_at: u64,
     pub updated_at: u64,
     pub uploaded_at: u64,
     pub date_of_memory: Option<u64>, // when the actual event happened
-    pub parent_folder_id: Option<String>, // folder organization (matches database schema)
-    pub deleted_at: Option<u64>,     // soft delete support (matches database schema)
-    pub database_storage_edges: Vec<StorageEdgeDatabaseType>, // where memory metadata is stored
+    pub file_created_at: Option<u64>, // when the original file was created
+
+    // Organization
+    pub parent_folder_id: Option<String>,
+    pub tags: Vec<String>, // Memory tags
+    pub deleted_at: Option<u64>,
+
+    // Content info
+    pub people_in_memory: Option<Vec<String>>, // People in the memory
+    pub location: Option<String>,              // Where the memory was taken
+    pub memory_notes: Option<String>,          // Additional notes
+
+    // System info
+    pub created_by: Option<String>, // Who created this memory
+    pub database_storage_edges: Vec<StorageEdgeDatabaseType>,
 }
 
 // External blob storage types
@@ -545,16 +591,8 @@ pub enum MemoryBlobKindExternal {
     AWS,     // AWS S3
 }
 
-// Blob storage reference
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum MemoryBlobKind {
-    ICPCapsule,             // stored in IC canister
-    MemoryBlobKindExternal, // external reference
-}
-
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct BlobRef {
-    pub kind: MemoryBlobKind,
     pub locator: String,        // canister+key, URL, CID, etc.
     pub hash: Option<[u8; 32]>, // optional integrity hash
     pub len: u64,               // size in bytes
@@ -580,115 +618,145 @@ pub enum AssetType {
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetInline {
     pub bytes: Vec<u8>,
-    pub meta: MemoryMeta,
-    pub asset_type: AssetType,
+    pub metadata: AssetMetadata,
 }
 
-// Blob asset (reference to blob store)
+// Blob asset (reference to ICP blob store)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct MemoryAssetBlobInternal {
+    pub blob_ref: BlobRef,
+    pub metadata: AssetMetadata,
+}
+
+// External blob asset (reference to external storage)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct MemoryAssetBlobExternal {
+    pub location: StorageEdgeBlobType, // Where the asset is stored externally
+    pub storage_key: String,           // Key/ID in external storage system
+    pub url: Option<String>,           // Public URL (if available)
+    pub metadata: AssetMetadata,       // Type-specific metadata
+}
+
+// Legacy struct for backward compatibility (will be removed)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetBlob {
     pub blob: BlobRef,
-    pub meta: MemoryMeta,
-    pub asset_type: AssetType,
+    pub metadata: AssetMetadata,
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Memory {
-    pub id: String,                            // unique identifier
-    pub info: MemoryInfo,                      // basic info (name, type, timestamps, folder)
-    pub metadata: MemoryMetadata,              // rich metadata (size, dimensions, etc.)
-    pub access: MemoryAccess,                  // who can access + temporal rules
+    pub id: String,                                         // unique identifier
+    pub metadata: MemoryMetadata, // memory-level metadata (title, description, etc.)
+    pub access: MemoryAccess,     // who can access + temporal rules
     pub inline_assets: Vec<MemoryAssetInline>, // 0 or more inline assets
-    pub blob_assets: Vec<MemoryAssetBlob>,     // 0 or more blob assets
+    pub blob_internal_assets: Vec<MemoryAssetBlobInternal>, // 0 or more ICP blob assets
+    pub blob_external_assets: Vec<MemoryAssetBlobExternal>, // 0 or more external blob assets
 }
 
 impl Memory {
     /// Create a new memory with inline data (≤32KB)
-    pub fn inline(bytes: Vec<u8>, meta: MemoryMeta) -> Self {
+    pub fn inline(bytes: Vec<u8>, asset_metadata: AssetMetadata) -> Self {
         let now = ic_cdk::api::time();
         Self {
             id: format!("mem_{now}"), // Simple ID generation
-            info: MemoryInfo {
-                name: meta.name.clone(),
+            metadata: MemoryMetadata {
                 memory_type: MemoryType::Note, // Default type for inline
-                content_type: "application/octet-stream".to_string(),
+                title: None,
+                description: None,
+                content_type: match &asset_metadata {
+                    AssetMetadata::Image(img) => img.base.mime_type.clone(),
+                    AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
+                    AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
+                    AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
+                    AssetMetadata::Note(note) => note.base.mime_type.clone(),
+                },
                 created_at: now,
                 updated_at: now,
                 uploaded_at: now,
                 date_of_memory: None,
+                file_created_at: None,
                 parent_folder_id: None, // Default to root folder
-                deleted_at: None,       // Default to not deleted
-                database_storage_edges: vec![StorageEdgeDatabaseType::Icp], // Default to ICP only
-            },
-            metadata: MemoryMetadata::Note(NoteMetadata {
-                base: MemoryMetadataBase {
-                    size: bytes.len() as u64,
-                    mime_type: "application/octet-stream".to_string(),
-                    original_name: meta.name.clone(),
-                    uploaded_at: format!("{now}"),
-                    date_of_memory: None,
-                    people_in_memory: None,
-                    format: Some("binary".to_string()),
-                    storage_duration: None, // Default to permanent storage
+                tags: match &asset_metadata {
+                    AssetMetadata::Image(img) => img.base.tags.clone(),
+                    AssetMetadata::Video(vid) => vid.base.tags.clone(),
+                    AssetMetadata::Audio(audio) => audio.base.tags.clone(),
+                    AssetMetadata::Document(doc) => doc.base.tags.clone(),
+                    AssetMetadata::Note(note) => note.base.tags.clone(),
                 },
-                tags: Some(meta.tags.clone()),
-            }),
+                deleted_at: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
+                database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
+            },
             access: MemoryAccess::Private {
                 owner_secure_code: format!("mem_{now}_{:x}", now % 0xFFFF), // Generate secure code
             }, // Default to private access
             inline_assets: vec![MemoryAssetInline {
                 bytes,
-                meta,
-                asset_type: AssetType::Original,
+                metadata: asset_metadata,
             }],
-            blob_assets: vec![],
+            blob_internal_assets: vec![],
+            blob_external_assets: vec![],
         }
     }
 
     /// Create a new memory with blob reference (>32KB)
-    pub fn from_blob(blob_id: u64, size: u64, checksum: [u8; 32], meta: MemoryMeta) -> Self {
+    pub fn from_blob(
+        blob_id: u64,
+        size: u64,
+        checksum: [u8; 32],
+        asset_metadata: AssetMetadata,
+    ) -> Self {
         let now = ic_cdk::api::time();
         Self {
             id: format!("mem_{now}"), // Simple ID generation
-            info: MemoryInfo {
-                name: meta.name.clone(),
+            metadata: MemoryMetadata {
                 memory_type: MemoryType::Note, // Default type for blob
-                content_type: "application/octet-stream".to_string(),
+                title: None,
+                description: None,
+                content_type: match &asset_metadata {
+                    AssetMetadata::Image(img) => img.base.mime_type.clone(),
+                    AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
+                    AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
+                    AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
+                    AssetMetadata::Note(note) => note.base.mime_type.clone(),
+                },
                 created_at: now,
                 updated_at: now,
                 uploaded_at: now,
                 date_of_memory: None,
+                file_created_at: None,
                 parent_folder_id: None, // Default to root folder
-                deleted_at: None,       // Default to not deleted
-                database_storage_edges: vec![StorageEdgeDatabaseType::Icp], // Default to ICP only
-            },
-            metadata: MemoryMetadata::Note(NoteMetadata {
-                base: MemoryMetadataBase {
-                    size,
-                    mime_type: "application/octet-stream".to_string(),
-                    original_name: meta.name.clone(),
-                    uploaded_at: format!("{now}"),
-                    date_of_memory: None,
-                    people_in_memory: None,
-                    format: Some("binary".to_string()),
-                    storage_duration: None, // Default to permanent storage
+                tags: match &asset_metadata {
+                    AssetMetadata::Image(img) => img.base.tags.clone(),
+                    AssetMetadata::Video(vid) => vid.base.tags.clone(),
+                    AssetMetadata::Audio(audio) => audio.base.tags.clone(),
+                    AssetMetadata::Document(doc) => doc.base.tags.clone(),
+                    AssetMetadata::Note(note) => note.base.tags.clone(),
                 },
-                tags: Some(meta.tags.clone()),
-            }),
+                deleted_at: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
+                database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
+            },
             access: MemoryAccess::Private {
                 owner_secure_code: format!("blob_{blob_id}_{:x}", now % 0xFFFF), // Generate secure code
             }, // Default to private access
             inline_assets: vec![],
-            blob_assets: vec![MemoryAssetBlob {
-                blob: BlobRef {
-                    kind: MemoryBlobKind::ICPCapsule,
+            blob_internal_assets: vec![MemoryAssetBlobInternal {
+                blob_ref: BlobRef {
                     locator: format!("blob_{blob_id}"),
                     hash: Some(checksum),
                     len: size,
                 },
-                meta,
-                asset_type: AssetType::Original,
+                metadata: asset_metadata,
             }],
+            blob_external_assets: vec![],
         }
     }
 
@@ -700,16 +768,35 @@ impl Memory {
             .iter()
             .map(|asset| asset.bytes.len() as u64)
             .sum();
-        let blob_size: u64 = self.blob_assets.iter().map(|asset| asset.blob.len).sum();
-        let size = inline_size + blob_size;
+        let blob_internal_size: u64 = self
+            .blob_internal_assets
+            .iter()
+            .map(|asset| asset.blob_ref.len)
+            .sum();
+        let blob_external_size: u64 = self
+            .blob_external_assets
+            .iter()
+            .map(|asset| match &asset.metadata {
+                AssetMetadata::Image(img) => img.base.bytes,
+                AssetMetadata::Video(vid) => vid.base.bytes,
+                AssetMetadata::Audio(audio) => audio.base.bytes,
+                AssetMetadata::Document(doc) => doc.base.bytes,
+                AssetMetadata::Note(note) => note.base.bytes,
+            })
+            .sum();
+        let size = inline_size + blob_internal_size + blob_external_size;
 
         MemoryHeader {
             id: self.id.clone(),
-            name: self.info.name.clone(),
-            memory_type: self.info.memory_type.clone(),
+            name: self
+                .metadata
+                .title
+                .clone()
+                .unwrap_or_else(|| "Untitled".to_string()),
+            memory_type: self.metadata.memory_type.clone(),
             size,
-            created_at: self.info.created_at,
-            updated_at: self.info.updated_at,
+            created_at: self.metadata.created_at,
+            updated_at: self.metadata.updated_at,
             access: self.access.clone(),
         }
     }

@@ -1,5 +1,8 @@
 use crate::canister_factory::export::*;
 use crate::canister_factory::types::*;
+use crate::types::{
+    AssetMetadata, AssetMetadataBase, AssetType, MemoryAssetBlobInternal, NoteAssetMetadata,
+};
 use candid::Principal;
 
 /// Comprehensive verification of transferred data against source manifest
@@ -269,49 +272,62 @@ mod tests {
     fn create_test_memory(id: &str) -> types::Memory {
         types::Memory {
             id: id.to_string(),
-            info: types::MemoryInfo {
+            metadata: types::MemoryMetadata {
                 memory_type: types::MemoryType::Note,
-                name: format!("Memory {}", id),
+                title: Some(format!("Memory {}", id)),
+                description: None,
                 content_type: "text/plain".to_string(),
                 created_at: 1000000000,
                 updated_at: 1000000000,
                 uploaded_at: 1000000000,
                 date_of_memory: Some(1000000000),
+                file_created_at: Some(1000000000),
                 parent_folder_id: None,
+                tags: vec!["test".to_string()],
                 deleted_at: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
             },
-            metadata: types::MemoryMetadata::Note(types::NoteMetadata {
-                base: types::MemoryMetadataBase {
-                    size: 100,
-                    mime_type: "text/plain".to_string(),
-                    original_name: format!("memory_{}.txt", id),
-                    uploaded_at: "2023-01-01T00:00:00Z".to_string(),
-                    date_of_memory: Some("2023-01-01".to_string()),
-                    people_in_memory: None,
-                    format: Some("text".to_string()),
-                    storage_duration: None, // Default to permanent storage
-                },
-                tags: Some(vec!["test".to_string()]),
-            }),
             access: types::MemoryAccess::Private {
                 owner_secure_code: format!("test_{}", id),
             },
             inline_assets: vec![],
-            blob_assets: vec![types::MemoryAssetBlob {
-                blob: types::BlobRef {
-                    kind: types::MemoryBlobKind::ICPCapsule,
+            blob_internal_assets: vec![types::MemoryAssetBlobInternal {
+                blob_ref: types::BlobRef {
                     locator: format!("memory_{}", id),
                     hash: None,
                     len: 100,
                 },
-                meta: types::MemoryMeta {
-                    name: format!("Memory {}", id),
-                    description: None,
-                    tags: vec![],
-                },
-                asset_type: types::AssetType::Original,
+                metadata: types::AssetMetadata::Note(types::NoteAssetMetadata {
+                    base: types::AssetMetadataBase {
+                        name: format!("Memory {}", id),
+                        description: None,
+                        tags: vec![],
+                        asset_type: types::AssetType::Original,
+                        bytes: 100,
+                        mime_type: "text/plain".to_string(),
+                        sha256: None,
+                        width: None,
+                        height: None,
+                        url: None,
+                        storage_key: None,
+                        bucket: None,
+                        processing_status: None,
+                        processing_error: None,
+                        created_at: 1000000000,
+                        updated_at: 1000000000,
+                        deleted_at: None,
+                        asset_location: None,
+                    },
+                    word_count: None,
+                    language: None,
+                    format: Some("text".to_string()),
+                }),
             }],
+            blob_external_assets: vec![],
         }
     }
 

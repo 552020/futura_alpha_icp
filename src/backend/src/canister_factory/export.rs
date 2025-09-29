@@ -115,34 +115,19 @@ fn calculate_export_data_size(
         }
 
         // Memory metadata specific sizes
-        match &memory.metadata {
-            types::MemoryMetadata::Image(img_meta) => {
-                total_size += img_meta.base.original_name.len() as u64;
-                total_size += img_meta.base.mime_type.len() as u64;
-            }
-            types::MemoryMetadata::Video(vid_meta) => {
-                total_size += vid_meta.base.original_name.len() as u64;
-                total_size += vid_meta.base.mime_type.len() as u64;
-                if let Some(ref thumbnail) = vid_meta.thumbnail {
-                    total_size += thumbnail.len() as u64;
-                }
-            }
-            types::MemoryMetadata::Audio(audio_meta) => {
-                total_size += audio_meta.base.original_name.len() as u64;
-                total_size += audio_meta.base.mime_type.len() as u64;
-            }
-            types::MemoryMetadata::Document(doc_meta) => {
-                total_size += doc_meta.base.original_name.len() as u64;
-                total_size += doc_meta.base.mime_type.len() as u64;
-            }
-            types::MemoryMetadata::Note(note_meta) => {
-                total_size += note_meta.base.original_name.len() as u64;
-                total_size += note_meta.base.mime_type.len() as u64;
-                if let Some(ref tags) = note_meta.tags {
-                    total_size += tags.iter().map(|tag| tag.len() as u64).sum::<u64>();
-                }
-            }
+        if let Some(ref title) = memory.metadata.title {
+            total_size += title.len() as u64;
         }
+        if let Some(ref description) = memory.metadata.description {
+            total_size += description.len() as u64;
+        }
+        total_size += memory.metadata.content_type.len() as u64;
+        total_size += memory
+            .metadata
+            .tags
+            .iter()
+            .map(|tag| tag.len() as u64)
+            .sum::<u64>();
     }
 
     // Calculate connection data sizes
@@ -283,58 +268,36 @@ fn validate_memory_data(memory: &types::Memory) -> Result<(), String> {
         return Err("Memory ID is empty".to_string());
     }
 
-    if memory.info.name.is_empty() {
-        return Err(format!("Memory '{}' has empty name", memory.id));
+    if memory
+        .metadata
+        .title
+        .as_ref()
+        .map_or(true, |t| t.is_empty())
+    {
+        return Err(format!("Memory '{}' has empty title", memory.id));
     }
 
-    if memory.info.content_type.is_empty() {
+    if memory.metadata.content_type.is_empty() {
         return Err(format!("Memory '{}' has empty content_type", memory.id));
     }
 
     // Validate timestamps
-    if memory.info.created_at == 0 {
+    if memory.metadata.created_at == 0 {
         return Err(format!("Memory '{}' has invalid created_at", memory.id));
     }
 
-    if memory.info.uploaded_at == 0 {
+    if memory.metadata.uploaded_at == 0 {
         return Err(format!("Memory '{}' has invalid uploaded_at", memory.id));
     }
 
     // Validate metadata consistency
-    match &memory.metadata {
-        types::MemoryMetadata::Image(img_meta) => {
-            if img_meta.base.mime_type.is_empty() {
-                return Err(format!("Image memory '{}' has empty mime_type", memory.id));
-            }
-        }
-        types::MemoryMetadata::Video(vid_meta) => {
-            if vid_meta.base.mime_type.is_empty() {
-                return Err(format!("Video memory '{}' has empty mime_type", memory.id));
-            }
-        }
-        types::MemoryMetadata::Audio(audio_meta) => {
-            if audio_meta.base.mime_type.is_empty() {
-                return Err(format!("Audio memory '{}' has empty mime_type", memory.id));
-            }
-        }
-        types::MemoryMetadata::Document(doc_meta) => {
-            if doc_meta.base.mime_type.is_empty() {
-                return Err(format!(
-                    "Document memory '{}' has empty mime_type",
-                    memory.id
-                ));
-            }
-        }
-        types::MemoryMetadata::Note(note_meta) => {
-            if note_meta.base.mime_type.is_empty() {
-                return Err(format!("Note memory '{}' has empty mime_type", memory.id));
-            }
-        }
+    if memory.metadata.content_type.is_empty() {
+        return Err(format!("Memory '{}' has empty content_type", memory.id));
     }
 
     // Validate blob references
-    for blob_asset in &memory.blob_assets {
-        if blob_asset.blob.locator.is_empty() {
+    for blob_asset in &memory.blob_internal_assets {
+        if blob_asset.blob_ref.locator.is_empty() {
             return Err(format!("Memory '{}' has empty blob locator", memory.id));
         }
     }
@@ -372,8 +335,8 @@ fn generate_memory_checksum(memory_id: &str, memory: &types::Memory) -> Result<S
     }
 
     // Collect blob asset info
-    for blob_asset in &memory.blob_assets {
-        locators.push(blob_asset.blob.locator.clone());
+    for blob_asset in &memory.blob_internal_assets {
+        locators.push(blob_asset.blob_ref.locator.clone());
     }
 
     let locator = locators.join(",");
@@ -381,10 +344,14 @@ fn generate_memory_checksum(memory_id: &str, memory: &types::Memory) -> Result<S
     let memory_data = format!(
         "{}|{}|{}|{}|{}|{}|{}",
         memory_id,
-        memory.info.name,
-        memory.info.content_type,
-        memory.info.created_at,
-        memory.info.uploaded_at,
+        memory
+            .metadata
+            .title
+            .as_ref()
+            .unwrap_or(&"Untitled".to_string()),
+        memory.metadata.content_type,
+        memory.metadata.created_at,
+        memory.metadata.uploaded_at,
         locator,
         total_data_len
     );
@@ -511,8 +478,8 @@ pub fn verify_export_against_manifest(
 mod tests {
     use super::*;
     use crate::types::{
-        AudioMetadata, AssetType, BlobRef, Connection, ConnectionStatus, ImageMetadata, Memory, MemoryAccess,
-        MemoryAssetBlob, MemoryBlobKind, MemoryInfo, MemoryMeta, MemoryMetadata, MemoryMetadataBase,
+        AssetMetadata, AssetMetadataBase, AssetType, BlobRef, Connection, ConnectionStatus,
+        DocumentAssetMetadata, Memory, MemoryAccess, MemoryAssetBlobInternal, MemoryMetadata,
         MemoryType, OwnerState, PersonRef, StorageEdgeDatabaseType,
     };
     use candid::Principal;
@@ -576,71 +543,65 @@ mod tests {
         content_type: &str,
         data_size: usize,
     ) -> Memory {
-        let base_metadata = MemoryMetadataBase {
-            size: data_size as u64,
-            mime_type: content_type.to_string(),
-            original_name: name.to_string(),
-            uploaded_at: "2024-01-01T00:00:00Z".to_string(),
-            date_of_memory: Some("2024-01-01".to_string()),
-            people_in_memory: Some(vec!["test_person".to_string()]),
-            format: Some("test_format".to_string()),
-            storage_duration: None, // Default to permanent storage
-        };
-
-        let metadata = match memory_type {
-            MemoryType::Image => MemoryMetadata::Image(ImageMetadata {
-                base: base_metadata,
-                dimensions: Some((1920, 1080)),
-            }),
-            MemoryType::Audio => MemoryMetadata::Audio(AudioMetadata {
-                base: base_metadata,
-                duration: Some(120),
-                format: Some("mp3".to_string()),
-                bitrate: Some(320),
-                sample_rate: Some(44100),
-                channels: Some(2),
-            }),
-            _ => MemoryMetadata::Image(ImageMetadata {
-                base: base_metadata,
-                dimensions: None,
-            }),
-        };
-
-        let _test_data = vec![0u8; data_size];
-
         Memory {
             id: id.to_string(),
-            info: MemoryInfo {
+            metadata: MemoryMetadata {
                 memory_type,
-                name: name.to_string(),
+                title: Some(name.to_string()),
+                description: None,
                 content_type: content_type.to_string(),
                 created_at: 1000000000,
                 updated_at: 1000000000,
                 uploaded_at: 1000000000,
                 date_of_memory: Some(1000000000),
+                file_created_at: Some(1000000000),
                 parent_folder_id: None,
+                tags: vec![],
                 deleted_at: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
                 database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
             },
-            metadata,
             access: MemoryAccess::Private {
                 owner_secure_code: format!("test_{}", id),
             },
             inline_assets: vec![],
-            blob_assets: vec![MemoryAssetBlob {
-                blob: BlobRef {
-                    kind: MemoryBlobKind::ICPCapsule,
+            blob_internal_assets: vec![MemoryAssetBlobInternal {
+                blob_ref: BlobRef {
                     locator: format!("test_locator_{}", id),
                     hash: None,
                     len: 100,
                 },
-                meta: MemoryMeta {
-                    name: name.to_string(),
-                    description: None,
-                    tags: vec![],
-                },
-                asset_type: AssetType::Original,
+                metadata: AssetMetadata::Document(DocumentAssetMetadata {
+                    base: AssetMetadataBase {
+                        name: name.to_string(),
+                        description: None,
+                        tags: vec![],
+                        asset_type: AssetType::Original,
+                        bytes: data_size as u64,
+                        mime_type: content_type.to_string(),
+                        sha256: None,
+                        width: None,
+                        height: None,
+                        url: None,
+                        storage_key: None,
+                        bucket: None,
+                        processing_status: None,
+                        processing_error: None,
+                        created_at: 1000000000,
+                        updated_at: 1000000000,
+                        deleted_at: None,
+                        asset_location: None,
+                    },
+                    page_count: None,
+                    document_type: None,
+                    language: None,
+                    word_count: None,
+                }),
             }],
+            blob_external_assets: vec![],
         }
     }
 
@@ -1408,14 +1369,14 @@ mod tests {
             "image/jpeg",
             1024,
         );
-        memory.info.name = "".to_string();
+        memory.metadata.title = Some("".to_string());
 
         let result = validate_memory_data(&memory);
         assert!(
             result.is_err(),
             "Memory validation should fail for empty name"
         );
-        assert!(result.unwrap_err().contains("has empty name"));
+        assert!(result.unwrap_err().contains("has empty title"));
     }
 
     #[test]
@@ -1427,7 +1388,7 @@ mod tests {
             "image/jpeg",
             1024,
         );
-        memory.info.content_type = "".to_string();
+        memory.metadata.content_type = "".to_string();
 
         let result = validate_memory_data(&memory);
         assert!(
@@ -1446,7 +1407,7 @@ mod tests {
             "image/jpeg",
             1024,
         );
-        memory.info.created_at = 0;
+        memory.metadata.created_at = 0;
 
         let result = validate_memory_data(&memory);
         assert!(
@@ -1465,7 +1426,7 @@ mod tests {
             "image/jpeg",
             1024,
         );
-        memory.info.uploaded_at = 0;
+        memory.metadata.uploaded_at = 0;
 
         let result = validate_memory_data(&memory);
         assert!(
@@ -1486,8 +1447,8 @@ mod tests {
         );
 
         // Modify the blob locator to be empty
-        if let Some(blob_asset) = memory.blob_assets.first_mut() {
-            blob_asset.blob.locator = "".to_string();
+        if let Some(blob_asset) = memory.blob_internal_assets.first_mut() {
+            blob_asset.blob_ref.locator = "".to_string();
         }
 
         let result = validate_memory_data(&memory);

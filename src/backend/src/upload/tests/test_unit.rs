@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod session_store_tests {
-    use crate::types::MemoryMeta;
+    use crate::types::{AssetMetadata, AssetType};
     use crate::upload::sessions::SessionStore;
     use crate::upload::types::{SessionId, SessionMeta, SessionStatus};
     use candid::Principal;
@@ -22,10 +22,25 @@ mod session_store_tests {
             expected_hash: Some([0u8; 32]),
             status: SessionStatus::Pending,
             created_at: 1234567890,
-            meta: MemoryMeta {
+            asset_metadata: AssetMetadata {
                 name: "test.txt".to_string(),
                 description: Some("Test file".to_string()),
                 tags: vec!["test".to_string()],
+                asset_type: AssetType::Original,
+                bytes: 300,
+                mime_type: "text/plain".to_string(),
+                sha256: Some([0u8; 32]),
+                width: None,
+                height: None,
+                url: None,
+                storage_key: None,
+                bucket: None,
+                processing_status: None,
+                processing_error: None,
+                created_at: 1234567890,
+                updated_at: 1234567890,
+                deleted_at: None,
+                asset_location: None,
             },
             idem: "test-idem".to_string(),
         }

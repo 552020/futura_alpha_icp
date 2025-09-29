@@ -69,7 +69,6 @@ impl BlobStore {
         });
 
         Ok(crate::types::BlobRef {
-            kind: crate::types::MemoryBlobKind::ICPCapsule,
             locator: store_key,
             hash: Some(sha256),
             len: bytes.len() as u64,

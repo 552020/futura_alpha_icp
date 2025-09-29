@@ -1,4 +1,4 @@
-use crate::types::{CapsuleId, MemoryId, MemoryMeta};
+use crate::types::{AssetMetadata, CapsuleId, MemoryId};
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
@@ -113,7 +113,7 @@ pub struct SessionMeta {
     pub expected_hash: Option<[u8; 32]>,
     pub status: SessionStatus,
     pub created_at: u64,
-    pub meta: MemoryMeta,
+    pub asset_metadata: AssetMetadata,
     pub idem: String,
 }
 
