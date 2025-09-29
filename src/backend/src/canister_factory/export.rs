@@ -110,8 +110,8 @@ fn calculate_export_data_size(
         total_size += 512; // Memory metadata estimate
 
         // Memory blob data if stored inline
-        if let types::MemoryAssets::Inline { bytes, .. } = &memory.assets {
-            total_size += bytes.len() as u64;
+        for inline_asset in &memory.inline_assets {
+            total_size += inline_asset.bytes.len() as u64;
         }
 
         // Memory metadata specific sizes
@@ -332,9 +332,9 @@ fn validate_memory_data(memory: &types::Memory) -> Result<(), String> {
         }
     }
 
-    // Validate blob reference
-    if let types::MemoryAssets::BlobRef { blob, .. } = &memory.assets {
-        if blob.locator.is_empty() {
+    // Validate blob references
+    for blob_asset in &memory.blob_assets {
+        if blob_asset.blob.locator.is_empty() {
             return Err(format!("Memory '{}' has empty blob locator", memory.id));
         }
     }
@@ -362,10 +362,21 @@ fn generate_capsule_checksum(capsule: &types::Capsule) -> Result<String, String>
 /// Generate checksum for memory data
 fn generate_memory_checksum(memory_id: &str, memory: &types::Memory) -> Result<String, String> {
     // Create a deterministic representation of memory for hashing
-    let (locator, data_len) = match &memory.assets {
-        types::MemoryAssets::Inline { bytes, .. } => ("inline".to_string(), bytes.len()),
-        types::MemoryAssets::BlobRef { blob, .. } => (blob.locator.clone(), 0),
-    };
+    let mut locators = Vec::new();
+    let mut total_data_len = 0;
+
+    // Collect inline asset info
+    for inline_asset in &memory.inline_assets {
+        locators.push("inline".to_string());
+        total_data_len += inline_asset.bytes.len();
+    }
+
+    // Collect blob asset info
+    for blob_asset in &memory.blob_assets {
+        locators.push(blob_asset.blob.locator.clone());
+    }
+
+    let locator = locators.join(",");
 
     let memory_data = format!(
         "{}|{}|{}|{}|{}|{}|{}",
@@ -375,7 +386,7 @@ fn generate_memory_checksum(memory_id: &str, memory: &types::Memory) -> Result<S
         memory.info.created_at,
         memory.info.uploaded_at,
         locator,
-        data_len
+        total_data_len
     );
 
     Ok(simple_hash(&memory_data))
@@ -615,7 +626,8 @@ mod tests {
             access: MemoryAccess::Private {
                 owner_secure_code: format!("test_{}", id),
             },
-            assets: MemoryAssets::BlobRef {
+            inline_assets: vec![],
+            blob_assets: vec![MemoryAssetBlob {
                 blob: BlobRef {
                     kind: MemoryBlobKind::ICPCapsule,
                     locator: format!("test_locator_{}", id),
@@ -627,7 +639,8 @@ mod tests {
                     description: None,
                     tags: vec![],
                 },
-            },
+                asset_type: AssetType::Original,
+            }],
             parent_folder_id: None, // Default to root folder
             idempotency_key: None,
         }

@@ -21,8 +21,8 @@ pub type MemoryId = String;
 /// Database storage edge types - where memory metadata/records are stored
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub enum StorageEdgeDatabaseType {
-    Icp,   // ICP canister storage
-    Neon,  // Neon database
+    Icp,  // ICP canister storage
+    Neon, // Neon database
 }
 
 /// Type alias for unified error handling - see Error enum below
@@ -736,29 +736,41 @@ pub struct BlobRef {
 //     pub data: Option<Vec<u8>>, // inline data (for IcCanister storage)
 // }
 
+// Asset type for categorizing different asset variants
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub enum MemoryAssets {
-    /// Inline upload (for small files ≤ INLINE_MAX).
-    Inline {
-        bytes: Vec<u8>,
-        meta: MemoryMeta, // metadata like mime_type, name, etc.
-    },
+pub enum AssetType {
+    Original,   // Original file
+    Thumbnail,  // Small preview/thumbnail
+    Preview,    // Medium preview
+    Derivative, // Processed/derived version
+    Metadata,   // Metadata-only asset
+}
 
-    /// Reference to an existing blob in the blob store.
-    BlobRef {
-        blob: BlobRef, // sha256, len, store_key
-        meta: MemoryMeta,
-    },
+// Inline asset (stored directly in memory)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct MemoryAssetInline {
+    pub bytes: Vec<u8>,
+    pub meta: MemoryMeta,
+    pub asset_type: AssetType,
+}
+
+// Blob asset (reference to blob store)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct MemoryAssetBlob {
+    pub blob: BlobRef,
+    pub meta: MemoryMeta,
+    pub asset_type: AssetType,
 }
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct Memory {
-    pub id: String,                      // unique identifier
-    pub info: MemoryInfo,                // basic info (name, type, timestamps, folder)
-    pub metadata: MemoryMetadata,        // rich metadata (size, dimensions, etc.)
-    pub access: MemoryAccess,            // who can access + temporal rules
-    pub assets: MemoryAssets,            // actual assets + storage location
-    pub idempotency_key: Option<String>, // idempotency key for deduplication
+    pub id: String,                            // unique identifier
+    pub info: MemoryInfo,                      // basic info (name, type, timestamps, folder)
+    pub metadata: MemoryMetadata,              // rich metadata (size, dimensions, etc.)
+    pub access: MemoryAccess,                  // who can access + temporal rules
+    pub inline_assets: Vec<MemoryAssetInline>, // 0 or more inline assets
+    pub blob_assets: Vec<MemoryAssetBlob>,     // 0 or more blob assets
+    pub idempotency_key: Option<String>,       // idempotency key for deduplication
 }
 
 impl Memory {
@@ -795,7 +807,12 @@ impl Memory {
             access: MemoryAccess::Private {
                 owner_secure_code: format!("mem_{now}_{:x}", now % 0xFFFF), // Generate secure code
             }, // Default to private access
-            assets: MemoryAssets::Inline { bytes, meta },
+            inline_assets: vec![MemoryAssetInline {
+                bytes,
+                meta,
+                asset_type: AssetType::Original,
+            }],
+            blob_assets: vec![],
             idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
@@ -833,7 +850,8 @@ impl Memory {
             access: MemoryAccess::Private {
                 owner_secure_code: format!("blob_{blob_id}_{:x}", now % 0xFFFF), // Generate secure code
             }, // Default to private access
-            assets: MemoryAssets::BlobRef {
+            inline_assets: vec![],
+            blob_assets: vec![MemoryAssetBlob {
                 blob: BlobRef {
                     kind: MemoryBlobKind::ICPCapsule,
                     locator: format!("blob_{blob_id}"),
@@ -841,17 +859,22 @@ impl Memory {
                     len: size,
                 },
                 meta,
-            },
+                asset_type: AssetType::Original,
+            }],
             idempotency_key: None, // No idempotency key for legacy constructor
         }
     }
 
     /// Get memory header for listing
     pub fn to_header(&self) -> MemoryHeader {
-        let size = match &self.assets {
-            MemoryAssets::Inline { bytes, .. } => bytes.len() as u64,
-            MemoryAssets::BlobRef { blob, .. } => blob.len,
-        };
+        // Calculate total size from all assets
+        let inline_size: u64 = self
+            .inline_assets
+            .iter()
+            .map(|asset| asset.bytes.len() as u64)
+            .sum();
+        let blob_size: u64 = self.blob_assets.iter().map(|asset| asset.blob.len).sum();
+        let size = inline_size + blob_size;
 
         MemoryHeader {
             id: self.id.clone(),

@@ -297,7 +297,8 @@ mod tests {
             access: types::MemoryAccess::Private {
                 owner_secure_code: format!("test_{}", id),
             },
-            assets: types::MemoryAssets::BlobRef {
+            inline_assets: vec![],
+            blob_assets: vec![types::MemoryAssetBlob {
                 blob: types::BlobRef {
                     kind: types::MemoryBlobKind::ICPCapsule,
                     locator: format!("memory_{}", id),
@@ -309,7 +310,8 @@ mod tests {
                     description: None,
                     tags: vec![],
                 },
-            },
+                asset_type: types::AssetType::Original,
+            }],
             parent_folder_id: None, // Default to root folder
             idempotency_key: None,
         }

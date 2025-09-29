@@ -548,11 +548,20 @@ fn create_memory_from_assembled_data(
     let memory = if let Some(existing_memory) = metadata {
         // Clone existing memory and update data
         let mut memory = existing_memory.clone();
-        if let types::MemoryAssets::Inline { meta, .. } = &memory.assets {
-            memory.assets = types::MemoryAssets::Inline {
+        // Update inline assets with new data
+        if let Some(inline_asset) = memory.inline_assets.first_mut() {
+            inline_asset.bytes = data;
+        } else {
+            // Create new inline asset if none exists
+            memory.inline_assets.push(types::MemoryAssetInline {
                 bytes: data,
-                meta: meta.clone(),
-            };
+                meta: types::MemoryMeta {
+                    name: format!("Imported memory {}", memory_id),
+                    description: None,
+                    tags: vec![],
+                },
+                asset_type: types::AssetType::Original,
+            });
         }
         memory
     } else {
@@ -569,17 +578,19 @@ fn create_memory_from_assembled_data(
                 uploaded_at: now,
                 date_of_memory: Some(now),
                 parent_folder_id: None, // Default to root folder
-                deleted_at: None, // Default to not deleted
+                deleted_at: None,       // Default to not deleted
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
             },
-            assets: types::MemoryAssets::Inline {
+            inline_assets: vec![types::MemoryAssetInline {
                 bytes: data,
                 meta: types::MemoryMeta {
                     name: format!("Imported memory {memory_id}"),
                     description: None,
                     tags: vec![],
                 },
-            },
+                asset_type: types::AssetType::Original,
+            }],
+            blob_assets: vec![],
             access: types::MemoryAccess::Private {
                 owner_secure_code: format!(
                     "import_mem_{}_{:x}",
@@ -600,7 +611,7 @@ fn create_memory_from_assembled_data(
                     storage_duration: None, // Default to permanent storage
                 },
             }),
-            idempotency_key: None,  // No idempotency key for imported memories
+            idempotency_key: None, // No idempotency key for imported memories
         }
     };
 
@@ -658,11 +669,11 @@ fn validate_import_against_manifest(
             .ok_or_else(|| format!("Memory '{memory_id}' not found in manifest"))?;
 
         // Calculate checksum for imported memory
-        let memory_data = match &memory.assets {
-            types::MemoryAssets::Inline { bytes, .. } => bytes,
-            types::MemoryAssets::BlobRef { .. } => &Vec::new(), // No inline data for blob refs
-        };
-        let calculated_checksum = calculate_sha256(memory_data);
+        let mut memory_data = Vec::new();
+        for inline_asset in &memory.inline_assets {
+            memory_data.extend_from_slice(&inline_asset.bytes);
+        }
+        let calculated_checksum = calculate_sha256(&memory_data);
 
         if calculated_checksum != *expected_checksum {
             return Err(format!(
