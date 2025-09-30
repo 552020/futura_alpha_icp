@@ -151,9 +151,9 @@ impl Capsule {
         CapsuleHeader {
             id: self.id.clone(),
             subject: self.subject.clone(),
-            owner_count: self.owners.len() as u32,
-            controller_count: self.controllers.len() as u32,
-            memory_count: self.memories.len() as u32,
+            owner_count: self.owners.len() as u64,
+            controller_count: self.controllers.len() as u64,
+            memory_count: self.memories.len() as u64,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
@@ -260,9 +260,9 @@ pub fn capsules_read_basic(capsule_id: String) -> std::result::Result<CapsuleInf
                 updated_at: capsule.updated_at,
 
                 // Add lightweight counts for summary information
-                memory_count: capsule.memories.len() as u32,
-                gallery_count: capsule.galleries.len() as u32,
-                connection_count: capsule.connections.len() as u32,
+                memory_count: capsule.memories.len() as u64,
+                gallery_count: capsule.galleries.len() as u64,
+                connection_count: capsule.connections.len() as u64,
             })
             .ok_or(Error::NotFound)
     })
@@ -306,9 +306,9 @@ pub fn capsule_read_self_basic() -> std::result::Result<CapsuleInfo, Error> {
                 updated_at: capsule.updated_at,
 
                 // Add lightweight counts for summary information
-                memory_count: capsule.memories.len() as u32,
-                gallery_count: capsule.galleries.len() as u32,
-                connection_count: capsule.connections.len() as u32,
+                memory_count: capsule.memories.len() as u64,
+                gallery_count: capsule.galleries.len() as u64,
+                connection_count: capsule.connections.len() as u64,
             })
             .ok_or(Error::NotFound)
     })

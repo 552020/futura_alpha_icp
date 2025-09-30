@@ -11,6 +11,7 @@ mod admin;
 mod auth;
 mod canister_factory;
 mod capsule;
+mod capsule_acl;
 mod capsule_store;
 mod gallery;
 mod memories;

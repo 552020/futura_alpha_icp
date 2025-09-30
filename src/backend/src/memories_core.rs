@@ -5,6 +5,9 @@
 //! - Trait-based dependency injection for testability
 //! - Post-write assertions to catch silent failures
 
+use crate::capsule_acl::{CapsuleAccess, CapsuleAcl};
+use crate::capsule_store::CapsuleStore;
+use crate::memory;
 use crate::types::{
     AssetMetadata, BlobRef, CapsuleId, Error, Memory, MemoryAccess, MemoryAssetBlobExternal,
     MemoryAssetBlobInternal, MemoryAssetInline, MemoryId, MemoryMetadata, MemoryType,
@@ -37,6 +40,7 @@ pub trait Store {
         id: &MemoryId,
     ) -> std::result::Result<(), Error>;
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId>;
+    fn get_capsule_for_acl(&self, capsule_id: &CapsuleId) -> Option<CapsuleAccess>;
 }
 
 // Removed unused struct: CapsuleRefMut
@@ -119,15 +123,27 @@ pub fn memories_create_core<E: Env, S: Store>(
         _ => {} // already handled by asset_count != 1 above
     }
 
-    // Check if capsule exists and caller has access
-    let accessible_capsules = store.get_accessible_capsules(&env.caller());
-    if !accessible_capsules.contains(&capsule_id) {
+    // Check if capsule exists and caller has write access using centralized ACL
+    let caller = env.caller();
+    let capsule_access = store.get_capsule_for_acl(&capsule_id)
+        .ok_or(Error::NotFound)?;
+    
+    if !capsule_access.can_write(&caller) {
+        ic_cdk::println!(
+            "[ACL] op=create caller={} cap={} read={} write={} delete={} - UNAUTHORIZED",
+            caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+        );
         return Err(Error::Unauthorized);
     }
 
+    // Log successful ACL check
+    ic_cdk::println!(
+        "[ACL] op=create caller={} cap={} read={} write={} delete={} - AUTHORIZED",
+        caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+    );
+
     // Capture timestamp once for consistency
     let now = env.now();
-    let caller = env.caller();
 
     // Generate deterministic memory ID
     let memory_id = format!("mem:{}:{}", &capsule_id, idem);
@@ -178,6 +194,12 @@ pub fn memories_create_core<E: Env, S: Store>(
             "Post-write readback failed: memory was not persisted".to_string(),
         ));
     }
+
+    // Debug: Log successful memory creation
+    ic_cdk::println!(
+        "[DEBUG] memories_create: successfully created memory {} in capsule {}",
+        memory_id, capsule_id
+    );
 
     Ok(memory_id)
 }
@@ -235,8 +257,13 @@ pub fn memories_update_core<E: Env, S: Store>(
             // Update timestamp with captured value
             memory.metadata.updated_at = now;
 
-            // Save the updated memory
-            store.insert_memory(&capsule_id, memory)?;
+            // Save the updated memory using update_with to replace existing memory
+            memory::with_capsule_store_mut(|capsule_store| {
+                capsule_store.update_with(&capsule_id, |capsule_data| {
+                    capsule_data.memories.insert(memory.id.clone(), memory);
+                    Ok(())
+                })
+            })?;
 
             // POST-WRITE ASSERTION: Verify memory was actually updated
             if let Some(updated_memory) = store.get_memory(&capsule_id, &memory_id) {
@@ -264,13 +291,33 @@ pub fn memories_delete_core<E: Env, S: Store>(
     store: &mut S,
     memory_id: MemoryId,
 ) -> std::result::Result<(), Error> {
+    let caller = env.caller();
+    
     // Find the memory across all accessible capsules
-    let accessible_capsules = store.get_accessible_capsules(&env.caller());
+    let accessible_capsules = store.get_accessible_capsules(&caller);
 
     for capsule_id in accessible_capsules {
-        if let Some(_memory) = store.get_memory(&capsule_id, &memory_id) {
-            // TODO: Add ownership check when we have proper owner tracking
-            // For now, if the caller has access to the capsule, they can delete memories
+        if let Some(memory) = store.get_memory(&capsule_id, &memory_id) {
+            // Check delete permissions using centralized ACL
+            let capsule_access = store.get_capsule_for_acl(&capsule_id)
+                .ok_or(Error::NotFound)?;
+            
+            if !capsule_access.can_delete(&caller) {
+                ic_cdk::println!(
+                    "[ACL] op=delete caller={} cap={} read={} write={} delete={} - UNAUTHORIZED",
+                    caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+                );
+                return Err(Error::Unauthorized);
+            }
+
+            // Log successful ACL check
+            ic_cdk::println!(
+                "[ACL] op=delete caller={} cap={} read={} write={} delete={} - AUTHORIZED",
+                caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+            );
+
+            // CRITICAL: Clean up assets before deleting the memory
+            cleanup_memory_assets(&memory)?;
 
             // Delete the memory
             store.delete_memory(&capsule_id, &memory_id)?;
@@ -292,6 +339,163 @@ pub fn memories_delete_core<E: Env, S: Store>(
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Clean up all assets associated with a memory before deletion
+/// This prevents memory leaks and storage bloat
+fn cleanup_memory_assets(memory: &Memory) -> std::result::Result<(), Error> {
+    // 1. Inline assets: No cleanup needed - they're stored directly in the memory struct
+    // When the memory is deleted, inline assets are automatically removed
+
+    // 2. Internal blob assets: Delete from ICP blob store
+    for blob_asset in &memory.blob_internal_assets {
+        cleanup_internal_blob_asset(&blob_asset.blob_ref)?;
+    }
+
+    // 3. External blob assets: Delete from external storage
+    for external_asset in &memory.blob_external_assets {
+        cleanup_external_blob_asset(external_asset)?;
+    }
+
+    Ok(())
+}
+
+/// Clean up an internal blob asset from ICP blob store
+fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<(), Error> {
+    use crate::upload::blob_store::BlobStore;
+    use crate::upload::types::BlobId;
+
+    // Parse the blob locator to get the BlobId
+    // Format: "canister_id:blob_id" or just "blob_id"
+    let blob_id_str = if blob_ref.locator.contains(':') {
+        blob_ref
+            .locator
+            .split(':')
+            .nth(1)
+            .unwrap_or(&blob_ref.locator)
+    } else {
+        &blob_ref.locator
+    };
+
+    // Convert string to BlobId (assuming it's a numeric ID)
+    let blob_id = blob_id_str
+        .parse::<u64>()
+        .map_err(|_| Error::InvalidArgument(format!("Invalid blob ID: {}", blob_id_str)))?;
+
+    let blob_id = BlobId(blob_id);
+
+    // Delete the blob from the store
+    let blob_store = BlobStore::new();
+    blob_store.delete_blob(&blob_id)?;
+
+    Ok(())
+}
+
+/// Clean up an external blob asset from external storage
+fn cleanup_external_blob_asset(
+    external_asset: &MemoryAssetBlobExternal,
+) -> std::result::Result<(), Error> {
+    match &external_asset.location {
+        StorageEdgeBlobType::Icp => {
+            // This shouldn't happen - ICP assets should be in blob_internal_assets
+            return Err(Error::InvalidArgument(
+                "ICP assets should be in blob_internal_assets".to_string(),
+            ));
+        }
+        StorageEdgeBlobType::VercelBlob => {
+            cleanup_vercel_blob_asset(&external_asset.storage_key)?;
+        }
+        StorageEdgeBlobType::S3 => {
+            cleanup_s3_blob_asset(&external_asset.storage_key)?;
+        }
+        StorageEdgeBlobType::Arweave => {
+            cleanup_arweave_blob_asset(&external_asset.storage_key)?;
+        }
+        StorageEdgeBlobType::Ipfs => {
+            cleanup_ipfs_blob_asset(&external_asset.storage_key)?;
+        }
+        StorageEdgeBlobType::Neon => {
+            cleanup_neon_blob_asset(&external_asset.storage_key)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Clean up a Vercel Blob asset
+fn cleanup_vercel_blob_asset(storage_key: &str) -> std::result::Result<(), Error> {
+    // TODO: Implement Vercel Blob deletion via HTTP outcall
+    // This would require:
+    // 1. Making an HTTP outcall to Vercel Blob API
+    // 2. Using the storage_key to delete the blob
+    // 3. Handling authentication and error responses
+
+    // For now, log the deletion attempt
+    ic_cdk::println!("TODO: Delete Vercel Blob asset: {}", storage_key);
+
+    // Return success for now to avoid breaking the deletion flow
+    // In production, this should be implemented properly
+    Ok(())
+}
+
+/// Clean up an S3 asset
+fn cleanup_s3_blob_asset(storage_key: &str) -> std::result::Result<(), Error> {
+    // TODO: Implement S3 deletion via HTTP outcall
+    // This would require:
+    // 1. Making an HTTP outcall to S3 API
+    // 2. Using the storage_key to delete the object
+    // 3. Handling AWS authentication and error responses
+
+    // For now, log the deletion attempt
+    ic_cdk::println!("TODO: Delete S3 asset: {}", storage_key);
+
+    // Return success for now to avoid breaking the deletion flow
+    // In production, this should be implemented properly
+    Ok(())
+}
+
+/// Clean up an Arweave asset
+fn cleanup_arweave_blob_asset(storage_key: &str) -> std::result::Result<(), Error> {
+    // TODO: Implement Arweave deletion
+    // Note: Arweave is designed to be permanent storage
+    // Deletion might not be possible or might require special handling
+
+    // For now, log the deletion attempt
+    ic_cdk::println!("TODO: Delete Arweave asset: {}", storage_key);
+
+    // Return success for now to avoid breaking the deletion flow
+    // In production, this should be implemented properly
+    Ok(())
+}
+
+/// Clean up an IPFS asset
+fn cleanup_ipfs_blob_asset(storage_key: &str) -> std::result::Result<(), Error> {
+    // TODO: Implement IPFS deletion
+    // Note: IPFS is designed to be permanent storage
+    // Deletion might not be possible or might require special handling
+
+    // For now, log the deletion attempt
+    ic_cdk::println!("TODO: Delete IPFS asset: {}", storage_key);
+
+    // Return success for now to avoid breaking the deletion flow
+    // In production, this should be implemented properly
+    Ok(())
+}
+
+/// Clean up a Neon database asset
+fn cleanup_neon_blob_asset(storage_key: &str) -> std::result::Result<(), Error> {
+    // TODO: Implement Neon database asset deletion
+    // This would require:
+    // 1. Making an HTTP outcall to Neon API
+    // 2. Using the storage_key to delete the asset record
+    // 3. Handling database authentication and error responses
+
+    // For now, log the deletion attempt
+    ic_cdk::println!("TODO: Delete Neon asset: {}", storage_key);
+
+    // Return success for now to avoid breaking the deletion flow
+    // In production, this should be implemented properly
+    Ok(())
+}
 
 /// Derive MemoryType from AssetMetadata variant
 fn memory_type_from_asset(meta: &AssetMetadata) -> MemoryType {
@@ -553,6 +757,12 @@ impl Store for InMemoryStore {
             .get(caller)
             .cloned()
             .unwrap_or_default()
+    }
+
+    fn get_capsule_for_acl(&self, _capsule_id: &CapsuleId) -> Option<CapsuleAccess> {
+        // For InMemoryStore, we don't have actual capsule data, so we return None
+        // This is only used in tests, so we can return None for now
+        None
     }
 }
 

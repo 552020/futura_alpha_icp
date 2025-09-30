@@ -316,7 +316,7 @@ pub struct User {
 
 // Capsule types for user-owned data architecture
 // Core person reference - can be a live principal or opaque identifier
-#[derive(CandidType, Deserialize, Serialize, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
 pub enum PersonRef {
     Principal(Principal), // live II user
     Opaque(String),       // non-principal subject (e.g., deceased), UUID-like
@@ -328,6 +328,15 @@ impl PersonRef {
         match self {
             PersonRef::Principal(p) => Some(p),
             PersonRef::Opaque(_) => None,
+        }
+    }
+}
+
+impl std::fmt::Display for PersonRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PersonRef::Principal(p) => write!(f, "{}", p),
+            PersonRef::Opaque(s) => write!(f, "{}", s),
         }
     }
 }

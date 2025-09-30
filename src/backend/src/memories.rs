@@ -92,6 +92,19 @@ impl crate::memories_core::Store for StoreAdapter {
                 .collect()
         })
     }
+
+    fn get_capsule_for_acl(&self, capsule_id: &CapsuleId) -> Option<crate::capsule_acl::CapsuleAccess> {
+        use crate::capsule_acl::CapsuleAccess;
+        with_capsule_store(|store| {
+            store.get(capsule_id).map(|capsule| {
+                CapsuleAccess::new(
+                    capsule.subject.clone(),
+                    capsule.owners.clone(),
+                    capsule.controllers.clone(),
+                )
+            })
+        })
+    }
 }
 
 // ============================================================================
@@ -137,12 +150,33 @@ pub fn ping(
 
 /// List memories in a capsule
 pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
+    use crate::capsule_acl::{CapsuleAccess, CapsuleAcl};
+    
     let caller = PersonRef::from_caller();
     let memories = with_capsule_store(|store| {
         store
             .get(&capsule_id)
             .and_then(|capsule| {
-                if capsule.owners.contains_key(&caller) || capsule.subject == caller {
+                // Use centralized ACL for consistent access control
+                let capsule_access = CapsuleAccess::new(
+                    capsule.subject.clone(),
+                    capsule.owners.clone(),
+                    capsule.controllers.clone(),
+                );
+                
+                if capsule_access.can_read(&caller) {
+                    // Log successful ACL check
+                    ic_cdk::println!(
+                        "[ACL] op=list caller={} cap={} read={} write={} delete={} - AUTHORIZED",
+                        caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+                    );
+                    
+                    // Debug: Log memory count
+                    ic_cdk::println!(
+                        "[DEBUG] memories_list: capsule={} has {} memories",
+                        capsule_id, capsule.memories.len()
+                    );
+                    
                     Some(
                         capsule
                             .memories
@@ -151,6 +185,11 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
                             .collect::<Vec<_>>(),
                     )
                 } else {
+                    // Log failed ACL check
+                    ic_cdk::println!(
+                        "[ACL] op=list caller={} cap={} read={} write={} delete={} - UNAUTHORIZED",
+                        caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+                    );
                     None
                 }
             })
