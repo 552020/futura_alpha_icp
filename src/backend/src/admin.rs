@@ -21,6 +21,13 @@ thread_local! {
 /// - Future: StableBTreeMap<Principal, Admin, Memory> (with metadata)
 /// - Benefits: Audit trail, permissions, creation tracking, admin history
 /// - Use cases: When we need admin metadata, permission levels, or audit requirements
+///
+/// TODO (Post-MVP): Implement decoupled architecture for admin system
+/// - Replace direct stable memory access with AdminStore trait and with_admin_store pattern
+/// - Create AdminStore trait similar to CapsuleStore with methods: exists, get, upsert, remove, list, etc.
+/// - Implement AdminStore for both HashMap (testing) and StableBTreeMap (production) backends
+/// - Create with_admin_store and with_admin_store_mut functions in memory.rs
+/// - Refactor all admin functions to use the new decoupled architecture
 pub struct AdminStore;
 
 impl AdminStore {
@@ -55,6 +62,15 @@ impl AdminStore {
         if is_superadmin(&new_admin_principal) {
             return Err(crate::types::Error::InvalidArgument(
                 "Cannot add superadmin as regular admin".to_string(),
+            ));
+        }
+
+        // Check if admin already exists
+        let already_exists = Self::with_admins(|admins| admins.contains_key(&new_admin_principal));
+
+        if already_exists {
+            return Err(crate::types::Error::Conflict(
+                "Admin already exists".to_string(),
             ));
         }
 
@@ -174,7 +190,15 @@ pub fn list_admins() -> Vec<Principal> {
 }
 
 /// List all superadmins (hardcoded)
+/// Only superadmins can call this function
 pub fn list_superadmins() -> Vec<Principal> {
+    let caller = msg_caller();
+
+    // Only superadmins can list superadmins
+    if !is_superadmin(&caller) {
+        return Vec::new();
+    }
+
     SUPERADMIN_PRINCIPALS
         .iter()
         .map(|s| Principal::from_text(s).unwrap_or_else(|_| Principal::anonymous()))
