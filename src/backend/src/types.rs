@@ -169,6 +169,7 @@ pub enum Error {
     Conflict(String),        // already exists, concurrent update
     ResourceExhausted,       // quotas/size/cycles
     Internal(String),        // redact in prod logs
+    NotImplemented(String),  // feature not yet implemented
 }
 
 // Canonical Rust Result type
@@ -185,6 +186,7 @@ impl std::fmt::Display for Error {
             Error::Conflict(msg) => write!(f, "conflict: {}", msg.to_lowercase()),
             Error::ResourceExhausted => write!(f, "resource exhausted"),
             Error::Internal(msg) => write!(f, "internal error: {}", msg.to_lowercase()),
+            Error::NotImplemented(msg) => write!(f, "not implemented: {}", msg.to_lowercase()),
         }
     }
 }
@@ -407,9 +409,9 @@ pub struct CapsuleInfo {
     pub updated_at: u64,
 
     // Lightweight counts for summary information
-    pub memory_count: u32,     // Number of memories in this capsule
-    pub gallery_count: u32,    // Number of galleries in this capsule
-    pub connection_count: u32, // Number of connections to other people
+    pub memory_count: u64,     // Number of memories in this capsule
+    pub gallery_count: u64,    // Number of galleries in this capsule
+    pub connection_count: u64, // Number of connections to other people
 }
 
 // Capsule header for listing
@@ -417,9 +419,9 @@ pub struct CapsuleInfo {
 pub struct CapsuleHeader {
     pub id: String,
     pub subject: PersonRef,
-    pub owner_count: u32,
-    pub controller_count: u32,
-    pub memory_count: u32,
+    pub owner_count: u64,
+    pub controller_count: u64,
+    pub memory_count: u64,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -447,7 +449,7 @@ pub struct MemoryHeader {
 pub struct GalleryHeader {
     pub id: String,
     pub name: String,
-    pub memory_count: u32,
+    pub memory_count: u64,
     pub created_at: u64,
     pub updated_at: u64,
     pub storage_location: GalleryStorageLocation,
@@ -555,6 +557,12 @@ pub struct BlobRef {
     pub locator: String,        // canister+key, URL, CID, etc.
     pub hash: Option<[u8; 32]>, // optional integrity hash
     pub len: u64,               // size in bytes
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct BlobMeta {
+    pub size: u64,        // total size in bytes
+    pub chunk_count: u32, // number of chunks
 }
 
 // #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]

@@ -37,7 +37,7 @@ run_test() {
 cleanup_upload_sessions() {
     echo_info "Cleaning up upload sessions..."
     for i in {1..20}; do
-        dfx canister call backend uploads_abort "$i" 2>/dev/null >/dev/null
+        dfx canister call "$BACKEND_CANISTER_ID" uploads_abort "$i" 2>/dev/null >/dev/null
     done
     # Give a moment for cleanup to complete
     sleep 1
@@ -47,8 +47,8 @@ cleanup_upload_sessions() {
 
 test_uploads_begin_too_many_chunks() {
     # Test with too many chunks (exceeds MAX_CHUNKS)
-    local result=$(dfx canister call backend uploads_begin \
-        '("test-capsule", record { name = "test"; description = opt "test"; tags = vec {} }, 20000, "test-idem")' 2>/dev/null)
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_begin \
+        '("test-capsule", (variant { Document = record { base = record { name = "test"; description = opt "test"; tags = vec {}; asset_type = variant { Original }; bytes = 0; mime_type = "text/plain"; sha256 = null; width = null; height = null; url = null; storage_key = null; bucket = null; asset_location = null; processing_status = null; processing_error = null; created_at = 0; updated_at = 0; deleted_at = null; }; page_count = null; document_type = null; language = null; word_count = null; }; }), 20000, "test-idem")' 2>/dev/null)
     
     if echo "$result" | grep -q "Err"; then
         echo_info "Upload session validation correctly rejected too many chunks: $result"
@@ -75,30 +75,24 @@ test_complete_upload_workflow() {
         return 1
     fi
     
-    # Upload all chunks using debug endpoint (to avoid blob issues)
+    # Upload all chunks using regular endpoint
     for ((i=0; i<chunk_count; i++)); do
         local chunk_data=$(create_test_chunk $i $chunk_size)
-        local result=$(dfx canister call backend debug_put_chunk_b64 \
-            "($session_id, $i, \"$chunk_data\")" 2>/dev/null)
-        
-        if ! echo "$result" | grep -q "Ok"; then
-            echo_info "Failed to upload chunk $i: $result"
+        if ! upload_chunk "$session_id" $i "$chunk_data"; then
+            echo_info "Failed to upload chunk $i"
             return 1
         fi
     done
     
-    # Finish upload with correct hash using debug endpoint
+    # Finish upload with correct hash using regular endpoint
     local chunk_data=$(create_test_chunk 0 $chunk_size)
     local expected_hash=$(compute_test_hash "$chunk_data" $chunk_count)
     local total_len=$((chunk_count * 100))  # Each chunk is actually 100 bytes
-    local result=$(dfx canister call backend debug_finish_hex \
-        "($session_id, \"$expected_hash\", $total_len)" 2>/dev/null)
-    
-    if echo "$result" | grep -q "Ok"; then
-        echo_info "Complete upload workflow successful: $result"
+    if finish_upload "$session_id" "$expected_hash" "$total_len"; then
+        echo_info "Complete upload workflow successful"
         return 0
     else
-        echo_info "Upload workflow failed at finish: $result"
+        echo_info "Upload workflow failed at finish"
         return 1
     fi
 }
@@ -120,21 +114,17 @@ test_upload_workflow_missing_chunks() {
     
     # Upload only first chunk (leaving 2 missing)
     local chunk_data=$(create_test_chunk 0 50)
-    dfx canister call backend debug_put_chunk_b64 \
-        "($session_id, 0, \"$chunk_data\")" 2>/dev/null
+    upload_chunk "$session_id" 0 "$chunk_data"
     
     # Try to finish with missing chunks
     local chunk_data=$(create_test_chunk 0 50)
     local expected_hash=$(compute_test_hash "$chunk_data" 1)
-    local result=$(dfx canister call backend debug_finish_hex \
-        "($session_id, \"$expected_hash\", 50)" 2>/dev/null)
-    
-    if echo "$result" | grep -q "Err"; then
-        echo_info "Correctly rejected incomplete upload: $result"
-        return 0
-    else
-        echo_info "Should have failed with missing chunks: $result"
+    if finish_upload "$session_id" "$expected_hash" 50; then
+        echo_info "Should have failed with missing chunks"
         return 1
+    else
+        echo_info "Correctly rejected incomplete upload"
+        return 0
     fi
 }
 
@@ -155,11 +145,10 @@ test_upload_workflow_abort() {
     
     # Upload one chunk
     local chunk_data=$(create_test_chunk 0 50)
-    dfx canister call backend debug_put_chunk_b64 \
-        "($session_id, 0, \"$chunk_data\")" 2>/dev/null
+    upload_chunk "$session_id" 0 "$chunk_data"
     
     # Abort the upload
-    local result=$(dfx canister call backend uploads_abort "$session_id" 2>/dev/null)
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_abort "$session_id" 2>/dev/null)
     
     if echo "$result" | grep -q "Ok"; then
         echo_info "Upload abort successful: $result"
@@ -177,11 +166,11 @@ test_upload_workflow_idempotency() {
     
     echo_info "Testing upload begin idempotency"
     
-    local result1=$(dfx canister call backend uploads_begin \
-        "(\"$capsule_id\", record { name = \"idempotency-test\"; description = opt \"Idempotency test\"; tags = vec {} }, 2, \"$idem\")" 2>/dev/null)
+    local result1=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_begin \
+        "(\"$capsule_id\", (variant { Document = record { base = record { name = \"idempotency-test\"; description = opt \"Idempotency test\"; tags = vec {}; asset_type = variant { Original }; bytes = 0; mime_type = \"text/plain\"; sha256 = null; width = null; height = null; url = null; storage_key = null; bucket = null; asset_location = null; processing_status = null; processing_error = null; created_at = 0; updated_at = 0; deleted_at = null; }; page_count = null; document_type = null; language = null; word_count = null; }; }), 2, \"$idem\")" 2>/dev/null)
     
-    local result2=$(dfx canister call backend uploads_begin \
-        "(\"$capsule_id\", record { name = \"idempotency-test\"; description = opt \"Idempotency test\"; tags = vec {} }, 2, \"$idem\")" 2>/dev/null)
+    local result2=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_begin \
+        "(\"$capsule_id\", (variant { Document = record { base = record { name = \"idempotency-test\"; description = opt \"Idempotency test\"; tags = vec {}; asset_type = variant { Original }; bytes = 0; mime_type = \"text/plain\"; sha256 = null; width = null; height = null; url = null; storage_key = null; bucket = null; asset_location = null; processing_status = null; processing_error = null; created_at = 0; updated_at = 0; deleted_at = null; }; page_count = null; document_type = null; language = null; word_count = null; }; }), 2, \"$idem\")" 2>/dev/null)
     
     local session_id1=$(echo "$result1" | grep -o 'Ok = [0-9]* : nat64' | sed 's/Ok = //' | sed 's/ : nat64//')
     local session_id2=$(echo "$result2" | grep -o 'Ok = [0-9]* : nat64' | sed 's/Ok = //' | sed 's/ : nat64//')
@@ -216,10 +205,7 @@ test_large_file_workflow() {
     # Upload all chunks
     for ((i=0; i<chunk_count; i++)); do
         local chunk_data=$(create_test_chunk $i $chunk_size)
-        local result=$(dfx canister call backend debug_put_chunk_b64 \
-            "($session_id, $i, \"$chunk_data\")" 2>/dev/null)
-        
-        if ! echo "$result" | grep -q "Ok"; then
+        if ! upload_chunk "$session_id" $i "$chunk_data"; then
             echo_info "Failed to upload chunk $i in large file test"
             return 1
         fi
@@ -229,14 +215,11 @@ test_large_file_workflow() {
     local chunk_data=$(create_test_chunk 0 $chunk_size)
     local expected_hash=$(compute_test_hash "$chunk_data" $chunk_count)
     local total_len=$((chunk_count * 100))  # Each chunk is actually 100 bytes
-    local result=$(dfx canister call backend debug_finish_hex \
-        "($session_id, \"$expected_hash\", $total_len)" 2>/dev/null)
-    
-    if echo "$result" | grep -q "Ok"; then
-        echo_info "Large file workflow completed successfully: $result"
+    if finish_upload "$session_id" "$expected_hash" "$total_len"; then
+        echo_info "Large file workflow completed successfully"
         return 0
     else
-        echo_info "Large file workflow failed: $result"
+        echo_info "Large file workflow failed"
         return 1
     fi
 }

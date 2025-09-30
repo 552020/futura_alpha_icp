@@ -62,8 +62,39 @@ test_upload_begin_idempotency() {
 
 test_upload_begin_zero_chunks() {
     local capsule_id=$(get_test_capsule_id)
-    local result=$(dfx canister call backend uploads_begin \
-        '("'$capsule_id'", record { name = "test"; description = opt "test"; tags = vec {} }, 0, "idem-zero")' 2>/dev/null)
+    
+    # Create proper AssetMetadata variant for Document type
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
+          name = "test";
+          description = opt "test";
+          tags = vec {};
+          asset_type = variant { Original };
+          bytes = 0;
+          mime_type = "text/plain";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
+        };
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
+      }
+    })'
+    
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_begin \
+        '("'$capsule_id'", '$asset_metadata', 0, "idem-zero")' 2>/dev/null)
     
     if is_failure "$result" && echo "$result" | grep -q "expected_chunks_zero"; then
         echo_info "Upload begin correctly rejected zero chunks: $result"

@@ -293,7 +293,75 @@ fn memories_read(memory_id: String) -> std::result::Result<types::Memory, Error>
     let env = CanisterEnv;
     let store = StoreAdapter;
 
+    // Get the full memory but strip blob data for performance
+    let memory = memories_read_core(&env, &store, memory_id)?;
+
+    // Create a new memory with empty blob data but preserved metadata
+    let mut stripped_memory = memory.clone();
+    for asset in &mut stripped_memory.inline_assets {
+        asset.bytes.clear(); // Remove blob data, keep metadata
+    }
+    // blob_internal_assets and blob_external_assets keep their references (no blob data to clear)
+
+    Ok(stripped_memory)
+}
+
+#[ic_cdk::query]
+fn memories_read_with_assets(memory_id: String) -> std::result::Result<types::Memory, Error> {
+    use crate::memories::{CanisterEnv, StoreAdapter};
+    use crate::memories_core::memories_read_core;
+
+    let env = CanisterEnv;
+    let store = StoreAdapter;
+
+    // Return full memory with all blob data (original behavior)
     memories_read_core(&env, &store, memory_id)
+}
+
+#[ic_cdk::query]
+fn memories_read_asset(memory_id: String, asset_index: u32) -> std::result::Result<Vec<u8>, Error> {
+    use crate::memories::{CanisterEnv, StoreAdapter};
+    use crate::memories_core::memories_read_core;
+
+    let env = CanisterEnv;
+    let store = StoreAdapter;
+
+    // Get the full memory first
+    let memory = memories_read_core(&env, &store, memory_id)?;
+
+    // Find the asset by index
+    let asset_index = asset_index as usize;
+
+    // Check inline assets first
+    if asset_index < memory.inline_assets.len() {
+        return Ok(memory.inline_assets[asset_index].bytes.clone());
+    }
+
+    // Check blob internal assets
+    let inline_count = memory.inline_assets.len();
+    if asset_index < inline_count + memory.blob_internal_assets.len() {
+        let _blob_index = asset_index - inline_count;
+        // For blob internal assets, we need to fetch from blob store
+        // This would require implementing blob retrieval logic
+        return Err(Error::NotImplemented(
+            "Blob internal asset retrieval not yet implemented".to_string(),
+        ));
+    }
+
+    // Check blob external assets
+    let blob_internal_count = memory.blob_internal_assets.len();
+    if asset_index < inline_count + blob_internal_count + memory.blob_external_assets.len() {
+        let _external_index = asset_index - inline_count - blob_internal_count;
+        // For external assets, we would need to fetch from external storage
+        return Err(Error::NotImplemented(
+            "External asset retrieval not yet implemented".to_string(),
+        ));
+    }
+
+    Err(Error::InvalidArgument(format!(
+        "Asset index {} out of range",
+        asset_index
+    )))
 }
 
 #[ic_cdk::update]
@@ -393,6 +461,21 @@ async fn uploads_put_chunk(
     chunk_idx: u32,
     bytes: Vec<u8>,
 ) -> std::result::Result<(), Error> {
+    // Breadcrumb logging: log what we receive from Candid
+    let hex = bytes
+        .iter()
+        .take(8)
+        .map(|b| format!("{:02x}", b))
+        .collect::<Vec<_>>()
+        .join(" ");
+    ic_cdk::println!(
+        "PUT_CHUNK_RECV: session_id={}, chunk_idx={}, data_len={}, prefix=[{}]",
+        session_id,
+        chunk_idx,
+        bytes.len(),
+        hex
+    );
+
     // Use real UploadService with actual store integration
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new();
@@ -490,6 +573,19 @@ fn debug_sha256(bytes: Vec<u8>) -> String {
 #[ic_cdk::query]
 fn blob_read(locator: String) -> std::result::Result<Vec<u8>, Error> {
     upload::blob_read(locator)
+}
+
+/// Read blob data by locator in chunks (for large files)
+/// Returns individual chunks to avoid IC message size limits
+#[ic_cdk::query]
+fn blob_read_chunk(locator: String, chunk_index: u32) -> std::result::Result<Vec<u8>, Error> {
+    upload::blob_store::blob_read_chunk(locator, chunk_index)
+}
+
+/// Get blob metadata including total chunk count
+#[ic_cdk::query]
+fn blob_get_meta(locator: String) -> std::result::Result<types::BlobMeta, Error> {
+    upload::blob_store::blob_get_meta(locator)
 }
 
 /// Debug endpoint to upload chunk with base64 data (dev only)
@@ -767,6 +863,20 @@ fn post_upgrade() {
     // If restore fails, start with empty state (no panic)
 
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
+}
+
+// Temporary diagnostic endpoint to probe inline bytes length
+#[ic_cdk::update]
+fn _probe_inline_len(content: Option<Vec<u8>>) -> (u64, Vec<u8>) {
+    match content {
+        Some(b) => {
+            let len = b.len() as u64;
+            let mut p = b.clone();
+            p.truncate(8);
+            (len, p)
+        }
+        None => (0, vec![]),
+    }
 }
 
 // Export the interface for the smart contract.

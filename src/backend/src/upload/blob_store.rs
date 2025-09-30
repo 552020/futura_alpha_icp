@@ -185,41 +185,11 @@ impl BlobStore {
 /// Automatically chooses between single response and chunked reading based on size
 pub fn blob_read(locator: String) -> std::result::Result<Vec<u8>, Error> {
     use crate::upload::types::BlobId;
-    use hex;
 
     // Parse locator to extract blob ID
-    // Format: "inline_{hex_hash_prefix}" or "blob_{blob_id}"
-    let blob_id = if locator.starts_with("inline_") {
-        // For inline blobs, we need to find the blob by hash prefix
-        let hash_prefix = locator.strip_prefix("inline_").unwrap_or("");
-        if let Ok(prefix_bytes) = hex::decode(hash_prefix) {
-            // Search through blob metadata to find matching blob
-            let blob_store = BlobStore::new();
-            let mut found_blob_id = None;
-
-            // We need to iterate through all blobs to find one with matching hash prefix
-            // This is not ideal for performance, but necessary for the current architecture
-            for blob_id_num in 0..blob_store.blob_count() {
-                let blob_id = BlobId(blob_id_num);
-                if let Ok(Some(meta)) = blob_store.get_blob_meta(&blob_id) {
-                    // Compare the first 8 bytes of the full checksum with the prefix
-                    if meta.checksum.len() >= prefix_bytes.len()
-                        && meta.checksum[..prefix_bytes.len()] == prefix_bytes[..]
-                    {
-                        found_blob_id = Some(blob_id);
-                        break;
-                    }
-                }
-            }
-
-            found_blob_id.ok_or(crate::types::Error::NotFound)?
-        } else {
-            return Err(crate::types::Error::InvalidArgument(
-                "Invalid hex in locator".to_string(),
-            ));
-        }
-    } else if locator.starts_with("blob_") {
-        // For blob_ format, extract the numeric ID
+    // Format: "blob_{blob_id}" (inline_ format removed for performance)
+    let blob_id = if locator.starts_with("blob_") {
+        // For blob_ format, extract the numeric ID (fast O(1) lookup)
         let id_str = locator.strip_prefix("blob_").unwrap_or("");
         let blob_id_num: u64 = id_str.parse().map_err(|_| {
             crate::types::Error::InvalidArgument("Invalid blob ID in locator".to_string())
@@ -227,7 +197,7 @@ pub fn blob_read(locator: String) -> std::result::Result<Vec<u8>, Error> {
         BlobId(blob_id_num)
     } else {
         return Err(crate::types::Error::InvalidArgument(
-            "Unsupported locator format".to_string(),
+            "Unsupported locator format. Expected 'blob_{id}'".to_string(),
         ));
     };
 
@@ -296,6 +266,77 @@ fn read_blob_chunk(
     let page_data = STABLE_BLOB_STORE.with(|store| store.borrow().get(&page_key));
 
     Ok(page_data.unwrap_or_default())
+}
+
+/// Read blob data by locator in chunks (public API for chunked reading)
+/// Returns individual chunks to avoid IC message size limits
+pub fn blob_read_chunk(locator: String, chunk_index: u32) -> std::result::Result<Vec<u8>, Error> {
+    use crate::upload::types::BlobId;
+
+    // Parse locator to extract blob ID (inline_ format removed for performance)
+    let blob_id = if locator.starts_with("blob_") {
+        // For blob_ format, extract the numeric ID (fast O(1) lookup)
+        let id_str = locator.strip_prefix("blob_").unwrap_or("");
+        let blob_id_num: u64 = id_str.parse().map_err(|_| {
+            crate::types::Error::InvalidArgument("Invalid blob ID in locator".to_string())
+        })?;
+        BlobId(blob_id_num)
+    } else {
+        return Err(crate::types::Error::InvalidArgument(
+            "Unsupported locator format. Expected 'blob_{id}'".to_string(),
+        ));
+    };
+
+    // Verify blob exists
+    let blob_store = BlobStore::new();
+    if blob_store.get_blob_meta(&blob_id)?.is_none() {
+        return Err(crate::types::Error::NotFound);
+    }
+
+    // Read the specific chunk
+    read_blob_chunk(&blob_store, &blob_id, chunk_index)
+}
+
+/// Get blob metadata including total chunk count
+pub fn blob_get_meta(locator: String) -> std::result::Result<crate::types::BlobMeta, Error> {
+    use crate::upload::types::BlobId;
+
+    // Parse locator to extract blob ID (inline_ format removed for performance)
+    let blob_id = if locator.starts_with("blob_") {
+        // For blob_ format, extract the numeric ID (fast O(1) lookup)
+        let id_str = locator.strip_prefix("blob_").unwrap_or("");
+        let blob_id_num: u64 = id_str.parse().map_err(|_| {
+            crate::types::Error::InvalidArgument("Invalid blob ID in locator".to_string())
+        })?;
+        BlobId(blob_id_num)
+    } else {
+        return Err(crate::types::Error::InvalidArgument(
+            "Unsupported locator format. Expected 'blob_{id}'".to_string(),
+        ));
+    };
+
+    // Get blob metadata
+    let blob_store = BlobStore::new();
+    if let Ok(Some(meta)) = blob_store.get_blob_meta(&blob_id) {
+        // Calculate total chunk count based on size
+        // Each chunk is stored as a page, and we need to count how many pages exist
+        let mut chunk_count = 0u32;
+        loop {
+            let page_key = (blob_id.0, chunk_count);
+            let exists = STABLE_BLOB_STORE.with(|store| store.borrow().contains_key(&page_key));
+            if !exists {
+                break;
+            }
+            chunk_count += 1;
+        }
+
+        Ok(crate::types::BlobMeta {
+            size: meta.size,
+            chunk_count,
+        })
+    } else {
+        Err(crate::types::Error::NotFound)
+    }
 }
 
 #[cfg(test)]
@@ -387,32 +428,19 @@ mod tests {
     }
 
     #[test]
-    fn test_blob_read_inline_locator() {
-        let _blob_store = create_test_blob_store();
-
-        // Test reading blob by inline hash prefix
+    fn test_blob_read_unsupported_format() {
+        // Test that inline_ format is properly rejected
         let result = blob_read("inline_0102030405".to_string());
-        assert!(result.is_ok());
-
-        let data = result.unwrap();
-        assert_eq!(data, b"Hello, World! This is test data for blob reading.");
-    }
-
-    #[test]
-    fn test_blob_read_inline_locator_invalid_hex() {
-        // Test with invalid hex in inline locator
-        let result = blob_read("inline_invalid_hex".to_string());
         assert!(result.is_err());
-
-        match result.unwrap_err() {
-            crate::types::Error::InvalidArgument(_) => {}
-            _ => panic!("Expected InvalidArgument error"),
-        }
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unsupported locator format"));
     }
 
     #[test]
     fn test_read_blob_chunked_large_blob() {
-        let blob_store = BlobStore::new();
+        let _blob_store = BlobStore::new();
 
         // Create a large blob that exceeds MAX_SINGLE_RESPONSE_SIZE
         let large_data = vec![0u8; 3 * 1024 * 1024]; // 3MB

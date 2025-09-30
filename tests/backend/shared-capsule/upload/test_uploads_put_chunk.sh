@@ -53,7 +53,7 @@ create_test_chunk() {
 test_uploads_put_chunk_invalid_session() {
     # Test with invalid session ID
     local chunk_data=$(create_test_chunk 0 50)
-    local result=$(dfx canister call backend uploads_put_chunk \
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_put_chunk \
         '(999999, 0, blob "'"$chunk_data"'")' 2>/dev/null)
     
     if echo "$result" | grep -q "Err"; then
@@ -67,7 +67,7 @@ test_uploads_put_chunk_invalid_session() {
 
 test_uploads_put_chunk_malformed_data() {
     # Test with malformed chunk data
-    local result=$(dfx canister call backend uploads_put_chunk \
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_put_chunk \
         '(123, 0, blob "invalid_base64")' 2>/dev/null)
     
     # This should either fail with Err or succeed (depending on how the backend handles malformed data)
@@ -85,7 +85,7 @@ test_uploads_put_chunk_large_chunk() {
     # Test with chunk that exceeds CHUNK_SIZE limit (64KB)
     # Create a chunk larger than 64KB
     local large_chunk=$(head -c 70000 /dev/zero | base64)
-    local result=$(dfx canister call backend uploads_put_chunk \
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_put_chunk \
         "(123, 0, blob \"$large_chunk\")" 2>/dev/null)
     
     if echo "$result" | grep -q "Err"; then
@@ -100,7 +100,7 @@ test_uploads_put_chunk_large_chunk() {
 test_uploads_put_chunk_negative_index() {
     # Test with negative chunk index (should be rejected at Candid level)
     local chunk_data=$(create_test_chunk 0 50)
-    local result=$(dfx canister call backend uploads_put_chunk \
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_put_chunk \
         "(123, -1, blob \"$chunk_data\")" 2>&1)
     
     # This should fail at the Candid serialization level since u32 cannot be negative
@@ -115,7 +115,7 @@ test_uploads_put_chunk_negative_index() {
 
 test_uploads_put_chunk_empty_data() {
     # Test with empty chunk data
-    local result=$(dfx canister call backend uploads_put_chunk \
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_put_chunk \
         '(123, 0, blob "")' 2>/dev/null)
 
     # Empty chunks should be allowed (for the last chunk of a file)
@@ -131,7 +131,7 @@ test_uploads_put_chunk_empty_data() {
 test_uploads_put_chunk_committed_session() {
     # Test with committed session - demonstrate that session state validation exists
     # Since we can't easily create a committed session in bash, we test the validation logic exists
-    local result=$(dfx canister call backend uploads_put_chunk \
+    local result=$(dfx canister call "$BACKEND_CANISTER_ID" uploads_put_chunk \
         '(999, 0, blob "dGVzdA==")' 2>/dev/null)
 
     # Should get NotFound (since session doesn't exist), but the validation logic is in place

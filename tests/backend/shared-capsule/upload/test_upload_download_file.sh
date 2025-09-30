@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 IDENTITY="default"
-CANISTER_ID="backend"  # Use 'backend' like the working upload tests
+CANISTER_ID="${BACKEND_CANISTER_ID:-backend}"  # Use BACKEND_CANISTER_ID from test config
 OUTPUT_DIR="tests/backend/shared-capsule/upload/assets/output"
 
 # Source test utilities
@@ -143,7 +143,7 @@ upload_file_via_blob() {
     
     # Begin upload session
     local idem="test_blob_$(date +%s)"
-    local memory_meta="record { name = \"$file_name\"; description = opt \"Upload test file - $file_size bytes\"; tags = vec { \"upload-test\"; \"file\"; \"size-$file_size\" } }"
+    local memory_meta="(variant { Document = record { base = record { name = \"$file_name\"; description = opt \"Upload test file - $file_size bytes\"; tags = vec { \"upload-test\"; \"file\"; \"size-$file_size\" }; asset_type = variant { Original }; bytes = $file_size; mime_type = \"text/plain\"; sha256 = null; width = null; height = null; url = null; storage_key = null; bucket = null; asset_location = null; processing_status = null; processing_error = null; created_at = 0; updated_at = 0; deleted_at = null; }; page_count = null; document_type = null; language = null; word_count = null; }; })"
     local begin_result=$(dfx canister call $CANISTER_ID uploads_begin "(\"$capsule_id\", $memory_meta, $total_chunks, \"$idem\")" 2>/dev/null)
     
     if [[ $begin_result != *"Ok"* ]]; then
