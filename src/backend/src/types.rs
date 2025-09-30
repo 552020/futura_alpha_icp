@@ -131,6 +131,19 @@ pub enum AssetMetadata {
     Note(NoteAssetMetadata),
 }
 
+impl AssetMetadata {
+    /// Get the base metadata that's common to all asset types
+    pub fn get_base(&self) -> &AssetMetadataBase {
+        match self {
+            AssetMetadata::Image(img) => &img.base,
+            AssetMetadata::Video(vid) => &vid.base,
+            AssetMetadata::Audio(aud) => &aud.base,
+            AssetMetadata::Document(doc) => &doc.base,
+            AssetMetadata::Note(note) => &note.base,
+        }
+    }
+}
+
 /// Upload configuration for TS client discoverability
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
 pub struct UploadConfig {
@@ -159,7 +172,7 @@ pub enum Error {
 }
 
 // Canonical Rust Result type
-pub type Result<T> = std::result::Result<T, Error>;
+// Removed ApiResult and UnitResult aliases - use std::result::Result<T, Error> directly
 
 // Result<T> removed - using canonical Result<T> = std::result::Result<T, Error>
 
@@ -1147,7 +1160,7 @@ mod tests {
 
     #[test]
     fn test_result_ok() {
-        let result: Result<String> = Ok("test data".to_string());
+        let result: std::result::Result<String, Error> = Ok("test data".to_string());
         assert!(result.is_ok());
         assert!(!result.is_err());
         assert_eq!(result.unwrap(), "test data".to_string());
@@ -1155,7 +1168,7 @@ mod tests {
 
     #[test]
     fn test_result_err() {
-        let result: Result<String> = Err(Error::NotFound);
+        let result: std::result::Result<String, Error> = Err(Error::NotFound);
         assert!(!result.is_ok());
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), Error::NotFound);

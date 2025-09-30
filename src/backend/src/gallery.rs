@@ -7,11 +7,11 @@ use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
     Error, Gallery, GalleryData, GalleryHeader, GalleryStorageLocation, GalleryUpdateData,
-    PersonRef, Result,
+    PersonRef,
 };
 
 /// Create a gallery in the caller's capsule (replaces store_gallery_forever)
-pub fn galleries_create(gallery_data: GalleryData) -> Result<Gallery> {
+pub fn galleries_create(gallery_data: GalleryData) -> std::result::Result<Gallery, Error> {
     let caller = PersonRef::from_caller();
 
     // Use the gallery ID provided by Web2 (don't generate new ID)
@@ -79,7 +79,7 @@ pub fn galleries_create(gallery_data: GalleryData) -> Result<Gallery> {
 pub fn galleries_create_with_memories(
     gallery_data: GalleryData,
     sync_memories: bool,
-) -> Result<Gallery> {
+) -> std::result::Result<Gallery, Error> {
     let caller = PersonRef::from_caller();
 
     // Use the gallery ID provided by Web2 (don't generate new ID)
@@ -172,7 +172,7 @@ pub fn galleries_list() -> Vec<GalleryHeader> {
 }
 
 /// Get gallery by ID from caller's capsule (replaces get_gallery_by_id)
-pub fn galleries_read(gallery_id: String) -> Result<Gallery> {
+pub fn galleries_read(gallery_id: String) -> std::result::Result<Gallery, Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find gallery in caller's self-capsule
@@ -191,7 +191,7 @@ pub fn galleries_read(gallery_id: String) -> Result<Gallery> {
 pub fn update_gallery_storage_location(
     gallery_id: String,
     new_location: GalleryStorageLocation,
-) -> Result<()> {
+) -> std::result::Result<(), Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Update gallery storage status in caller's self-capsule
@@ -229,7 +229,10 @@ pub fn update_gallery_storage_location(
 }
 
 /// Update a gallery in caller's capsule (replaces update_gallery)
-pub fn galleries_update(gallery_id: String, update_data: GalleryUpdateData) -> Result<Gallery> {
+pub fn galleries_update(
+    gallery_id: String,
+    update_data: GalleryUpdateData,
+) -> std::result::Result<Gallery, Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find and update gallery in caller's self-capsule
@@ -287,7 +290,7 @@ pub fn galleries_update(gallery_id: String, update_data: GalleryUpdateData) -> R
 }
 
 /// Delete a gallery from caller's capsule (replaces delete_gallery)
-pub fn galleries_delete(gallery_id: String) -> Result<()> {
+pub fn galleries_delete(gallery_id: String) -> std::result::Result<(), Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find and delete gallery from caller's self-capsule

@@ -3,7 +3,6 @@
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::state::add_canister_size;
-use crate::types::Result;
 use crate::types::*;
 use ic_stable_structures::Storable;
 
@@ -152,7 +151,7 @@ impl Capsule {
 /// If subject is None, creates a self-capsule (subject = caller)
 /// If subject is provided, creates a capsule for that subject
 
-pub fn capsules_create(subject: Option<PersonRef>) -> Result<Capsule> {
+pub fn capsules_create(subject: Option<PersonRef>) -> std::result::Result<Capsule, Error> {
     let caller = PersonRef::from_caller();
 
     // Check if caller already has a self-capsule when creating self-capsule
@@ -213,7 +212,7 @@ pub fn capsules_create(subject: Option<PersonRef>) -> Result<Capsule> {
 
 /// Get capsule by ID (with read access check)
 
-pub fn capsules_read(capsule_id: String) -> Result<Capsule> {
+pub fn capsules_read(capsule_id: String) -> std::result::Result<Capsule, Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Using new trait-based API
@@ -227,7 +226,7 @@ pub fn capsules_read(capsule_id: String) -> Result<Capsule> {
 
 /// Get capsule info by ID (basic version with read access check)
 
-pub fn capsules_read_basic(capsule_id: String) -> Result<CapsuleInfo> {
+pub fn capsules_read_basic(capsule_id: String) -> std::result::Result<CapsuleInfo, Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Using new trait-based API
@@ -256,7 +255,7 @@ pub fn capsules_read_basic(capsule_id: String) -> Result<CapsuleInfo> {
 
 /// Get caller's self-capsule (where caller is the subject)
 
-pub fn capsule_read_self() -> Result<Capsule> {
+pub fn capsule_read_self() -> std::result::Result<Capsule, Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find caller's self-capsule
@@ -271,7 +270,7 @@ pub fn capsule_read_self() -> Result<Capsule> {
 }
 
 /// Get caller's self-capsule info (basic version)
-pub fn capsule_read_self_basic() -> Result<CapsuleInfo> {
+pub fn capsule_read_self_basic() -> std::result::Result<CapsuleInfo, Error> {
     let caller = PersonRef::from_caller();
 
     // MIGRATED: Find caller's self-capsule and create basic info
@@ -318,7 +317,10 @@ pub fn capsules_list() -> Vec<CapsuleHeader> {
 
 /// Update a capsule with the provided data
 /// Only allows updates to mutable fields (binding status, timestamps)
-pub fn capsules_update(capsule_id: String, updates: CapsuleUpdateData) -> Result<Capsule> {
+pub fn capsules_update(
+    capsule_id: String,
+    updates: CapsuleUpdateData,
+) -> std::result::Result<Capsule, Error> {
     let caller = PersonRef::from_caller();
 
     // First check if the capsule exists and caller has access
@@ -353,7 +355,7 @@ pub fn capsules_update(capsule_id: String, updates: CapsuleUpdateData) -> Result
 
 /// Delete a capsule (permanent deletion)
 /// Only allows deletion by capsule owners
-pub fn capsules_delete(capsule_id: String) -> Result<()> {
+pub fn capsules_delete(capsule_id: String) -> std::result::Result<(), Error> {
     let caller = PersonRef::from_caller();
 
     // First, get the capsule to check ownership and calculate size for tracking
@@ -383,7 +385,7 @@ pub fn capsules_bind_neon(
     resource_type: ResourceType,
     resource_id: String,
     bind: bool,
-) -> Result<()> {
+) -> std::result::Result<(), Error> {
     let caller_ref = PersonRef::from_caller();
 
     match resource_type {
@@ -538,7 +540,10 @@ pub fn find_self_capsule(caller: &PersonRef) -> Option<Capsule> {
 }
 
 /// Update a capsule's activity timestamp for a specific owner
-pub fn update_capsule_activity(capsule_id: &str, caller: &PersonRef) -> crate::types::Result<()> {
+pub fn update_capsule_activity(
+    capsule_id: &str,
+    caller: &PersonRef,
+) -> std::result::Result<(), Error> {
     let now = ic_cdk::api::time();
     use crate::memory::with_capsule_store_mut;
 

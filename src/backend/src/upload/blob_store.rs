@@ -254,7 +254,7 @@ impl BlobStore {
 
 /// Read blob data by locator (public API function)
 /// Automatically chooses between single response and chunked reading based on size
-pub fn blob_read(locator: String) -> crate::types::Result<Vec<u8>> {
+pub fn blob_read(locator: String) -> std::result::Result<Vec<u8>, Error> {
     use crate::upload::types::BlobId;
     use hex;
 
@@ -328,7 +328,7 @@ fn read_blob_chunked(
     blob_store: &BlobStore,
     blob_id: &crate::upload::types::BlobId,
     total_size: u64,
-) -> crate::types::Result<Vec<u8>> {
+) -> std::result::Result<Vec<u8>, Error> {
     const CHUNK_SIZE: u32 = 1024 * 1024; // 1MB chunks
     let mut result = Vec::with_capacity(total_size as usize);
     let mut chunk_index = 0u32;
@@ -360,7 +360,7 @@ fn read_blob_chunk(
     blob_store: &BlobStore,
     blob_id: &crate::upload::types::BlobId,
     chunk_index: u32,
-) -> crate::types::Result<Vec<u8>> {
+) -> std::result::Result<Vec<u8>, Error> {
     // Note: The stable blob store is accessed directly via STABLE_BLOB_STORE
 
     let page_key = (blob_id.0, chunk_index);

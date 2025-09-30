@@ -3,6 +3,8 @@
 
 #![allow(dead_code)] // Many functions will be used in upcoming tasks
 
+use crate::types::Error;
+
 pub mod auth;
 pub mod cycles;
 pub mod export;
@@ -17,7 +19,6 @@ pub mod verify;
 pub mod integration_tests;
 
 // Re-export commonly used types
-use crate::types::Result;
 pub use types::*;
 
 // Re-export only the functions that are actually used
@@ -61,59 +62,66 @@ pub fn get_detailed_creation_status() -> Option<DetailedCreationStatus> {
     None
 }
 
-pub fn get_user_creation_status(_user: Principal) -> Result<Option<DetailedCreationStatus>> {
+pub fn get_user_creation_status(
+    _user: Principal,
+) -> std::result::Result<Option<DetailedCreationStatus>, Error> {
     Ok(None)
 }
 
 // Legacy function for backward compatibility
-pub fn get_user_migration_status(user: Principal) -> Result<Option<DetailedCreationStatus>> {
+pub fn get_user_migration_status(
+    user: Principal,
+) -> std::result::Result<Option<DetailedCreationStatus>, Error> {
     get_user_creation_status(user)
 }
 
-pub fn list_all_creation_states() -> Result<Vec<(Principal, DetailedCreationStatus)>> {
+pub fn list_all_creation_states(
+) -> std::result::Result<Vec<(Principal, DetailedCreationStatus)>, Error> {
     Ok(vec![])
 }
 
 // Legacy function for backward compatibility
-pub fn list_all_migration_states() -> Result<Vec<(Principal, DetailedCreationStatus)>> {
+pub fn list_all_migration_states(
+) -> std::result::Result<Vec<(Principal, DetailedCreationStatus)>, Error> {
     list_all_creation_states()
 }
 
 pub fn get_creation_states_by_status(
     _status: CreationStatus,
-) -> Result<Vec<(Principal, DetailedCreationStatus)>> {
+) -> std::result::Result<Vec<(Principal, DetailedCreationStatus)>, Error> {
     Ok(vec![])
 }
 
 // Legacy function for backward compatibility
 pub fn get_migration_states_by_status(
     status: CreationStatus,
-) -> Result<Vec<(Principal, DetailedCreationStatus)>> {
+) -> std::result::Result<Vec<(Principal, DetailedCreationStatus)>, Error> {
     get_creation_states_by_status(status)
 }
 
-pub fn clear_creation_state(_user: Principal) -> Result<bool> {
+pub fn clear_creation_state(_user: Principal) -> std::result::Result<bool, Error> {
     Ok(false)
 }
 
 // Legacy function for backward compatibility
-pub fn clear_migration_state(user: Principal) -> Result<bool> {
+pub fn clear_migration_state(user: Principal) -> std::result::Result<bool, Error> {
     clear_creation_state(user)
 }
 
-pub fn set_personal_canister_creation_enabled(_enabled: bool) -> Result<()> {
+pub fn set_personal_canister_creation_enabled(_enabled: bool) -> std::result::Result<(), Error> {
     Ok(())
 }
 
-pub fn get_personal_canister_creation_stats() -> Result<PersonalCanisterCreationStats> {
+pub fn get_personal_canister_creation_stats(
+) -> std::result::Result<PersonalCanisterCreationStats, Error> {
     Ok(PersonalCanisterCreationStats::default())
 }
 
-pub fn is_personal_canister_creation_enabled() -> Result<bool> {
+pub fn is_personal_canister_creation_enabled() -> std::result::Result<bool, Error> {
     Ok(false)
 }
 
 // Legacy function for backward compatibility
-pub fn is_migration_enabled() -> Result<bool> {
+pub fn is_migration_enabled() -> std::result::Result<bool, Error> {
     is_personal_canister_creation_enabled()
 }

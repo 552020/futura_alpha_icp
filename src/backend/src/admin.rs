@@ -1,5 +1,5 @@
 use crate::memory::{MEM_ADMINS, MM};
-use crate::types::Result;
+use crate::types::Error;
 use candid::Principal;
 use ic_cdk::api::msg_caller;
 use ic_stable_structures::memory_manager::VirtualMemory;
@@ -43,7 +43,7 @@ impl AdminStore {
     }
 
     /// Add new admin (only superadmins can add admins)
-    pub fn add_admin(new_admin_principal: Principal) -> Result<()> {
+    pub fn add_admin(new_admin_principal: Principal) -> std::result::Result<(), Error> {
         let caller = msg_caller();
 
         // Only superadmins can add new admins
@@ -66,7 +66,7 @@ impl AdminStore {
     }
 
     /// Remove admin (only superadmins can remove admins)
-    pub fn remove_admin(admin_principal: Principal) -> Result<()> {
+    pub fn remove_admin(admin_principal: Principal) -> std::result::Result<(), Error> {
         let caller = msg_caller();
 
         // Only superadmins can remove admins
@@ -159,12 +159,12 @@ pub fn is_admin(principal: &Principal) -> bool {
 }
 
 /// Add new admin (only superadmins can add admins)
-pub fn add_admin(new_admin_principal: Principal) -> Result<()> {
+pub fn add_admin(new_admin_principal: Principal) -> std::result::Result<(), Error> {
     AdminStore::add_admin(new_admin_principal)
 }
 
 /// Remove admin (only superadmins can remove admins)
-pub fn remove_admin(admin_principal: Principal) -> Result<()> {
+pub fn remove_admin(admin_principal: Principal) -> std::result::Result<(), Error> {
     AdminStore::remove_admin(admin_principal)
 }
 

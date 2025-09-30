@@ -14,7 +14,7 @@
 // ============================================================================
 
 use crate::auth;
-use crate::types::{self, PersonRef};
+use crate::types::{self, Error, PersonRef};
 use ic_cdk::api::time;
 
 // ============================================================================
@@ -23,7 +23,7 @@ use ic_cdk::api::time;
 
 /// Store nonce proof for Internet Identity authentication
 /// This is a utility function used by both prove_nonce and register_with_nonce
-pub fn store_nonce_proof_utility(nonce: String, caller: &PersonRef) -> types::Result<()> {
+pub fn store_nonce_proof_utility(nonce: String, caller: &PersonRef) -> std::result::Result<(), Error> {
     let timestamp = time();
 
     let principal = match caller {
@@ -45,7 +45,7 @@ pub fn store_nonce_proof_utility(nonce: String, caller: &PersonRef) -> types::Re
 
 /// Register a user with nonce proof (frontend: "register user", backend: "create self-capsule")
 /// This is the main user registration function that the frontend calls
-pub fn register_user_with_nonce(nonce: String) -> types::Result<()> {
+pub fn register_user_with_nonce(nonce: String) -> std::result::Result<(), Error> {
     let caller = PersonRef::from_caller();
 
     // Frontend perspective: "Register the user"
@@ -60,9 +60,9 @@ pub fn register_user_with_nonce(nonce: String) -> types::Result<()> {
         match crate::capsules_create(None) {
             Ok(_) => {}
             Err(e) => {
-                return Err(types::Error::Internal(
-                    format!("Failed to create user capsule: {e}"),
-                ))
+                return Err(types::Error::Internal(format!(
+                    "Failed to create user capsule: {e}"
+                )))
             }
         }
     }
