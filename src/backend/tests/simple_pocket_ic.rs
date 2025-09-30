@@ -52,3 +52,4 @@ fn test_simple_pocket_ic_setup() -> Result<()> {
     println!("🎉 Basic PocketIC setup test completed successfully!");
     Ok(())
 }
+

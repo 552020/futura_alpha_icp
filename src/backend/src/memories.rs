@@ -3,12 +3,9 @@
 //! This module provides the canister-facing functions that route through
 //! the decoupled core functions for better testability and maintainability.
 
-use crate::capsule_store::{types::PaginationOrder, CapsuleStore};
+use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
-use crate::types::{
-    AssetMetadata, BlobRef, CapsuleId, Error, Memory, MemoryId, MemoryOperationResponse,
-    MemoryUpdateData, PersonRef, StorageEdgeBlobType,
-};
+use crate::types::{CapsuleId, Error, Memory, MemoryId, PersonRef};
 
 // ============================================================================
 // CANISTER ENVIRONMENT AND STORE ADAPTER
@@ -31,10 +28,7 @@ impl crate::memories_core::Env for CanisterEnv {
 pub struct StoreAdapter;
 
 impl crate::memories_core::Store for StoreAdapter {
-    fn get_capsule_mut(&mut self, _id: &CapsuleId) -> Option<crate::memories_core::CapsuleRefMut> {
-        // Unused; kept for future bulk operations
-        None
-    }
+    // Removed unused method: get_capsule_mut
 
     fn insert_memory(
         &mut self,
@@ -89,7 +83,7 @@ impl crate::memories_core::Store for StoreAdapter {
 
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId> {
         with_capsule_store(|store| {
-            let all_capsules = store.paginate(None, u32::MAX, PaginationOrder::Asc);
+            let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
             all_capsules
                 .items
                 .into_iter()
@@ -101,99 +95,40 @@ impl crate::memories_core::Store for StoreAdapter {
 }
 
 // ============================================================================
-// THIN CANISTER WRAPPERS
-// ============================================================================
-
-/// Create a memory with any type of asset (inline, blob, or external)
-pub fn memories_create(
-    capsule_id: String,
-    bytes: Option<Vec<u8>>,
-    blob_ref: Option<BlobRef>,
-    external_location: Option<StorageEdgeBlobType>,
-    external_storage_key: Option<String>,
-    external_url: Option<String>,
-    external_size: Option<u64>,
-    external_hash: Option<Vec<u8>>,
-    asset_metadata: AssetMetadata,
-    idem: String,
-) -> std::result::Result<MemoryId, Error> {
-    let env = CanisterEnv;
-    let mut store = StoreAdapter;
-    crate::memories_core::memories_create_core(
-        &env,
-        &mut store,
-        capsule_id,
-        bytes,
-        blob_ref,
-        external_location,
-        external_storage_key,
-        external_url,
-        external_size,
-        external_hash,
-        asset_metadata,
-        idem,
-    )
-}
-
-/// Read a memory by ID from caller's accessible capsules
-pub fn memories_read(memory_id: String) -> std::result::Result<Memory, Error> {
-    let env = CanisterEnv;
-    let store = StoreAdapter;
-    crate::memories_core::memories_read_core(&env, &store, memory_id)
-}
-
-/// Update a memory's metadata
-pub fn memories_update(memory_id: String, updates: MemoryUpdateData) -> MemoryOperationResponse {
-    let env = CanisterEnv;
-    let mut store = StoreAdapter;
-    match crate::memories_core::memories_update_core(&env, &mut store, memory_id.clone(), updates) {
-        Ok(()) => MemoryOperationResponse {
-            memory_id: Some(memory_id),
-            message: "Memory updated successfully".to_string(),
-            success: true,
-        },
-        Err(e) => MemoryOperationResponse {
-            memory_id: None,
-            message: format!("Failed to update memory: {:?}", e),
-            success: false,
-        },
-    }
-}
-
-/// Delete a memory
-pub fn memories_delete(memory_id: String) -> MemoryOperationResponse {
-    let env = CanisterEnv;
-    let mut store = StoreAdapter;
-    match crate::memories_core::memories_delete_core(&env, &mut store, memory_id.clone()) {
-        Ok(()) => MemoryOperationResponse {
-            memory_id: Some(memory_id),
-            message: "Memory deleted successfully".to_string(),
-            success: true,
-        },
-        Err(e) => MemoryOperationResponse {
-            memory_id: None,
-            message: format!("Failed to delete memory: {:?}", e),
-            success: false,
-        },
-    }
-}
-
-// ============================================================================
-// LEGACY FUNCTIONS (for backward compatibility with existing tests)
+// MEMORY UTILITY FUNCTIONS
 // ============================================================================
 
 /// Check presence for multiple memories on ICP
+/// 
+/// Returns presence status for the given memory IDs by checking if they exist
+/// in the caller's accessible capsules.
 pub fn ping(
     memory_ids: Vec<String>,
 ) -> std::result::Result<Vec<crate::types::MemoryPresenceResult>, Error> {
-    // TODO: Implement memory presence checking using capsule system instead of artifacts
-    // For now, return false for all memories since artifacts system is removed
+    let caller = PersonRef::from_caller();
+    
     let results: Vec<crate::types::MemoryPresenceResult> = memory_ids
         .iter()
-        .map(|memory_id| crate::types::MemoryPresenceResult {
-            memory_id: memory_id.clone(),
-            metadata_present: false, // Artifacts system removed
-            asset_present: false,    // Artifacts system removed
+        .map(|memory_id| {
+            // Check if memory exists in any of the caller's accessible capsules
+            let exists = with_capsule_store(|store| {
+                let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+                all_capsules
+                    .items
+                    .iter()
+                    .any(|capsule| {
+                        // Check if caller has read access to this capsule
+                        capsule.has_read_access(&caller) && 
+                        // Check if memory exists in this capsule
+                        capsule.memories.contains_key(memory_id)
+                    })
+            });
+            
+            crate::types::MemoryPresenceResult {
+                memory_id: memory_id.clone(),
+                metadata_present: exists,
+                asset_present: exists, // For now, assume if metadata exists, asset exists
+            }
         })
         .collect();
 

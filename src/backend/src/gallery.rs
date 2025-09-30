@@ -171,21 +171,7 @@ pub fn galleries_list() -> Vec<GalleryHeader> {
     })
 }
 
-/// Get gallery by ID from caller's capsule (replaces get_gallery_by_id)
-pub fn galleries_read(gallery_id: String) -> std::result::Result<Gallery, Error> {
-    let caller = PersonRef::from_caller();
-
-    // MIGRATED: Find gallery in caller's self-capsule
-    with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .find(|capsule| capsule.subject == caller && capsule.owners.contains_key(&caller))
-            .and_then(|capsule| capsule.galleries.get(&gallery_id).cloned())
-            .ok_or(Error::NotFound)
-    })
-}
+// Note: galleries_read function moved to lib.rs as the main API surface
 
 /// Update gallery storage location after memory synchronization
 pub fn update_gallery_storage_location(
@@ -384,7 +370,7 @@ pub fn get_gallery_size_report(gallery: &Gallery) -> String {
 
 /// Get detailed size breakdown for a gallery
 pub fn get_gallery_size_breakdown(gallery: &Gallery) -> GallerySizeInfo {
-    let gallery_size = estimate_gallery_size(gallery);
+    let _gallery_size = estimate_gallery_size(gallery);
     let capsule_size = estimate_gallery_capsule_size(gallery);
     let memory_entries_count = gallery.memory_entries.len();
     let memory_entries_size = (memory_entries_count * 200) as u64; // Rough estimate per entry

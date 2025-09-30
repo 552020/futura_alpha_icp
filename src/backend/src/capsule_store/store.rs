@@ -19,6 +19,7 @@ impl Store {
     }
 
     /// Get the current backend type (for debugging/testing)
+    #[allow(dead_code)] // Used in tests
     pub fn backend_type(&self) -> &'static str {
         match self {
             Store::Stable(_) => "StableBTreeMap",
@@ -46,13 +47,13 @@ impl CapsuleStore for Store {
         }
     }
 
-    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> Result<(), Error> {
+    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> std::result::Result<(), Error> {
         match self {
             Store::Stable(store) => store.put_if_absent(id, capsule),
         }
     }
 
-    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), Error>
+    fn update<F>(&mut self, id: &CapsuleId, f: F) -> std::result::Result<(), Error>
     where
         F: FnOnce(&mut Capsule),
     {
@@ -61,9 +62,9 @@ impl CapsuleStore for Store {
         }
     }
 
-    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, Error>
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> std::result::Result<R, Error>
     where
-        F: FnOnce(&mut Capsule) -> Result<R, Error>,
+        F: FnOnce(&mut Capsule) -> std::result::Result<R, Error>,
     {
         match self {
             Store::Stable(store) => store.update_with(id, f),

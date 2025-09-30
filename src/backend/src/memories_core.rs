@@ -25,7 +25,6 @@ pub trait Env {
 
 /// Storage abstraction for capsule store operations
 pub trait Store {
-    fn get_capsule_mut(&mut self, id: &CapsuleId) -> Option<CapsuleRefMut>;
     fn insert_memory(
         &mut self,
         capsule: &CapsuleId,
@@ -40,11 +39,7 @@ pub trait Store {
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId>;
 }
 
-/// Mock capsule reference for testing
-pub struct CapsuleRefMut {
-    pub id: CapsuleId,
-    pub memories: BTreeMap<MemoryId, Memory>,
-}
+// Removed unused struct: CapsuleRefMut
 
 // ============================================================================
 // CORE FUNCTIONS (PURE BUSINESS LOGIC)
@@ -504,29 +499,11 @@ pub struct InMemoryStore {
 }
 
 impl InMemoryStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn add_accessible_capsule(&mut self, caller: PersonRef, capsule_id: CapsuleId) {
-        self.accessible_capsules
-            .entry(caller)
-            .or_insert_with(Vec::new)
-            .push(capsule_id);
-    }
+    // Removed unused methods: new, add_accessible_capsule
 }
 
 impl Store for InMemoryStore {
-    fn get_capsule_mut(&mut self, id: &CapsuleId) -> Option<CapsuleRefMut> {
-        let memories = self
-            .by_capsule
-            .entry(id.clone())
-            .or_insert_with(BTreeMap::new);
-        Some(CapsuleRefMut {
-            id: id.clone(),
-            memories: std::mem::take(memories),
-        })
-    }
+    // Removed unused method: get_capsule_mut
 
     fn insert_memory(
         &mut self,

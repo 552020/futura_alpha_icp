@@ -174,7 +174,7 @@ pub enum Error {
 // Canonical Rust Result type
 // Removed ApiResult and UnitResult aliases - use std::result::Result<T, Error> directly
 
-// Result<T> removed - using canonical Result<T> = std::result::Result<T, Error>
+// std::result::Result<T> removed - using canonical Result<T> = std::result::Result<T, Error>
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -190,20 +190,12 @@ impl std::fmt::Display for Error {
 }
 
 impl Error {
-    pub fn code(&self) -> u16 {
-        match self {
-            Error::Unauthorized => 401,
-            Error::NotFound => 404,
-            Error::InvalidArgument(_) => 422,
-            Error::Conflict(_) => 409,
-            Error::ResourceExhausted => 429,
-            Error::Internal(_) => 500,
-        }
-    }
+    // Removed unused method: code
 }
 
 // Helper functions to convert between error patterns
 impl CommitResponse {
+    #[allow(dead_code)] // Used in tests
     pub fn ok(memory_id: String, final_hash: String, total_bytes: u64, message: String) -> Self {
         Self {
             success: true,
@@ -215,6 +207,7 @@ impl CommitResponse {
         }
     }
 
+    #[allow(dead_code)] // Used in tests
     pub fn err(error: Error, memory_id: String, message: String) -> Self {
         Self {
             success: false,
@@ -668,53 +661,7 @@ pub struct Memory {
 }
 
 impl Memory {
-    /// Create a new memory with inline data (≤32KB)
-    pub fn inline(bytes: Vec<u8>, asset_metadata: AssetMetadata) -> Self {
-        let now = ic_cdk::api::time();
-        Self {
-            id: format!("mem_{now}"), // Simple ID generation
-            metadata: MemoryMetadata {
-                memory_type: MemoryType::Note, // Default type for inline
-                title: None,
-                description: None,
-                content_type: match &asset_metadata {
-                    AssetMetadata::Image(img) => img.base.mime_type.clone(),
-                    AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
-                    AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
-                    AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
-                    AssetMetadata::Note(note) => note.base.mime_type.clone(),
-                },
-                created_at: now,
-                updated_at: now,
-                uploaded_at: now,
-                date_of_memory: None,
-                file_created_at: None,
-                parent_folder_id: None, // Default to root folder
-                tags: match &asset_metadata {
-                    AssetMetadata::Image(img) => img.base.tags.clone(),
-                    AssetMetadata::Video(vid) => vid.base.tags.clone(),
-                    AssetMetadata::Audio(audio) => audio.base.tags.clone(),
-                    AssetMetadata::Document(doc) => doc.base.tags.clone(),
-                    AssetMetadata::Note(note) => note.base.tags.clone(),
-                },
-                deleted_at: None,
-                people_in_memory: None,
-                location: None,
-                memory_notes: None,
-                created_by: None,
-                database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
-            },
-            access: MemoryAccess::Private {
-                owner_secure_code: format!("mem_{now}_{:x}", now % 0xFFFF), // Generate secure code
-            }, // Default to private access
-            inline_assets: vec![MemoryAssetInline {
-                bytes,
-                metadata: asset_metadata,
-            }],
-            blob_internal_assets: vec![],
-            blob_external_assets: vec![],
-        }
-    }
+    // Removed unused method: inline
 
     /// Create a new memory with blob reference (>32KB)
     pub fn from_blob(
@@ -956,65 +903,7 @@ pub enum ResourceType {
 // ============================================================================
 
 impl Gallery {
-    /// Convert Web2 gallery data to ICP gallery format
-
-    pub fn from_web2(
-        web2_gallery: &Web2Gallery,
-        web2_items: &[Web2GalleryItem],
-        owner_principal: Principal,
-    ) -> Self {
-        let memory_entries: Vec<GalleryMemoryEntry> = web2_items
-            .iter()
-            .map(GalleryMemoryEntry::from_web2)
-            .collect();
-
-        Self {
-            id: web2_gallery.id.clone(),
-            owner_principal,
-            title: web2_gallery.title.clone(),
-            description: web2_gallery.description.clone(),
-            is_public: web2_gallery.is_public,
-            created_at: Self::timestamp_to_nanoseconds(web2_gallery.created_at),
-            updated_at: Self::timestamp_to_nanoseconds(web2_gallery.updated_at),
-            storage_location: GalleryStorageLocation::Web2Only,
-            memory_entries,
-            bound_to_neon: false,
-        }
-    }
-
-    /// Convert ICP gallery to Web2 format
-
-    pub fn to_web2(&self) -> (Web2Gallery, Vec<Web2GalleryItem>) {
-        let web2_gallery = Web2Gallery {
-            id: self.id.clone(),
-            owner_id: self.owner_principal.to_string(), // This would need proper mapping
-            title: self.title.clone(),
-            description: self.description.clone(),
-            is_public: self.is_public,
-            created_at: Self::nanoseconds_to_timestamp(self.created_at),
-            updated_at: Self::nanoseconds_to_timestamp(self.updated_at),
-        };
-
-        let web2_items: Vec<Web2GalleryItem> = self
-            .memory_entries
-            .iter()
-            .map(|entry| entry.to_web2(&self.id))
-            .collect();
-
-        (web2_gallery, web2_items)
-    }
-
-    /// Helper: Convert timestamp to nanoseconds
-
-    fn timestamp_to_nanoseconds(timestamp: u64) -> u64 {
-        timestamp * 1_000_000_000 // Convert seconds to nanoseconds
-    }
-
-    /// Helper: Convert nanoseconds to timestamp
-
-    fn nanoseconds_to_timestamp(nanoseconds: u64) -> u64 {
-        nanoseconds / 1_000_000_000 // Convert nanoseconds to seconds
-    }
+    // Note: Web2 integration functions removed - not currently used
 
     /// Get gallery header for listing
     pub fn to_header(&self) -> GalleryHeader {
@@ -1030,67 +919,10 @@ impl Gallery {
 }
 
 impl GalleryMemoryEntry {
-    /// Convert Web2 gallery item to ICP gallery memory entry
-
-    pub fn from_web2(web2_item: &Web2GalleryItem) -> Self {
-        Self {
-            memory_id: web2_item.memory_id.clone(),
-            position: web2_item.position as u32,
-            gallery_caption: web2_item.caption.clone(),
-            is_featured: web2_item.is_featured,
-            gallery_metadata: serde_json::to_string(&web2_item.metadata)
-                .unwrap_or_else(|_| "{}".to_string()),
-        }
-    }
-
-    /// Convert ICP gallery memory entry to Web2 format
-
-    pub fn to_web2(&self, gallery_id: &str) -> Web2GalleryItem {
-        Web2GalleryItem {
-            id: format!("web2_item_{}", ic_cdk::api::time()), // Generate new ID for Web2
-            gallery_id: gallery_id.to_string(),
-            memory_id: self.memory_id.clone(),
-            memory_type: "image".to_string(), // This would need proper mapping
-            position: self.position as i32,
-            caption: self.gallery_caption.clone(),
-            is_featured: self.is_featured,
-            metadata: serde_json::from_str(&self.gallery_metadata)
-                .unwrap_or_else(|_| serde_json::json!({})),
-            created_at: 0, // This would need proper mapping
-            updated_at: 0, // This would need proper mapping
-        }
-    }
+    // Note: Web2 integration functions removed - not currently used
 }
 
-// Web2 data structures for type mapping (these would typically be in a separate module)
-// These are placeholder structures that match the Web2 database schema
-
-#[derive(Clone, Debug)]
-
-pub struct Web2Gallery {
-    pub id: String,
-    pub owner_id: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub is_public: bool,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-#[derive(Clone, Debug)]
-
-pub struct Web2GalleryItem {
-    pub id: String,
-    pub gallery_id: String,
-    pub memory_id: String,
-    pub memory_type: String,
-    pub position: i32,
-    pub caption: Option<String>,
-    pub is_featured: bool,
-    pub metadata: serde_json::Value,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
+// Note: Web2 data structures removed - not currently used
 
 // ============================================================================
 // STORABLE TRAIT IMPLEMENTATIONS FOR STABLE MEMORY

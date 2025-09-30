@@ -1,8 +1,6 @@
 use crate::canister_factory::export::*;
 use crate::canister_factory::types::*;
-use crate::types::{
-    AssetMetadata, AssetMetadataBase, AssetType, MemoryAssetBlobInternal, NoteAssetMetadata,
-};
+// Removed unused imports: AssetMetadata, AssetMetadataBase, AssetType, MemoryAssetBlobInternal, NoteAssetMetadata
 use candid::Principal;
 
 /// Comprehensive verification of transferred data against source manifest

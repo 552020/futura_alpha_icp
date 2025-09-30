@@ -18,6 +18,8 @@ docs/
 
 - **BACKEND_FUNCTIONS_NEEDED.md** - Missing backend functions for personal canister management
 - **rename_binding_to_neon_functions.md** - Rename outdated "bind to neon" function names
+- **memory-api-refactoring-ping-to-get-functions.md** - Replace `ping` with `get_memory` and `get_memory_with_assets`
+- **rename-capsules-bind-neon-to-storage-edges.md** - Rename `capsules_bind_neon` to reflect new database storage edges architecture
 
 ### Resolved Issues (`issues/done/`)
 

@@ -139,3 +139,4 @@ pic.install_canister(canister_id, wasm, vec![], Some(controller));
 **Priority**: Medium - Core functionality works, integration testing blocked
 **Assignee**: Senior developer
 **Labels**: `pocketic`, `integration-tests`, `controller-permissions`, `icp-system-methods`
+

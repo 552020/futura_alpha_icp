@@ -1,33 +1,29 @@
-// use crate::types::HttpRequest; // Disabled for now
-// use ic_cdk::api::data_certificate; // Disabled for now
-use crate::types::Error;
+// External imports
 use candid::Principal;
 
-// use ic_http_certification::{utils::add_skip_certification_header, HttpResponse}; // Disabled for now
+// Internal imports
+use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
+use crate::memory::{with_capsule_store, with_capsule_store_mut};
+use crate::types::Error;
 
 // Import modules
 mod admin;
 mod auth;
 mod canister_factory;
 mod capsule;
-pub mod capsule_store;
+mod capsule_store;
 mod gallery;
 mod memories;
 mod memories_core;
 mod memory;
 mod person;
 mod state;
-pub mod types;
-pub mod upload;
+mod types;
+mod upload;
 mod user;
 
-// Import CapsuleStore trait for direct access to store methods
-use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
-use crate::memory::{with_capsule_store, with_capsule_store_mut};
-// memories.rs removed - functionality moved to capsule-based architecture
-
 // ============================================================================
-// CORE SYSTEM & UTILITY FUNCTIONS (2 functions)
+// CORE SYSTEM & UTILITY FUNCTIONS (3 functions)
 // ============================================================================
 
 #[ic_cdk::query]
@@ -90,15 +86,6 @@ fn list_superadmins() -> Vec<Principal> {
 // ============================================================================
 // CAPSULE MANAGEMENT (5 functions)
 // ============================================================================
-#[ic_cdk::update]
-fn capsules_bind_neon(
-    resource_type: types::ResourceType,
-    resource_id: String,
-    bind: bool,
-) -> std::result::Result<(), Error> {
-    // Delegate to capsule module (thin facade)
-    capsule::capsules_bind_neon(resource_type, resource_id, bind)
-}
 
 // Capsule management endpoints
 #[ic_cdk::update]
@@ -107,15 +94,6 @@ fn capsules_create(
 ) -> std::result::Result<types::Capsule, Error> {
     // Delegate to capsule module (thin facade)
     capsule::capsules_create(subject)
-}
-
-#[ic_cdk::query]
-fn capsules_read_full(capsule_id: Option<String>) -> std::result::Result<types::Capsule, Error> {
-    // Delegate to capsule module (thin facade)
-    match capsule_id {
-        Some(id) => capsule::capsules_read(id),
-        None => capsule::capsule_read_self(),
-    }
 }
 
 #[ic_cdk::query]
@@ -130,9 +108,12 @@ fn capsules_read_basic(
 }
 
 #[ic_cdk::query]
-fn capsules_list() -> Vec<types::CapsuleHeader> {
+fn capsules_read_full(capsule_id: Option<String>) -> std::result::Result<types::Capsule, Error> {
     // Delegate to capsule module (thin facade)
-    capsule::capsules_list()
+    match capsule_id {
+        Some(id) => capsule::capsules_read(id),
+        None => capsule::capsule_read_self(),
+    }
 }
 
 #[ic_cdk::update]
@@ -148,6 +129,22 @@ fn capsules_update(
 fn capsules_delete(capsule_id: String) -> std::result::Result<(), Error> {
     // Delegate to capsule module (thin facade)
     capsule::capsules_delete(capsule_id)
+}
+
+#[ic_cdk::query]
+fn capsules_list() -> Vec<types::CapsuleHeader> {
+    // Delegate to capsule module (thin facade)
+    capsule::capsules_list()
+}
+
+#[ic_cdk::update]
+fn capsules_bind_neon(
+    resource_type: types::ResourceType,
+    resource_id: String,
+    bind: bool,
+) -> std::result::Result<(), Error> {
+    // Delegate to capsule module (thin facade)
+    capsule::resources_bind_neon(resource_type, resource_id, bind)
 }
 
 // ============================================================================
@@ -502,8 +499,8 @@ async fn debug_put_chunk_b64(
     chunk_idx: u32,
     b64: String,
 ) -> std::result::Result<(), Error> {
-    let bytes =
-        base64::decode(b64).map_err(|_| types::Error::InvalidArgument("bad base64".into()))?;
+    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
+        .map_err(|_| types::Error::InvalidArgument("bad base64".into()))?;
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
@@ -693,20 +690,6 @@ fn get_migration_stats(
 }
 
 // pub use memories::*; // Disabled for now
-
-// HTTP request handler for serving memories (disabled for now)
-// #[ic_cdk::query]
-// fn http_request(request: HttpRequest) -> HttpResponse<'static> {
-//     use crate::memory::{create_memory_response, create_not_found_response, load_memory};
-//
-//     let mut response = match load_memory(&request.url) {
-//         Some((data, content_type)) => create_memory_response(data, content_type),
-//         None => create_not_found_response(),
-//     };
-//
-//     add_skip_certification_header(data_certificate().unwrap(), &mut response);
-//     response
-// }
 
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]

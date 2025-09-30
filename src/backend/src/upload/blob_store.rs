@@ -42,38 +42,7 @@ impl BlobStore {
         BlobStore
     }
 
-    /// Store inline bytes and return blob reference
-    pub fn put_inline(&self, bytes: &[u8]) -> Result<crate::types::BlobRef, Error> {
-        let mut hasher = Sha256::new();
-        hasher.update(bytes);
-        let sha256: [u8; 32] = hasher.finalize().into();
-
-        let blob_id = BlobId::new();
-        let store_key = format!("inline_{}", hex::encode(&sha256[..8]));
-
-        // Store the bytes directly (for inline, we can store as a single page)
-        let page_key = (blob_id.0, 0u32);
-        STABLE_BLOB_STORE.with(|store| {
-            store.borrow_mut().insert(page_key, bytes.to_vec());
-        });
-
-        // Store blob metadata
-        let meta = BlobMeta {
-            size: bytes.len() as u64,
-            checksum: sha256,
-            created_at: ic_cdk::api::time(),
-        };
-
-        STABLE_BLOB_META.with(|metastore| {
-            metastore.borrow_mut().insert(blob_id.0, meta);
-        });
-
-        Ok(crate::types::BlobRef {
-            locator: store_key,
-            hash: Some(sha256),
-            len: bytes.len() as u64,
-        })
-    }
+    // Note: put_inline method removed - not currently used
 
     /// Store chunks from session as a blob with integrity verification
     pub fn store_from_chunks(
@@ -83,7 +52,7 @@ impl BlobStore {
         chunk_count: u32,
         expected_len: u64,
         expected_hash: [u8; 32],
-    ) -> Result<BlobId, Error> {
+    ) -> std::result::Result<BlobId, Error> {
         let blob_id = BlobId::new();
         let mut hasher = Sha256::new();
         let mut total_written = 0u64;
@@ -150,7 +119,7 @@ impl BlobStore {
     }
 
     /// Read entire blob (use carefully - can be large)
-    pub fn read_blob(&self, blob_id: &BlobId) -> Result<Vec<u8>, Error> {
+    pub fn read_blob(&self, blob_id: &BlobId) -> std::result::Result<Vec<u8>, Error> {
         let meta = STABLE_BLOB_META
             .with(|metas| metas.borrow().get(&blob_id.0))
             .ok_or(Error::NotFound)?;
@@ -175,13 +144,13 @@ impl BlobStore {
     }
 
     /// Get blob metadata without reading content
-    pub fn get_blob_meta(&self, blob_id: &BlobId) -> Result<Option<BlobMeta>, Error> {
+    pub fn get_blob_meta(&self, blob_id: &BlobId) -> std::result::Result<Option<BlobMeta>, Error> {
         let meta = STABLE_BLOB_META.with(|metas| metas.borrow().get(&blob_id.0));
         Ok(meta)
     }
 
     /// Delete blob and all its pages
-    pub fn delete_blob(&self, blob_id: &BlobId) -> Result<(), Error> {
+    pub fn delete_blob(&self, blob_id: &BlobId) -> std::result::Result<(), Error> {
         // Delete metadata first
         STABLE_BLOB_META.with(|metas| metas.borrow_mut().remove(&blob_id.0));
 
@@ -200,56 +169,16 @@ impl BlobStore {
         Ok(())
     }
 
-    /// Check if blob exists
-    pub fn blob_exists(&self, blob_id: &BlobId) -> bool {
-        STABLE_BLOB_META.with(|metas| metas.borrow().contains_key(&blob_id.0))
-    }
+    // Note: blob_exists method removed - not currently used
 
-    /// Get blob metadata by store key (for verification)
-    pub fn head(&self, store_key: &str) -> Result<Option<BlobMeta>, Error> {
-        // Parse store_key to extract hash prefix
-        // Format: "inline_{hex_hash_prefix}" or other locator formats
-        let hash_prefix = if store_key.starts_with("inline_") {
-            store_key.strip_prefix("inline_")
-        } else {
-            // For other locator types, we might need different parsing
-            // For now, assume inline format or return None
-            None
-        };
-
-        if let Some(prefix_hex) = hash_prefix {
-            // Try to decode the hex prefix
-            if let Ok(prefix_bytes) = hex::decode(prefix_hex) {
-                // Search through all blob metadata for a matching hash prefix
-                let result = STABLE_BLOB_META.with(|metas| {
-                    for (_blob_id, meta) in metas.borrow().iter() {
-                        // Check if the hash starts with our prefix
-                        if meta.checksum.len() >= prefix_bytes.len()
-                            && meta.checksum[..prefix_bytes.len()] == prefix_bytes[..]
-                        {
-                            return Some(meta.clone());
-                        }
-                    }
-                    None
-                });
-                Ok(result)
-            } else {
-                Ok(None) // Invalid hex in store_key
-            }
-        } else {
-            Ok(None) // Unsupported store_key format
-        }
-    }
+    // Removed unused method: head
 
     /// Get total number of blobs (for monitoring)
     pub fn blob_count(&self) -> u64 {
         STABLE_BLOB_META.with(|metas| metas.borrow().len())
     }
 
-    /// Get total storage used by blobs (for monitoring)
-    pub fn total_storage_used(&self) -> u64 {
-        STABLE_BLOB_META.with(|metas| metas.borrow().iter().map(|(_, meta)| meta.size).sum())
-    }
+    // Removed unused method: total_storage_used
 }
 
 /// Read blob data by locator (public API function)
@@ -329,7 +258,7 @@ fn read_blob_chunked(
     blob_id: &crate::upload::types::BlobId,
     total_size: u64,
 ) -> std::result::Result<Vec<u8>, Error> {
-    const CHUNK_SIZE: u32 = 1024 * 1024; // 1MB chunks
+    // Removed unused constant: CHUNK_SIZE
     let mut result = Vec::with_capacity(total_size as usize);
     let mut chunk_index = 0u32;
 
@@ -357,7 +286,7 @@ fn read_blob_chunked(
 
 /// Read a single chunk of blob data
 fn read_blob_chunk(
-    blob_store: &BlobStore,
+    _blob_store: &BlobStore,
     blob_id: &crate::upload::types::BlobId,
     chunk_index: u32,
 ) -> std::result::Result<Vec<u8>, Error> {

@@ -168,6 +168,7 @@ impl StableStore {
 impl StableStore {
     /// Debug lens: (capsules_len, subject_idx_len, owner_idx_len)
     /// Useful for diagnosing index inconsistencies
+    #[allow(dead_code)] // Used in tests
     pub fn debug_lens(&self) -> (u64, u64, u64) {
         (
             self.capsules.len(),
@@ -230,7 +231,7 @@ impl CapsuleStore for StableStore {
         prev
     }
 
-    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> Result<(), Error> {
+    fn put_if_absent(&mut self, id: CapsuleId, capsule: Capsule) -> std::result::Result<(), Error> {
         // Key-record coherence: store key must equal capsule.id
         debug_assert_eq!(id, capsule.id, "CapsuleId key must match Capsule.id");
 
@@ -247,7 +248,7 @@ impl CapsuleStore for StableStore {
         Ok(())
     }
 
-    fn update<F>(&mut self, id: &CapsuleId, f: F) -> Result<(), Error>
+    fn update<F>(&mut self, id: &CapsuleId, f: F) -> std::result::Result<(), Error>
     where
         F: FnOnce(&mut Capsule),
     {
@@ -322,9 +323,9 @@ impl CapsuleStore for StableStore {
         }
     }
 
-    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> Result<R, Error>
+    fn update_with<R, F>(&mut self, id: &CapsuleId, f: F) -> std::result::Result<R, Error>
     where
-        F: FnOnce(&mut Capsule) -> Result<R, Error>,
+        F: FnOnce(&mut Capsule) -> std::result::Result<R, Error>,
     {
         if let Some(mut capsule) = self.capsules.get(id) {
             let old_subject = capsule.subject.principal().cloned();
@@ -432,7 +433,7 @@ impl CapsuleStore for StableStore {
         ids.iter().filter_map(|id| self.capsules.get(id)).collect()
     }
 
-    fn paginate(&self, after: Option<CapsuleId>, limit: u32, order: Order) -> Page<Capsule> {
+    fn paginate(&self, after: Option<CapsuleId>, limit: u32, _order: Order) -> Page<Capsule> {
         // For StableBTreeMap, we need to collect and sort
         // In a production implementation, this would be optimized
         // with custom iterators or range queries
@@ -444,26 +445,15 @@ impl CapsuleStore for StableStore {
             all_capsules.push((id, capsule));
         }
 
-        // Sort based on order
-        match order {
-            Order::Asc => all_capsules.sort_by(|a, b| a.0.cmp(&b.0)),
-            Order::Desc => {
-                all_capsules.sort_by(|a, b| b.0.cmp(&a.0));
-            }
-        }
+        // Sort in ascending order (only order we support)
+        all_capsules.sort_by(|a, b| a.0.cmp(&b.0));
 
         // Find start position (exclusive after cursor)
         let start_pos = if let Some(after_id) = &after {
-            match order {
-                Order::Asc => all_capsules
-                    .iter()
-                    .position(|(id, _)| *id > *after_id)
-                    .unwrap_or(all_capsules.len()),
-                Order::Desc => all_capsules
-                    .iter()
-                    .position(|(id, _)| *id < *after_id)
-                    .unwrap_or(all_capsules.len()),
-            }
+            all_capsules
+                .iter()
+                .position(|(id, _)| *id > *after_id)
+                .unwrap_or(all_capsules.len())
         } else {
             0
         };
@@ -475,17 +465,7 @@ impl CapsuleStore for StableStore {
             .map(|(_, capsule)| capsule.clone())
             .collect();
 
-        // Next cursor = last item of current page (exclusive keyset cursor)
-        let next_cursor = if !page_items.is_empty() && end_pos < all_capsules.len() {
-            Some(all_capsules[end_pos - 1].0.clone())
-        } else {
-            None
-        };
-
-        Page {
-            items: page_items,
-            next_cursor,
-        }
+        Page { items: page_items }
     }
 
     fn count(&self) -> u64 {

@@ -56,7 +56,7 @@ pub trait CapsuleStore {
 
     /// Update a capsule with a closure that returns a result
     ///
-    /// This method allows the closure to return a `Result<R, Error>`, enabling
+    /// This method allows the closure to return a `std::result::Result<R, Error>`, enabling
     /// proper error propagation from within the update operation. This eliminates
     /// the need for silent early returns and provides better error handling.
     ///
@@ -92,14 +92,7 @@ pub trait CapsuleStore {
         order: Order,
     ) -> Page<crate::types::Capsule>;
 
-    /// Paginate with default ascending order
-    fn paginate_default(
-        &self,
-        after: Option<CapsuleId>,
-        limit: u32,
-    ) -> Page<crate::types::Capsule> {
-        self.paginate(after, limit, Order::Asc)
-    }
+    // Removed unused method: paginate_default
 
     /// Get total count of capsules (for metrics and pagination metadata)
     fn count(&self) -> u64;

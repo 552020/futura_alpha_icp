@@ -42,7 +42,11 @@ impl SessionStore {
     }
 
     /// Create a new upload session
-    pub fn create(&self, session_id: SessionId, session_meta: SessionMeta) -> Result<(), Error> {
+    pub fn create(
+        &self,
+        session_id: SessionId,
+        session_meta: SessionMeta,
+    ) -> std::result::Result<(), Error> {
         STABLE_UPLOAD_SESSIONS.with(|sessions| {
             sessions.borrow_mut().insert(session_id.0, session_meta);
         });
@@ -50,13 +54,17 @@ impl SessionStore {
     }
 
     /// Get session metadata
-    pub fn get(&self, session_id: &SessionId) -> Result<Option<SessionMeta>, Error> {
+    pub fn get(&self, session_id: &SessionId) -> std::result::Result<Option<SessionMeta>, Error> {
         let session = STABLE_UPLOAD_SESSIONS.with(|sessions| sessions.borrow().get(&session_id.0));
         Ok(session)
     }
 
     /// Update session metadata (for status changes)
-    pub fn update(&self, session_id: &SessionId, session_meta: SessionMeta) -> Result<(), Error> {
+    pub fn update(
+        &self,
+        session_id: &SessionId,
+        session_meta: SessionMeta,
+    ) -> std::result::Result<(), Error> {
         STABLE_UPLOAD_SESSIONS.with(|sessions| {
             sessions.borrow_mut().insert(session_id.0, session_meta);
         });
@@ -69,7 +77,7 @@ impl SessionStore {
         session_id: &SessionId,
         chunk_idx: u32,
         bytes: Vec<u8>,
-    ) -> Result<(), Error> {
+    ) -> std::result::Result<(), Error> {
         let chunk_key = (session_id.0, chunk_idx);
         STABLE_CHUNK_DATA.with(|chunks| {
             chunks.borrow_mut().insert(chunk_key, bytes);
@@ -77,23 +85,14 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Get a specific chunk
-    pub fn get_chunk(
-        &self,
-        session_id: &SessionId,
-        chunk_idx: u32,
-    ) -> Result<Option<Vec<u8>>, Error> {
-        let chunk_key = (session_id.0, chunk_idx);
-        let chunk = STABLE_CHUNK_DATA.with(|chunks| chunks.borrow().get(&chunk_key));
-        Ok(chunk)
-    }
+    // Removed unused method: get_chunk
 
     /// Verify all chunks exist for a session (integrity check)
     pub fn verify_chunks_complete(
         &self,
         session_id: &SessionId,
         chunk_count: u32,
-    ) -> Result<(), Error> {
+    ) -> std::result::Result<(), Error> {
         for chunk_idx in 0..chunk_count {
             let chunk_key = (session_id.0, chunk_idx);
             let exists = STABLE_CHUNK_DATA.with(|chunks| chunks.borrow().contains_key(&chunk_key));

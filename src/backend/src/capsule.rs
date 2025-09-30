@@ -64,6 +64,21 @@ impl Capsule {
         self.is_owner(person) || self.is_controller(person)
     }
 
+    /// Check if a PersonRef has read access to this capsule
+    ///
+    /// TODO: Implement proper read access logic based on capsule access model.
+    /// Currently returns true for owners/controllers (same as write access).
+    /// Future implementation should consider:
+    /// - Connection-based read access
+    /// - Group-based read access  
+    /// - Public capsule access
+    /// - Time-based access rules
+    pub fn has_read_access(&self, person: &PersonRef) -> bool {
+        // TODO: Implement proper read access logic
+        // For now, use same logic as write access
+        self.has_write_access(person)
+    }
+
     /// Check if a PersonRef can read a specific memory
     pub fn can_read_memory(&self, person: &PersonRef, memory: &Memory) -> bool {
         self.check_memory_access(person, &memory.access)
@@ -381,7 +396,7 @@ pub fn capsules_delete(capsule_id: String) -> std::result::Result<(), Error> {
 
 /// Flexible resource binding function for Neon database
 /// Can bind capsules, galleries, or memories to Neon
-pub fn capsules_bind_neon(
+pub fn resources_bind_neon(
     resource_type: ResourceType,
     resource_id: String,
     bind: bool,

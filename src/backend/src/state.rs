@@ -13,7 +13,7 @@ use std::cell::RefCell;
 /// Maximum total size for the entire canister (100GB)
 const MAX_CANISTER_SIZE: u64 = 100 * 1024 * 1024 * 1024; // 100GB
 
-/// Global canister state tracker
+// Global canister state tracker
 thread_local! {
     pub static CANISTER_STATE: RefCell<CanisterState> = RefCell::new(CanisterState::new());
 }
@@ -34,7 +34,7 @@ impl CanisterState {
     }
 
     /// Add size to total and check limit
-    pub fn add_size(&mut self, bytes: u64) -> Result<(), Error> {
+    pub fn add_size(&mut self, bytes: u64) -> std::result::Result<(), Error> {
         if self.total_size_bytes + bytes > MAX_CANISTER_SIZE {
             return Err(Error::ResourceExhausted);
         }
@@ -57,10 +57,7 @@ impl CanisterState {
         MAX_CANISTER_SIZE.saturating_sub(self.total_size_bytes)
     }
 
-    /// Check if adding bytes would exceed limit
-    pub fn would_exceed_limit(&self, additional_bytes: u64) -> bool {
-        self.total_size_bytes + additional_bytes > MAX_CANISTER_SIZE
-    }
+    // Removed unused method: would_exceed_limit
 }
 
 impl Default for CanisterState {
@@ -74,7 +71,7 @@ impl Default for CanisterState {
 // ============================================================================
 
 /// Track a size change (add new size, remove old size)
-pub fn track_size_change(old_size: u64, new_size: u64) -> Result<(), Error> {
+pub fn track_size_change(old_size: u64, new_size: u64) -> std::result::Result<(), Error> {
     CANISTER_STATE.with(|state| {
         let mut s = state.borrow_mut();
         s.remove_size(old_size);
@@ -83,35 +80,14 @@ pub fn track_size_change(old_size: u64, new_size: u64) -> Result<(), Error> {
 }
 
 /// Add size to total canister size
-pub fn add_canister_size(bytes: u64) -> Result<(), Error> {
+pub fn add_canister_size(bytes: u64) -> std::result::Result<(), Error> {
     CANISTER_STATE.with(|state| {
         let mut s = state.borrow_mut();
         s.add_size(bytes)
     })
 }
 
-/// Remove size from total canister size
-pub fn remove_canister_size(bytes: u64) {
-    CANISTER_STATE.with(|state| {
-        let mut s = state.borrow_mut();
-        s.remove_size(bytes);
-    });
-}
-
-/// Get current total canister size
-pub fn get_total_canister_size() -> u64 {
-    CANISTER_STATE.with(|state| state.borrow().get_total_size())
-}
-
-/// Get remaining canister capacity
-pub fn get_remaining_canister_capacity() -> u64 {
-    CANISTER_STATE.with(|state| state.borrow().get_remaining_capacity())
-}
-
-/// Check if canister would exceed size limit
-pub fn would_exceed_canister_limit(additional_bytes: u64) -> bool {
-    CANISTER_STATE.with(|state| state.borrow().would_exceed_limit(additional_bytes))
-}
+// Note: Unused size tracking functions removed - not currently implemented in the system
 
 /// Get canister size statistics
 pub fn get_canister_size_stats() -> CanisterSizeStats {

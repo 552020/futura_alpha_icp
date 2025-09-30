@@ -6,7 +6,7 @@ use std::borrow::Cow;
 // Size constants aligned with senior developer feedback
 pub const INLINE_MAX: u64 = 32 * 1024; // 32KB (fits in Capsule bound)
 pub const CHUNK_SIZE: usize = 64 * 1024; // 64KB
-pub const PAGE_SIZE: usize = 64 * 1024; // 64KB
+                                         // Removed unused constant: PAGE_SIZE
 pub const CAPSULE_INLINE_BUDGET: u64 = 32 * 1024; // Max inline bytes per capsule
 
 /// Session identifier using u64 for efficient storage

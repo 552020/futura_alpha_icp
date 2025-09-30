@@ -20,3 +20,4 @@ This document outlines the comprehensive testing strategy for ICP applications, 
 ---
 
 _This document is a work in progress and will be expanded with detailed testing strategies, examples, and best practices for ICP development._
+

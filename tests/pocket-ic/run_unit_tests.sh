@@ -21,3 +21,4 @@ echo "🧪 Running unit tests..."
 cargo test --package backend --lib
 
 echo "✅ Unit tests completed!"
+

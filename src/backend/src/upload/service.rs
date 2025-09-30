@@ -3,7 +3,7 @@ use crate::types::{AssetMetadata, CapsuleId, Error, Memory, MemoryId, PersonRef}
 use crate::upload::blob_store::BlobStore;
 use crate::upload::sessions::SessionStore;
 use crate::upload::types::*;
-use candid::Principal;
+// Removed unused import: candid::Principal
 use sha2::{Digest, Sha256};
 
 pub struct UploadService {
@@ -19,79 +19,9 @@ impl UploadService {
         }
     }
 
-    /// Check concurrent upload limit for user (max 10 per user per capsule for MVP)
-    pub fn check_upload_rate_limit(
-        &self,
-        store: &mut Store,
-        caller: &Principal,
-        capsule_id: &CapsuleId,
-    ) -> Result<(), Error> {
-        const MAX_CONCURRENT_UPLOADS: usize = 10; // Increased for MVP development
+    // Note: check_upload_rate_limit removed - not currently used
 
-        let active_sessions = self.sessions.count_active_for(capsule_id, caller);
-
-        if active_sessions >= MAX_CONCURRENT_UPLOADS {
-            return Err(Error::ResourceExhausted);
-        }
-
-        Ok(())
-    }
-
-    /// Inline-only endpoint - rejects large payloads at ingress
-    pub fn create_inline(
-        &mut self,
-        store: &mut Store,
-        capsule_id: &CapsuleId,
-        bytes: Vec<u8>,
-        asset_metadata: AssetMetadata,
-    ) -> Result<MemoryId, Error> {
-        if bytes.len() > INLINE_MAX as usize {
-            return Err(Error::ResourceExhausted);
-        }
-
-        // Check per-capsule inline budget
-        let current_inline_size = store
-            .get(capsule_id)
-            .map(|capsule| {
-                capsule
-                    .memories
-                    .values()
-                    .map(|m| {
-                        m.inline_assets
-                            .iter()
-                            .map(|asset| asset.bytes.len())
-                            .sum::<usize>()
-                    })
-                    .sum::<usize>()
-            })
-            .unwrap_or(0);
-
-        if (current_inline_size as u64).saturating_add(bytes.len() as u64) > CAPSULE_INLINE_BUDGET {
-            return Err(Error::ResourceExhausted);
-        }
-
-        // Verify caller has write access
-        let caller = ic_cdk::api::msg_caller();
-        let person_ref = PersonRef::Principal(caller);
-        if let Some(capsule) = store.get(capsule_id) {
-            if !capsule.has_write_access(&person_ref) {
-                return Err(Error::Unauthorized);
-            }
-        } else {
-            return Err(Error::NotFound);
-        }
-
-        let memory = Memory::inline(bytes, asset_metadata);
-        let memory_id = memory.id.clone();
-
-        // Atomic update to capsule using the existing pattern
-        store.update(capsule_id, |capsule| {
-            capsule.memories.insert(memory_id.clone(), memory);
-            capsule.updated_at = ic_cdk::api::time();
-        })?;
-
-        Ok(memory_id)
-    }
+    // Note: create_inline method removed - not currently used
 
     pub fn begin_upload(
         &mut self,
@@ -100,7 +30,7 @@ impl UploadService {
         asset_metadata: AssetMetadata,
         expected_chunks: u32,
         idem: String, // ← add this
-    ) -> Result<SessionId, Error> {
+    ) -> std::result::Result<SessionId, Error> {
         // 0) validate input early
         if expected_chunks == 0 {
             return Err(Error::InvalidArgument("expected_chunks_zero".into()));
@@ -154,23 +84,7 @@ impl UploadService {
         Ok(session_id)
     }
 
-    /// Begin chunked upload for large files (legacy method - use begin_upload instead)
-    pub fn begin_upload_chunked(
-        &mut self,
-        store: &mut Store,
-        capsule_id: CapsuleId,
-        asset_metadata: AssetMetadata,
-        expected_chunks: u32,
-    ) -> Result<SessionId, Error> {
-        // Use the main begin_upload method with empty idem for backward compatibility
-        self.begin_upload(
-            store,
-            capsule_id,
-            asset_metadata,
-            expected_chunks,
-            "".to_string(),
-        )
-    }
+    // Note: begin_upload_chunked legacy method removed - use begin_upload instead
 
     /// Upload a chunk for an active session.
     ///
@@ -185,11 +99,11 @@ impl UploadService {
     /// hash/length are verified before attaching to the capsule.
     pub fn put_chunk(
         &mut self,
-        store: &mut Store,
+        _store: &mut Store,
         session_id: &SessionId,
         chunk_idx: u32,
         bytes: Vec<u8>,
-    ) -> Result<(), Error> {
+    ) -> std::result::Result<(), Error> {
         // Verify session exists and caller matches
         let session = self.sessions.get(session_id)?.ok_or(Error::NotFound)?;
 
@@ -255,7 +169,7 @@ impl UploadService {
         session_id: SessionId,
         expected_sha256: [u8; 32],
         total_len: u64,
-    ) -> Result<MemoryId, Error> {
+    ) -> std::result::Result<MemoryId, Error> {
         let mut session = self.sessions.get(&session_id)?.ok_or(Error::NotFound)?;
 
         // Verify caller matches
@@ -346,7 +260,11 @@ impl UploadService {
     }
 
     /// Abort upload and cleanup with authorization
-    pub fn abort(&mut self, store: &mut Store, session_id: SessionId) -> Result<(), Error> {
+    pub fn abort(
+        &mut self,
+        _store: &mut Store,
+        session_id: SessionId,
+    ) -> std::result::Result<(), Error> {
         // Verify caller matches (if session exists)
         if let Some(session) = self.sessions.get(&session_id)? {
             let caller = ic_cdk::api::msg_caller();
@@ -360,6 +278,7 @@ impl UploadService {
     }
 
     /// Utility function to compute SHA256 for client-side verification
+    #[allow(dead_code)] // Used in tests
     pub fn compute_sha256(data: &[u8]) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(data);
