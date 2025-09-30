@@ -32,4 +32,3 @@ The `Capsule` struct still has a `bound_to_neon: bool` field, but this functiona
 - Cleaner architecture
 - Single source of truth for storage edges
 - Consistent with the new multi-asset architecture
-
