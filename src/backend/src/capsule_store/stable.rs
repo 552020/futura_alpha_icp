@@ -433,7 +433,7 @@ impl CapsuleStore for StableStore {
         ids.iter().filter_map(|id| self.capsules.get(id)).collect()
     }
 
-    fn paginate(&self, after: Option<CapsuleId>, limit: u32, _order: Order) -> Page<Capsule> {
+    fn paginate(&self, after: Option<CapsuleId>, limit: u32, order: Order) -> Page<Capsule> {
         // For StableBTreeMap, we need to collect and sort
         // In a production implementation, this would be optimized
         // with custom iterators or range queries
@@ -445,15 +445,24 @@ impl CapsuleStore for StableStore {
             all_capsules.push((id, capsule));
         }
 
-        // Sort in ascending order (only order we support)
-        all_capsules.sort_by(|a, b| a.0.cmp(&b.0));
+        // Sort based on order
+        match order {
+            Order::Asc => all_capsules.sort_by(|a, b| a.0.cmp(&b.0)),
+            Order::Desc => all_capsules.sort_by(|a, b| b.0.cmp(&a.0)),
+        }
 
         // Find start position (exclusive after cursor)
         let start_pos = if let Some(after_id) = &after {
-            all_capsules
-                .iter()
-                .position(|(id, _)| *id > *after_id)
-                .unwrap_or(all_capsules.len())
+            match order {
+                Order::Asc => all_capsules
+                    .iter()
+                    .position(|(id, _)| *id > *after_id)
+                    .unwrap_or(all_capsules.len()),
+                Order::Desc => all_capsules
+                    .iter()
+                    .position(|(id, _)| *id < *after_id)
+                    .unwrap_or(all_capsules.len()),
+            }
         } else {
             0
         };
@@ -465,7 +474,17 @@ impl CapsuleStore for StableStore {
             .map(|(_, capsule)| capsule.clone())
             .collect();
 
-        Page { items: page_items }
+        // Next cursor = last item of current page (exclusive keyset cursor)
+        let next_cursor = if !page_items.is_empty() && end_pos < all_capsules.len() {
+            Some(all_capsules[end_pos - 1].0.clone())
+        } else {
+            None
+        };
+
+        Page {
+            items: page_items,
+            next_cursor,
+        }
     }
 
     fn count(&self) -> u64 {

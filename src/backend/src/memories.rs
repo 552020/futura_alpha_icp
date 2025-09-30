@@ -162,3 +162,107 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
         message: "Memories retrieved successfully".to_string(),
     }
 }
+
+// ============================================================================
+// MEMORY TYPE IMPLEMENTATIONS
+// ============================================================================
+
+impl Memory {
+    /// Create a new memory with blob reference (>32KB)
+    pub fn from_blob(
+        blob_id: u64,
+        size: u64,
+        checksum: [u8; 32],
+        asset_metadata: crate::types::AssetMetadata,
+    ) -> Self {
+        let now = ic_cdk::api::time();
+        Self {
+            id: format!("mem_{now}"), // Simple ID generation
+            metadata: crate::types::MemoryMetadata {
+                memory_type: crate::types::MemoryType::Note, // Default type for blob
+                title: None,
+                description: None,
+                content_type: match &asset_metadata {
+                    crate::types::AssetMetadata::Image(img) => img.base.mime_type.clone(),
+                    crate::types::AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
+                    crate::types::AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
+                    crate::types::AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
+                    crate::types::AssetMetadata::Note(note) => note.base.mime_type.clone(),
+                },
+                created_at: now,
+                updated_at: now,
+                uploaded_at: now,
+                date_of_memory: None,
+                file_created_at: None,
+                parent_folder_id: None, // Default to root folder
+                tags: match &asset_metadata {
+                    crate::types::AssetMetadata::Image(img) => img.base.tags.clone(),
+                    crate::types::AssetMetadata::Video(vid) => vid.base.tags.clone(),
+                    crate::types::AssetMetadata::Audio(audio) => audio.base.tags.clone(),
+                    crate::types::AssetMetadata::Document(doc) => doc.base.tags.clone(),
+                    crate::types::AssetMetadata::Note(note) => note.base.tags.clone(),
+                },
+                deleted_at: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
+                database_storage_edges: vec![crate::types::StorageEdgeDatabaseType::Icp],
+            },
+            access: crate::types::MemoryAccess::Private {
+                owner_secure_code: format!("blob_{blob_id}_{:x}", now % 0xFFFF), // Generate secure code
+            }, // Default to private access
+            inline_assets: vec![],
+            blob_internal_assets: vec![crate::types::MemoryAssetBlobInternal {
+                blob_ref: crate::types::BlobRef {
+                    locator: format!("blob_{blob_id}"),
+                    hash: Some(checksum),
+                    len: size,
+                },
+                metadata: asset_metadata,
+            }],
+            blob_external_assets: vec![],
+        }
+    }
+
+    /// Get memory header for listing
+    pub fn to_header(&self) -> crate::types::MemoryHeader {
+        // Calculate total size from all assets
+        let inline_size: u64 = self
+            .inline_assets
+            .iter()
+            .map(|asset| asset.bytes.len() as u64)
+            .sum();
+        let blob_internal_size: u64 = self
+            .blob_internal_assets
+            .iter()
+            .map(|asset| asset.blob_ref.len)
+            .sum();
+        let blob_external_size: u64 = self
+            .blob_external_assets
+            .iter()
+            .map(|asset| match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => img.base.bytes,
+                crate::types::AssetMetadata::Video(vid) => vid.base.bytes,
+                crate::types::AssetMetadata::Audio(audio) => audio.base.bytes,
+                crate::types::AssetMetadata::Document(doc) => doc.base.bytes,
+                crate::types::AssetMetadata::Note(note) => note.base.bytes,
+            })
+            .sum();
+        let size = inline_size + blob_internal_size + blob_external_size;
+
+        crate::types::MemoryHeader {
+            id: self.id.clone(),
+            name: self
+                .metadata
+                .title
+                .clone()
+                .unwrap_or_else(|| "Untitled".to_string()),
+            memory_type: self.metadata.memory_type.clone(),
+            size,
+            created_at: self.metadata.created_at,
+            updated_at: self.metadata.updated_at,
+            access: self.access.clone(),
+        }
+    }
+}

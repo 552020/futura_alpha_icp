@@ -286,49 +286,15 @@ pub struct CommitResponse {
     pub error: Option<Error>,
 }
 
-// Memory sync request for batch operations
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemorySyncRequest {
-    pub memory_id: String,
-    pub memory_type: MemoryType,
-    pub metadata: SimpleMemoryMetadata,
-    pub asset_url: String, // URL to fetch asset from (e.g., Vercel Blob)
-    pub expected_asset_hash: String, // Expected hash of the asset
-    pub asset_size: u64,   // Size of the asset in bytes
-}
+// Memory sync types - REMOVED: unused
+// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+// pub struct MemorySyncRequest { ... }
+// pub struct MemorySyncResult { ... }
+// pub struct BatchMemorySyncResponse { ... }
 
-// Response for individual memory sync operation
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct MemorySyncResult {
-    pub memory_id: String,
-    pub success: bool,
-    pub metadata_stored: bool,
-    pub asset_stored: bool,
-    pub message: String,
-    pub error: Option<Error>,
-}
-
-// Response for batch memory sync operation
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct BatchMemorySyncResponse {
-    pub gallery_id: String,
-    pub success: bool,
-    pub total_memories: u32,
-    pub successful_memories: u32,
-    pub failed_memories: u32,
-    pub results: Vec<MemorySyncResult>,
-    pub message: String,
-    pub error: Option<Error>,
-}
-
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct UserMemoriesResponse {
-    pub images: Vec<String>,
-    pub notes: Vec<String>,
-    pub videos: Vec<String>,
-    pub documents: Vec<String>,
-    pub audio: Vec<String>,
-}
+// UserMemoriesResponse - REMOVED: unused
+// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+// pub struct UserMemoriesResponse { ... }
 
 // User management types for Internet Identity integration
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
@@ -342,12 +308,9 @@ pub struct User {
     pub bound: bool,
 }
 
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct UserRegistrationResult {
-    pub success: bool,
-    pub user: Option<User>,
-    pub message: String,
-}
+// UserRegistrationResult - REMOVED: unused
+// #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+// pub struct UserRegistrationResult { ... }
 
 // Capsule types for user-owned data architecture
 // Core person reference - can be a live principal or opaque identifier
@@ -427,14 +390,9 @@ pub struct Capsule {
     pub inline_bytes_used: u64, // Track inline storage consumption
 }
 
-// Capsule registration result (minimal response for user registration)
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct CapsuleRegistrationResult {
-    pub success: bool,
-    pub capsule_id: Option<String>, // Just the ID
-    pub is_new: bool,               // true if just created, false if existing
-    pub message: String,
-}
+// CapsuleRegistrationResult - REMOVED: unused
+// #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+// pub struct CapsuleRegistrationResult { ... }
 
 // Capsule information for user queries
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
@@ -588,14 +546,9 @@ pub struct MemoryMetadata {
     pub database_storage_edges: Vec<StorageEdgeDatabaseType>,
 }
 
-// External blob storage types
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum MemoryBlobKindExternal {
-    Http,    // HTTP URL
-    Ipfs,    // IPFS CID
-    Arweave, // Arweave CID
-    AWS,     // AWS S3
-}
+// External blob storage types - REMOVED: unused
+// #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+// pub enum MemoryBlobKindExternal { ... }
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct BlobRef {
@@ -660,107 +613,7 @@ pub struct Memory {
     pub blob_external_assets: Vec<MemoryAssetBlobExternal>, // 0 or more external blob assets
 }
 
-impl Memory {
-    // Removed unused method: inline
-
-    /// Create a new memory with blob reference (>32KB)
-    pub fn from_blob(
-        blob_id: u64,
-        size: u64,
-        checksum: [u8; 32],
-        asset_metadata: AssetMetadata,
-    ) -> Self {
-        let now = ic_cdk::api::time();
-        Self {
-            id: format!("mem_{now}"), // Simple ID generation
-            metadata: MemoryMetadata {
-                memory_type: MemoryType::Note, // Default type for blob
-                title: None,
-                description: None,
-                content_type: match &asset_metadata {
-                    AssetMetadata::Image(img) => img.base.mime_type.clone(),
-                    AssetMetadata::Video(vid) => vid.base.mime_type.clone(),
-                    AssetMetadata::Audio(audio) => audio.base.mime_type.clone(),
-                    AssetMetadata::Document(doc) => doc.base.mime_type.clone(),
-                    AssetMetadata::Note(note) => note.base.mime_type.clone(),
-                },
-                created_at: now,
-                updated_at: now,
-                uploaded_at: now,
-                date_of_memory: None,
-                file_created_at: None,
-                parent_folder_id: None, // Default to root folder
-                tags: match &asset_metadata {
-                    AssetMetadata::Image(img) => img.base.tags.clone(),
-                    AssetMetadata::Video(vid) => vid.base.tags.clone(),
-                    AssetMetadata::Audio(audio) => audio.base.tags.clone(),
-                    AssetMetadata::Document(doc) => doc.base.tags.clone(),
-                    AssetMetadata::Note(note) => note.base.tags.clone(),
-                },
-                deleted_at: None,
-                people_in_memory: None,
-                location: None,
-                memory_notes: None,
-                created_by: None,
-                database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
-            },
-            access: MemoryAccess::Private {
-                owner_secure_code: format!("blob_{blob_id}_{:x}", now % 0xFFFF), // Generate secure code
-            }, // Default to private access
-            inline_assets: vec![],
-            blob_internal_assets: vec![MemoryAssetBlobInternal {
-                blob_ref: BlobRef {
-                    locator: format!("blob_{blob_id}"),
-                    hash: Some(checksum),
-                    len: size,
-                },
-                metadata: asset_metadata,
-            }],
-            blob_external_assets: vec![],
-        }
-    }
-
-    /// Get memory header for listing
-    pub fn to_header(&self) -> MemoryHeader {
-        // Calculate total size from all assets
-        let inline_size: u64 = self
-            .inline_assets
-            .iter()
-            .map(|asset| asset.bytes.len() as u64)
-            .sum();
-        let blob_internal_size: u64 = self
-            .blob_internal_assets
-            .iter()
-            .map(|asset| asset.blob_ref.len)
-            .sum();
-        let blob_external_size: u64 = self
-            .blob_external_assets
-            .iter()
-            .map(|asset| match &asset.metadata {
-                AssetMetadata::Image(img) => img.base.bytes,
-                AssetMetadata::Video(vid) => vid.base.bytes,
-                AssetMetadata::Audio(audio) => audio.base.bytes,
-                AssetMetadata::Document(doc) => doc.base.bytes,
-                AssetMetadata::Note(note) => note.base.bytes,
-            })
-            .sum();
-        let size = inline_size + blob_internal_size + blob_external_size;
-
-        MemoryHeader {
-            id: self.id.clone(),
-            name: self
-                .metadata
-                .title
-                .clone()
-                .unwrap_or_else(|| "Untitled".to_string()),
-            memory_type: self.metadata.memory_type.clone(),
-            size,
-            created_at: self.metadata.created_at,
-            updated_at: self.metadata.updated_at,
-            access: self.access.clone(),
-        }
-    }
-}
+// Memory implementation moved to memory.rs
 
 // ============================================================================
 // GALLERY SYSTEM - Minimal Abstraction Approach
@@ -826,41 +679,15 @@ pub struct GalleryUpdateData {
     pub memory_entries: Option<Vec<GalleryMemoryEntry>>,
 }
 
-// User principal management types
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct UserPrincipalData {
-    pub principal: Principal,
-    pub web2_user_id: Option<String>, // Link to Web2 user ID
-    pub registered_at: u64,           // Registration timestamp
-    pub last_activity_at: u64,        // Last activity timestamp
-    pub bound_to_neon: bool,          // Whether linked to Neon database
-}
+// User principal management types - REMOVED: unused
+// #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+// pub struct UserPrincipalData { ... }
+// pub struct RegisterUserResponse { ... }
+// pub struct LinkUserResponse { ... }
 
-// User principal registration result
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct RegisterUserResponse {
-    pub success: bool,
-    pub user_data: Option<UserPrincipalData>,
-    pub message: String,
-}
-
-// User principal linking result
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct LinkUserResponse {
-    pub success: bool,
-    pub user_data: Option<UserPrincipalData>,
-    pub message: String,
-}
-
-// Gallery verification result
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct VerificationResult {
-    pub success: bool,
-    pub verified_memories: u32,        // Number of memories verified
-    pub total_memories: u32,           // Total memories in gallery
-    pub missing_memories: Vec<String>, // Memory IDs that couldn't be verified
-    pub message: String,
-}
+// VerificationResult - REMOVED: unused
+// #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+// pub struct VerificationResult { ... }
 
 // Memory operation response types
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
@@ -902,25 +729,7 @@ pub enum ResourceType {
 // TYPE MAPPING FUNCTIONS - Web2 ↔ ICP Conversion
 // ============================================================================
 
-impl Gallery {
-    // Note: Web2 integration functions removed - not currently used
-
-    /// Get gallery header for listing
-    pub fn to_header(&self) -> GalleryHeader {
-        GalleryHeader {
-            id: self.id.clone(),
-            name: self.title.clone(),
-            memory_count: self.memory_entries.len() as u32,
-            created_at: self.created_at,
-            updated_at: self.updated_at,
-            storage_location: self.storage_location.clone(),
-        }
-    }
-}
-
-impl GalleryMemoryEntry {
-    // Note: Web2 integration functions removed - not currently used
-}
+// Gallery and GalleryMemoryEntry implementations moved to gallery.rs
 
 // Note: Web2 data structures removed - not currently used
 

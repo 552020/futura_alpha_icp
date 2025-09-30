@@ -499,7 +499,18 @@ pub struct InMemoryStore {
 }
 
 impl InMemoryStore {
-    // Removed unused methods: new, add_accessible_capsule
+    #[allow(dead_code)] // Used in tests
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[allow(dead_code)] // Used in tests
+    pub fn add_accessible_capsule(&mut self, caller: PersonRef, capsule_id: CapsuleId) {
+        self.accessible_capsules
+            .entry(caller)
+            .or_insert_with(Vec::new)
+            .push(capsule_id);
+    }
 }
 
 impl Store for InMemoryStore {

@@ -6,8 +6,8 @@ use crate::capsule::capsules_create;
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
-    Error, Gallery, GalleryData, GalleryHeader, GalleryStorageLocation, GalleryUpdateData,
-    PersonRef,
+    Error, Gallery, GalleryData, GalleryHeader, GalleryMemoryEntry, GalleryStorageLocation,
+    GalleryUpdateData, PersonRef,
 };
 
 /// Create a gallery in the caller's capsule (replaces store_gallery_forever)
@@ -472,4 +472,26 @@ mod gallery_tests {
             owner_principal: candid::Principal::anonymous(),
         }
     }
+}
+
+// ============================================================================
+// GALLERY TYPE IMPLEMENTATIONS
+// ============================================================================
+
+impl Gallery {
+    /// Get gallery header for listing
+    pub fn to_header(&self) -> GalleryHeader {
+        GalleryHeader {
+            id: self.id.clone(),
+            name: self.title.clone(),
+            memory_count: self.memory_entries.len() as u32,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            storage_location: self.storage_location.clone(),
+        }
+    }
+}
+
+impl GalleryMemoryEntry {
+    // Note: Web2 integration functions removed - not currently used
 }
