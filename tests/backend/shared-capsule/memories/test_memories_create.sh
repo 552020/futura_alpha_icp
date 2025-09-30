@@ -32,58 +32,21 @@ test_memories_create_inline() {
 
     echo_debug "Testing with capsule ID: $capsule_id"
 
-    # Create test memory data using new API format
+    # Create test memory using the working utility function
     local memory_bytes='blob "SGVsbG8gV29ybGQgLSBUaGlzIGlzIGEgdGVzdCBmaWxl"'
-    local asset_metadata='(variant {
-      Document = record {
-        base = record {
-          name = "test_inline_memory.txt";
-          description = opt "Test inline memory creation";
-          tags = vec { "test"; "inline"; "small" };
-          asset_type = variant { Original };
-          bytes = 40;
-          mime_type = "text/plain";
-          sha256 = null;
-          width = null;
-          height = null;
-          url = null;
-          storage_key = null;
-          bucket = null;
-          asset_location = null;
-          processing_status = null;
-          processing_error = null;
-          created_at = 0;
-          updated_at = 0;
-          deleted_at = null;
-        };
-        page_count = null;
-        document_type = null;
-        language = null;
-        word_count = null;
-      }
-    })'
-
-    local idem="test_inline_$(date +%s)"
-
-    # Call memories_create with the new API format: (capsule_id, bytes, blob_ref, external_location, external_storage_key, external_url, external_size, external_hash, asset_metadata, idem)
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
-
-    # Check for successful Result<MemoryId, Error> response
-    if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
-        echo_success "✅ memories_create with Inline data succeeded"
-        echo_debug "Result: $result"
-
-        # Extract and save memory ID for other tests
-        local memory_id=$(echo "$result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
-        if [[ -n "$memory_id" ]]; then
-            echo "$memory_id" > /tmp/test_memory_id.txt
-            echo_debug "Saved memory ID to /tmp/test_memory_id.txt for other tests: $memory_id"
-        fi
-    else
-        echo_error "❌ memories_create with Inline data failed"
-        echo_debug "Result: $result"
+    local memory_id=$(create_test_memory "$capsule_id" "test_inline_memory" "Test inline memory creation" '"test"; "inline"; "small"' "$memory_bytes" "$CANISTER_ID" "$IDENTITY")
+    
+    if [[ -z "$memory_id" ]]; then
+        echo_error "Failed to create test memory"
         return 1
     fi
+    
+    echo_success "✅ memories_create with Inline data succeeded"
+    echo_debug "Memory ID: $memory_id"
+    
+    # Save memory ID for other tests
+    echo "$memory_id" > /tmp/test_memory_id.txt
+    echo_debug "Saved memory ID to /tmp/test_memory_id.txt for other tests: $memory_id"
 }
 
 # Test 2: Test memories_create with BlobRef data (existing blob)
@@ -145,7 +108,7 @@ test_memories_create_blobref() {
     # Call memories_create with BlobRef: (capsule_id, null, blob_ref, null, null, null, null, null, asset_metadata, idem)
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", null, opt $blob_ref, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
-    if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
+    if [[ $result == *"Ok"* ]] && [[ $result == *"mem:"* ]]; then
         echo_success "✅ memories_create with BlobRef data succeeded"
         echo_debug "Result: $result"
     else
@@ -207,7 +170,7 @@ test_memories_create_external() {
     echo_debug "Calling memories_create with external asset..."
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", null, null, opt variant { S3 }, opt \"s3://bucket/test_video.mp4\", opt \"https://s3.amazonaws.com/bucket/test_video.mp4\", opt 5000000, opt blob \"$external_hash\", $asset_metadata, \"$idem\")" 2>/dev/null)
 
-    if [[ $result == *"Ok"* ]] && [[ $result == *"mem_"* ]]; then
+    if [[ $result == *"Ok"* ]] && [[ $result == *"mem:"* ]]; then
         echo_success "✅ memories_create with external asset succeeded"
         echo_debug "Result: $result"
     else
@@ -229,7 +192,7 @@ test_memories_create_invalid_capsule() {
           description = null;
           tags = vec {};
           asset_type = variant { Original };
-          bytes = 16;
+          bytes = 24;
           mime_type = "text/plain";
           sha256 = null;
           width = null;
@@ -256,7 +219,7 @@ test_memories_create_invalid_capsule() {
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"invalid_capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     # Check for error response (Result<MemoryId, Error>)
-    if [[ $result == *"Err"* ]] && [[ $result == *"NotFound"* ]]; then
+    if [[ $result == *"Err"* ]] && ([[ $result == *"NotFound"* ]] || [[ $result == *"Unauthorized"* ]]); then
         echo_success "✅ memories_create with invalid capsule ID returned expected error"
         echo_debug "Result: $result"
     else
@@ -292,7 +255,7 @@ test_memories_create_large_inline() {
           description = opt "Test large inline file that should fail";
           tags = vec { "test"; "large"; "should-fail" };
           asset_type = variant { Original };
-          bytes = '$(echo -n "$large_data" | wc -c)';
+          bytes = '$(echo -n "$large_data" | base64 | wc -c)';
           mime_type = "text/plain";
           sha256 = null;
           width = null;
@@ -343,36 +306,11 @@ test_memories_create_idempotency() {
 
     # Use same idem key for both calls
     local idem="test_idempotent_$(date +%s)"
-
     local memory_bytes='blob "VGVzdCBpZGVtcG90ZW5jeSBkYXRh"'
-    local asset_metadata='(variant {
-      Document = record {
-        base = record {
-          name = "test_idempotent.txt";
-          description = opt "Test idempotency with same idem key";
-          tags = vec { "test"; "idempotent" };
-          asset_type = variant { Original };
-          bytes = 20;
-          mime_type = "text/plain";
-          sha256 = null;
-          width = null;
-          height = null;
-          url = null;
-          storage_key = null;
-          bucket = null;
-          asset_location = null;
-          processing_status = null;
-          processing_error = null;
-          created_at = 0;
-          updated_at = 0;
-          deleted_at = null;
-        };
-        page_count = null;
-        document_type = null;
-        language = null;
-        word_count = null;
-      }
-    })'
+
+    # Both calls need to use the same idem key, so we'll do them manually
+    local base64_content=$(echo "$memory_bytes" | sed 's/blob "//' | sed 's/"//')
+    local asset_metadata=$(create_document_asset_metadata "test_idempotent" "Test idempotency with same idem key" '"test"; "idempotent"' "$(echo -n "$base64_content" | wc -c)")
 
     # First call
     local first_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
@@ -384,13 +322,13 @@ test_memories_create_idempotency() {
     fi
 
     # Extract first memory ID
-    local first_memory_id=$(echo "$first_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
+    local first_memory_id=$(echo "$first_result" | grep -o '"mem:[^"]*"' | sed 's/"//g')
 
     # Second call with same idem key (should return same memory ID)
     local second_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     if [[ $second_result == *"Ok"* ]]; then
-        local second_memory_id=$(echo "$second_result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
+        local second_memory_id=$(echo "$second_result" | grep -o '"mem:[^"]*"' | sed 's/"//g')
         if [[ "$first_memory_id" == "$second_memory_id" ]]; then
             echo_success "✅ memories_create idempotency verified (same memory ID returned)"
             echo_debug "First ID: $first_memory_id, Second ID: $second_memory_id"

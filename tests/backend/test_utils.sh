@@ -68,6 +68,10 @@ echo_warn() {
     echo "[WARN] $1"
 }
 
+echo_warning() {
+    echo "[WARNING] $1"
+}
+
 # Additional logging functions for comprehensive test scripts
 echo_success() {
     echo "[SUCCESS] $1"
@@ -174,7 +178,9 @@ run_test_with_counters() {
 }
 
 echo_debug() {
-    echo "[DEBUG] $1"
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        echo "[DEBUG] $1" >&2
+    fi
 }
 
 echo_header() {
@@ -296,6 +302,96 @@ extract_canister_id() {
 extract_creation_status() {
     local response="$1"
     echo "$response" | grep -o 'status = variant { [^}]*}' | sed 's/status = variant { \([^}]*\) }/\1/'
+}
+
+# ============================================================================
+# MEMORY TEST UTILITIES
+# ============================================================================
+
+# Helper function to extract memory ID from memories_create response
+extract_memory_id() {
+    local response="$1"
+    echo "$response" | grep -o '"mem:[^"]*"' | sed 's/"//g'
+}
+
+# Helper function to create standard Document asset metadata
+create_document_asset_metadata() {
+    local name="$1"
+    local description="$2"
+    local tags="$3"
+    local bytes="$4"
+    local mime_type="${5:-text/plain}"
+    
+    cat << EOF
+(variant {
+  Document = record {
+    base = record {
+      name = "$name";
+      description = opt "$description";
+      tags = vec { $tags };
+      asset_type = variant { Original };
+      bytes = $bytes;
+      mime_type = "$mime_type";
+      sha256 = null;
+      width = null;
+      height = null;
+      url = null;
+      storage_key = null;
+      bucket = null;
+      asset_location = null;
+      processing_status = null;
+      processing_error = null;
+      created_at = $(date +%s)000000000 : nat64;
+      updated_at = $(date +%s)000000000 : nat64;
+      deleted_at = null;
+    };
+    page_count = null;
+    document_type = null;
+    language = null;
+    word_count = null;
+  }
+})
+EOF
+}
+
+# Helper function to create a test memory with inline data
+create_test_memory() {
+    local capsule_id="$1"
+    local name="$2"
+    local description="$3"
+    local tags="$4"
+    local memory_bytes="$5"
+    local canister_id="${6:-backend}"
+    local identity="${7:-default}"
+    
+    # Extract the base64 content from the blob string to get the correct byte count
+    local base64_content=$(echo "$memory_bytes" | sed 's/blob "//' | sed 's/"//')
+    local asset_metadata=$(create_document_asset_metadata "$name" "$description" "$tags" "$(echo -n "$base64_content" | wc -c)")
+    local idem="test_$(date +%s)_$$"
+    
+    local result=$(dfx canister call --identity "$identity" "$canister_id" memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
+    
+    if [[ $result == *"Ok"* ]]; then
+        local memory_id=$(extract_memory_id "$result")
+        echo "$memory_id"
+        return 0
+    else
+        echo_debug "Failed to create memory: $result"
+        return 1
+    fi
+}
+
+# Helper function to check if memory creation was successful
+is_memory_creation_success() {
+    local response="$1"
+    echo "$response" | grep -q "Ok" && echo "$response" | grep -q "mem_"
+}
+
+# Helper function to check if memory creation failed with expected error
+is_memory_creation_error() {
+    local response="$1"
+    local expected_error="$2"
+    echo "$response" | grep -q "Err" && echo "$response" | grep -q "$expected_error"
 }
 
 # Helper function to extract principal from opt principal response

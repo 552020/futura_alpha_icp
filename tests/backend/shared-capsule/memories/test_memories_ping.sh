@@ -7,7 +7,7 @@ set -e
 
 # Source test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/../../test_utils.sh"
 
 # Test configuration
 CANISTER_ID="backend"
