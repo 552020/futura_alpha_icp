@@ -9,6 +9,62 @@ export CLICOLOR=0
 export TERM=xterm-256color
 export DFX_WARNING=-mainnet_plaintext_identity
 
+# ----- helpers: decoded length calculators -----
+
+# Extract pure base64 from either:
+#   1) Candid blob literal:  blob "SGVsbG8gV29ybGQ="
+#   2) Raw base64 string:    SGVsbG8gV29ybGQ=
+extract_b64() {
+  local s="$1"
+  # trim only newlines and carriage returns, keep spaces
+  s="$(printf %s "$s" | tr -d '\r\n')"
+  # Simple approach: remove blob prefix and quotes
+  if [[ "$s" =~ ^blob ]]; then
+    # Remove "blob " prefix
+    s="${s#blob }"
+    # Remove surrounding quotes
+    s="${s#\"}"
+    s="${s%\"}"
+    printf %s "$s"
+  else
+    printf %s "$s"
+  fi
+}
+
+# Decoded byte length from base64 (prefers actual decode, falls back to formula)
+b64_decoded_len() {
+  local b64="$(extract_b64 "$1" | tr -d '\n\r\t ')"
+  # Try decoding (Linux: -d, macOS: -D)
+  local n
+  n=$( { printf %s "$b64" | base64 -d 2>/dev/null || printf %s "$b64" | base64 -D 2>/dev/null; } | wc -c | awk '{print $1}' )
+  if [[ -n "$n" && "$n" -ge 0 ]]; then
+    printf %s "$n"
+    return
+  fi
+  # Fallback: length formula  (must be properly padded)
+  local L=${#b64}
+  local pads=0
+  [[ "$b64" =~ ==$ ]] && pads=2 || { [[ "$b64" =~ =$ ]] && pads=1; }
+  printf %s $(( (L/4)*3 - pads ))
+}
+
+# Count bytes from a Candid vec nat8 literal: vec { 0x41; 0x00; 0xff; }
+vec_nat8_len() {
+  local s="$1"
+  # count the number of 0x.. items
+  printf %s "$s" | grep -Eo '0x[0-9a-fA-F]{2}' | wc -l | awk '{print $1}'
+}
+
+# Convert base64 string to Candid vec nat8 format
+b64_to_vec() {
+  local b64="$1"
+  # Decode base64 and convert to hex bytes
+  local hex_bytes=$(printf %s "$b64" | base64 -d | xxd -p -c 1 | sed 's/../0x&;/g' | tr -d '\n')
+  # Remove trailing semicolon
+  hex_bytes="${hex_bytes%;}"
+  printf "vec { %s }" "$hex_bytes"
+}
+
 # Get canister ID from canister_ids.json
 get_canister_id() {
     local canister_name="$1"
@@ -272,12 +328,36 @@ run_test() {
 # Response parsing utilities (unified Result<T, Error> format)
 is_success() {
     local response="$1"
-    echo "$response" | grep -q "variant {" && (echo "$response" | grep -q "Ok =" || echo "$response" | grep -q "Ok }")
+    # Check for Result variants (Ok/Err)
+    if echo "$response" | grep -q "variant {" && (echo "$response" | grep -q "Ok =" || echo "$response" | grep -q "Ok }"); then
+        return 0
+    fi
+    # Check for MemoryOperationResponse success field
+    if echo "$response" | grep -q "success = true"; then
+        return 0
+    fi
+    # Check for other success patterns
+    if echo "$response" | grep -q "success: true"; then
+        return 0
+    fi
+    return 1
 }
 
 is_failure() {
     local response="$1"
-    echo "$response" | grep -q "variant {" && echo "$response" | grep -q "Err ="
+    # Check for Result variants (Err)
+    if echo "$response" | grep -q "variant {" && echo "$response" | grep -q "Err ="; then
+        return 0
+    fi
+    # Check for MemoryOperationResponse failure
+    if echo "$response" | grep -q "success = false"; then
+        return 0
+    fi
+    # Check for other failure patterns
+    if echo "$response" | grep -q "success: false"; then
+        return 0
+    fi
+    return 1
 }
 
 # Helper function to check if response is NotFound error
@@ -364,12 +444,23 @@ create_test_memory() {
     local canister_id="${6:-backend}"
     local identity="${7:-default}"
     
-    # Extract the base64 content from the blob string to get the correct byte count
-    local base64_content=$(echo "$memory_bytes" | sed 's/blob "//' | sed 's/"//')
-    local asset_metadata=$(create_document_asset_metadata "$name" "$description" "$tags" "$(echo -n "$base64_content" | wc -c)")
+    # Convert blob format to vec format to avoid base64 parsing issues
+    local inline_data
+    if [[ "$memory_bytes" =~ ^[[:space:]]*vec[[:space:]]*\{ ]]; then
+        # Already in vec format
+        inline_data="$memory_bytes"
+        bytes_len=$(vec_nat8_len "$memory_bytes")
+    else
+        # Convert blob format to vec format
+        local base64_content=$(extract_b64 "$memory_bytes")
+        inline_data=$(b64_to_vec "$base64_content")
+        bytes_len=$(b64_decoded_len "$memory_bytes")
+    fi
+    
+    local asset_metadata=$(create_document_asset_metadata "$name" "$description" "$tags" "$bytes_len")
     local idem="test_$(date +%s)_$$"
     
-    local result=$(dfx canister call --identity "$identity" "$canister_id" memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
+    local result=$(dfx canister call --identity "$identity" "$canister_id" memories_create "(\"$capsule_id\", opt $inline_data, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
     
     if [[ $result == *"Ok"* ]]; then
         local memory_id=$(extract_memory_id "$result")

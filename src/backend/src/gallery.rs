@@ -484,7 +484,7 @@ impl Gallery {
         GalleryHeader {
             id: self.id.clone(),
             name: self.title.clone(),
-            memory_count: self.memory_entries.len() as u32,
+            memory_count: self.memory_entries.len() as u64,
             created_at: self.created_at,
             updated_at: self.updated_at,
             storage_location: self.storage_location.clone(),

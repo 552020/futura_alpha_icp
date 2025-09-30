@@ -52,10 +52,7 @@ test_memories_create_inline() {
 # Test 2: Test memories_create with BlobRef data (existing blob)
 test_memories_create_blobref() {
     echo_debug "Testing memories_create with BlobRef data (reference to existing blob)..."
-    echo_debug "SKIPPING: BlobRef test requires a blob to exist in the blob store first"
-    echo_debug "This test will be enabled when we have a proper blob upload workflow"
-    return 0
-
+    
     # Get a valid capsule ID first
     local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     
@@ -66,25 +63,47 @@ test_memories_create_blobref() {
 
     echo_debug "Testing with capsule ID: $capsule_id"
 
-    # Create test blob reference
+    # Step 1: Create a blob using the utility function
+    echo_debug "Step 1: Creating blob using utility function..."
+    
+    # Create minimal test blob (1 byte = 8 bits as you suggested!)
+    local blob_output=$(create_minimal_test_blob "$capsule_id" "$CANISTER_ID" "$IDENTITY")
+    
+    if [[ $? -ne 0 ]]; then
+        echo_error "❌ Failed to create test blob"
+        return 1
+    fi
+    
+    # Extract blob information
+    local blob_id=$(extract_blob_info "$blob_output" "ID")
+    local blob_hash=$(extract_blob_info "$blob_output" "HASH")
+    local blob_size=$(extract_blob_info "$blob_output" "SIZE")
+    local blob_locator=$(extract_blob_info "$blob_output" "LOCATOR")
+    
+    echo_debug "Created blob - ID: $blob_id, Hash: $blob_hash, Size: $blob_size, Locator: $blob_locator"
+    
+    # Step 2: Now test memories_create with BlobRef
+    echo_debug "Step 2: Testing memories_create with BlobRef..."
+    
+    # Create blob reference using the actual blob information
     local blob_ref='(record {
-      locator = "test_blob_locator_123";
-      hash = opt blob "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3";
-      len = 1024;
+      locator = "'$blob_locator'";
+      hash = opt blob "'$blob_hash'";
+      len = '$blob_size';
     })'
 
     local asset_metadata='(variant {
-      Image = record {
+      Document = record {
         base = record {
-          name = "test_blobref_image.jpg";
+          name = "test_blobref_document.txt";
           description = opt "Test BlobRef memory creation";
-          tags = vec { "test"; "blobref"; "image" };
+          tags = vec { "test"; "blobref"; "document" };
           asset_type = variant { Original };
-          bytes = 1024;
-          mime_type = "image/jpeg";
-          sha256 = opt blob "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3";
-          width = opt 1920;
-          height = opt 1080;
+          bytes = '$blob_size';
+          mime_type = "text/plain";
+          sha256 = opt blob "'$blob_hash'";
+          width = null;
+          height = null;
           url = null;
           storage_key = null;
           bucket = null;
@@ -95,11 +114,10 @@ test_memories_create_blobref() {
           updated_at = 0;
           deleted_at = null;
         };
-        color_space = null;
-        compression_ratio = null;
-        dpi = null;
-        format = null;
-        has_transparency = null;
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
       }
     })'
 

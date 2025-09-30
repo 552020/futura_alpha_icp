@@ -85,7 +85,7 @@ test_memories_update_invalid_memory() {
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"invalid_memory_id_123\", $update_data)" 2>/dev/null)
     
     if [[ $result == *"success = false"* ]]; then
-        if [[ $result == *"Memory not found in any accessible capsule"* ]] || [[ $result == *"No accessible capsule found for caller"* ]]; then
+        if [[ $result == *"Failed to update memory: NotFound"* ]]; then
             echo_success "✅ memories_update with invalid memory ID returned expected error"
             [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
             return 0

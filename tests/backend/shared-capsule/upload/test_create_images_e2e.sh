@@ -553,7 +553,7 @@ main() {
     
     # Register user first (required for memory operations)
     echo_info "Registering user for memory operations..."
-    local register_result=$(dfx canister call backend register 2>/dev/null)
+    local register_result=$(dfx canister call "$BACKEND_CANISTER_ID" register 2>/dev/null)
     if ! echo "$register_result" | grep -q "true"; then
         echo_warn "User registration returned: $register_result"
     fi
