@@ -193,12 +193,6 @@ async function uploadOriginalToICP(backend, fileBuffer, fileName) {
   // Begin upload session
   const beginResult = await backend.uploads_begin(capsuleId, assetMetadata, chunkCount, idempotencyKey);
 
-  // Debug logging
-  echoInfo(
-    `🔍 Debug: beginResult type: ${typeof beginResult}, keys: ${Object.keys(beginResult)}, has Ok: ${
-      "Ok" in beginResult
-    }, has Err: ${"Err" in beginResult}`
-  );
 
   // Handle different response formats
   let sessionId;
@@ -209,9 +203,6 @@ async function uploadOriginalToICP(backend, fileBuffer, fileName) {
   } else if (beginResult && typeof beginResult === "object") {
     // Object response with Ok/Err structure
     try {
-      echoInfo(
-        `🔍 Debug: About to call validateUploadResponse with: ${typeof beginResult}, keys: ${Object.keys(beginResult)}`
-      );
       validateUploadResponse(beginResult, ["Ok"]);
       sessionId = beginResult.Ok;
       echoInfo(`✅ Upload session started: ${sessionId}`);

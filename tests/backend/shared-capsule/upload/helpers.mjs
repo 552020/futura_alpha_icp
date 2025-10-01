@@ -277,8 +277,6 @@ export function handleUploadError(error, context = "") {
  * Adapted from frontend response validation
  */
 export function validateUploadResponse(response, expectedFields = []) {
-  console.log(`🔍 validateUploadResponse called with:`, typeof response, response);
-
   if (!response) {
     throw new Error("Empty response received");
   }
