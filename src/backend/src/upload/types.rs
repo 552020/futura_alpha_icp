@@ -108,29 +108,8 @@ pub const CHUNK_SIZE: usize = 1_800_000; // 1.8MB - ICP expert recommended optim
                                          // Removed unused constant: PAGE_SIZE
 pub const CAPSULE_INLINE_BUDGET: u64 = 32 * 1024; // Max inline bytes per capsule
 
-/// Session identifier using u64 for efficient storage
-#[derive(Clone, Debug, CandidType, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SessionId(pub u64);
-
-impl Default for SessionId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl SessionId {
-    pub fn new() -> Self {
-        use crate::upload::sessions::STABLE_SESSION_COUNTER;
-        let id = STABLE_SESSION_COUNTER.with(|counter| {
-            let mut c = counter.borrow_mut();
-            let current = c.get();
-            let next_id = current + 1;
-            c.set(next_id).expect("Failed to increment session counter");
-            next_id
-        });
-        SessionId(id)
-    }
-}
+// Re-export SessionId from session module to avoid duplication
+pub use crate::session::types::SessionId;
 
 impl Storable for SessionId {
     const BOUND: Bound = Bound::Bounded {
@@ -194,12 +173,8 @@ impl Storable for BlobId {
     }
 }
 
-/// Session status for crash-safe commit workflow
-#[derive(Clone, Debug, CandidType, Deserialize, PartialEq)]
-pub enum SessionStatus {
-    Pending,
-    Committed { blob_id: u64 },
-}
+// Re-export SessionStatus from session module to avoid duplication
+pub use crate::session::types::SessionStatus;
 
 /// Upload session metadata with crash safety and authorization
 #[derive(Clone, Debug, CandidType, Deserialize)]
@@ -240,6 +215,7 @@ pub struct BlobMeta {
     pub size: u64,
     pub checksum: [u8; 32],
     pub created_at: u64,
+    pub pmid_hash: [u8; 32], // SHA256 of provisional_memory_id for deterministic key lookups
 }
 
 impl Storable for BlobMeta {

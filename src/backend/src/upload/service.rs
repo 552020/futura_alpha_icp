@@ -1,20 +1,39 @@
 use crate::capsule_store::{CapsuleStore, Store};
+use crate::session::{SessionCompat, SessionId};
 use crate::types::{AssetMetadata, CapsuleId, Error, Memory, MemoryId, PersonRef};
 use crate::upload::blob_store::BlobStore;
-use crate::upload::sessions::SessionStore;
 use crate::upload::types::*;
 // Removed unused import: candid::Principal
 use sha2::{Digest, Sha256};
+use std::cell::RefCell;
+
+// Thread-local storage for SessionCompat (persists across calls)
+thread_local! {
+    static SESSION_COMPAT: RefCell<Option<SessionCompat>> = RefCell::new(None);
+}
+
+fn with_session_compat<R>(f: impl FnOnce(&SessionCompat) -> R) -> R {
+    SESSION_COMPAT.with(|cell| {
+        let mut opt = cell.borrow_mut();
+        if opt.is_none() {
+            use crate::upload::blob_store::StableBlobSink;
+            *opt = Some(SessionCompat::new(|meta| {
+                let sink = StableBlobSink::for_meta(meta)?;
+                Ok(Box::new(sink) as Box<dyn crate::session::ByteSink>)
+            }));
+        }
+        // Safety: we just ensured it's Some
+        f(opt.as_ref().unwrap())
+    })
+}
 
 pub struct UploadService {
-    pub sessions: SessionStore,
     pub blobs: BlobStore,
 }
 
 impl UploadService {
     pub fn new() -> Self {
         Self {
-            sessions: SessionStore::new(),
             blobs: BlobStore::new(),
         }
     }
@@ -53,17 +72,21 @@ impl UploadService {
         }
 
         // 2) idempotency: if a pending session with same (capsule, caller, idem) exists, return it
-        if let Some(existing) = self.sessions.find_pending(&capsule_id, &caller, &idem) {
+        if let Some(existing) = with_session_compat(|sessions| sessions.find_pending(&capsule_id, &caller, &idem)) {
             return Ok(existing);
         }
 
         // 3) Clean up expired sessions before checking limits
-        const SESSION_EXPIRY_MS: u64 = 30 * 60 * 1000; // 30 minutes
-        self.sessions.cleanup_expired_sessions(SESSION_EXPIRY_MS);
+        // Only clean up sessions that are actually expired (older than 2 hours)
+        const SESSION_EXPIRY_MS: u64 = 2 * 60 * 60 * 1000; // 2 hours
+        with_session_compat(|sessions| {
+            sessions.cleanup_expired_sessions_for_caller(&capsule_id, &caller, SESSION_EXPIRY_MS)
+        });
 
         // 4) back-pressure: cap concurrent sessions per caller/capsule
         const MAX_ACTIVE_PER_CALLER: usize = 100; // Increased for development
-        let active_count = self.sessions.count_active_for(&capsule_id, &caller);
+        let active_count = with_session_compat(|sessions| sessions.count_active_for(&capsule_id, &caller));
+        let total_count = with_session_compat(|sessions| sessions.total_session_count());
 
         // Log session count for monitoring
         ic_cdk::println!(
@@ -71,7 +94,7 @@ impl UploadService {
             caller,
             capsule_id,
             active_count,
-            self.sessions.total_session_count()
+            total_count
         );
 
         if active_count >= MAX_ACTIVE_PER_CALLER {
@@ -82,20 +105,22 @@ impl UploadService {
         let session_id = SessionId::new();
         let provisional_memory_id = MemoryId::new();
 
-        let session_meta = SessionMeta {
+        let upload_meta = crate::session::UploadSessionMeta {
+            session_id: session_id.0, // Include session_id for unique keys
             capsule_id,
-            provisional_memory_id,
             caller,
-            chunk_count: expected_chunks,
-            expected_len: None,  // fine for MVP if you don’t know length upfront
-            expected_hash: None, // ditto; you can verify on finish
-            status: SessionStatus::Pending,
             created_at: ic_cdk::api::time(),
+            expected_chunks,
+            status: SessionStatus::Pending,
+            chunk_count: expected_chunks,
             asset_metadata,
-            idem, // ← persist for idempotency
+            provisional_memory_id: provisional_memory_id.to_string(),
+            chunk_size: crate::upload::types::CHUNK_SIZE,
+            idem: idem.clone(),
+            blob_id: None, // No blob ID yet (pending)
         };
 
-        self.sessions.create(session_id.clone(), session_meta)?;
+        with_session_compat(|sessions| sessions.create(session_id.clone(), upload_meta))?;
         Ok(session_id)
     }
 
@@ -120,7 +145,7 @@ impl UploadService {
         bytes: Vec<u8>,
     ) -> std::result::Result<(), Error> {
         // Verify session exists and caller matches
-        let session = self.sessions.get(session_id)?.ok_or(Error::NotFound)?;
+        let session = with_session_compat(|sessions| sessions.get(session_id))?.ok_or(Error::NotFound)?;
 
         let caller = ic_cdk::api::msg_caller();
         if session.caller != caller {
@@ -166,7 +191,7 @@ impl UploadService {
         );
 
         // Store chunk
-        self.sessions.put_chunk(session_id, chunk_idx, bytes)?;
+        with_session_compat(|sessions| sessions.put_chunk(session_id, chunk_idx, &bytes))?;
         Ok(())
     }
 
@@ -185,7 +210,7 @@ impl UploadService {
         expected_sha256: [u8; 32],
         total_len: u64,
     ) -> std::result::Result<(String, MemoryId), Error> {
-        let mut session = self.sessions.get(&session_id)?.ok_or(Error::NotFound)?;
+        let mut session = with_session_compat(|sessions| sessions.get(&session_id))?.ok_or(Error::NotFound)?;
 
         // Verify caller matches
         let caller = ic_cdk::api::msg_caller();
@@ -194,7 +219,8 @@ impl UploadService {
         }
 
         // Handle idempotent retry (crash recovery) for committed sessions
-        if let SessionStatus::Committed { blob_id } = session.status {
+        if let SessionStatus::Committed { .. } = session.status {
+            let blob_id = session.blob_id.ok_or(Error::NotFound)?;
             // Check if already attached to capsule
             if let Some(capsule) = store.get(&session.capsule_id) {
                 if capsule
@@ -202,7 +228,7 @@ impl UploadService {
                     .contains_key(&session.provisional_memory_id)
                 {
                     // Already committed and attached
-                    self.sessions.cleanup(&session_id);
+                    with_session_compat(|sessions| sessions.cleanup(&session_id));
                     return Ok((format!("blob_{}", blob_id), session.provisional_memory_id));
                 }
             }
@@ -221,7 +247,7 @@ impl UploadService {
                 capsule.updated_at = ic_cdk::api::time();
             })?;
 
-            self.sessions.cleanup(&session_id);
+            with_session_compat(|sessions| sessions.cleanup(&session_id));
             return Ok((format!("blob_{}", blob_id), memory_id));
         }
 
@@ -237,21 +263,29 @@ impl UploadService {
         }
 
         // 1. Verify all chunks exist (integrity check)
-        self.sessions
-            .verify_chunks_complete(&session_id, session.chunk_count)?;
+        with_session_compat(|sessions| {
+            sessions.verify_chunks_complete(&session_id, session.chunk_count)
+        })?;
+        ic_cdk::println!("COMMIT: sid={} chunks_verified", session_id.0);
 
         // 2. Stream chunks to blob store with verification
-        let blob_id = self.blobs.store_from_chunks(
-            &self.sessions,
-            &session_id,
-            session.chunk_count,
-            total_len,
-            expected_sha256,
-        )?;
+        let blob_id = with_session_compat(|sessions| {
+            self.blobs.store_from_chunks(
+                sessions,
+                &session_id,
+                session.chunk_count,
+                total_len,
+                expected_sha256,
+            )
+        })?;
+        ic_cdk::println!("COMMIT: sid={} hash_verified blob_id={}", session_id.0, blob_id.0);
 
         // 3. Mark session as committed (crash-safe checkpoint)
-        session.status = SessionStatus::Committed { blob_id: blob_id.0 };
-        self.sessions.update(&session_id, session.clone())?;
+        session.status = SessionStatus::Committed {
+            completed_at: ic_cdk::api::time(),
+        };
+        session.blob_id = Some(blob_id.0);
+        with_session_compat(|sessions| sessions.update(session_id.clone(), session.clone()))?;
 
         // 4. Create memory with blob reference
         let memory = Memory::from_blob(
@@ -269,7 +303,7 @@ impl UploadService {
         })?;
 
         // 6. Cleanup session and chunks
-        self.sessions.cleanup(&session_id);
+        with_session_compat(|sessions| sessions.cleanup(&session_id));
 
         // Return both blob ID and memory ID
         Ok((format!("blob_{}", blob_id.0), memory_id))
@@ -282,14 +316,14 @@ impl UploadService {
         session_id: SessionId,
     ) -> std::result::Result<(), Error> {
         // Verify caller matches (if session exists)
-        if let Some(session) = self.sessions.get(&session_id)? {
+        if let Some(session) = with_session_compat(|sessions| sessions.get(&session_id))? {
             let caller = ic_cdk::api::msg_caller();
             if session.caller != caller {
                 return Err(Error::Unauthorized);
             }
         }
 
-        self.sessions.cleanup(&session_id);
+        with_session_compat(|sessions| sessions.cleanup(&session_id));
         Ok(())
     }
 
@@ -299,6 +333,33 @@ impl UploadService {
         let mut hasher = Sha256::new();
         hasher.update(data);
         hasher.finalize().into()
+    }
+
+    // Public session management methods (for lib.rs query endpoints)
+    
+    pub fn clear_all_sessions(&self) {
+        with_session_compat(|sessions| sessions.clear_all_sessions());
+    }
+
+    pub fn total_session_count(&self) -> usize {
+        with_session_compat(|sessions| sessions.total_session_count())
+    }
+
+    pub fn session_count_by_status(&self) -> (usize, usize) {
+        with_session_compat(|sessions| {
+            let all = sessions.list_upload_sessions();
+            let pending = all.iter().filter(|(_, m)| matches!(m.status, SessionStatus::Pending)).count();
+            let committed = all.iter().filter(|(_, m)| matches!(m.status, SessionStatus::Committed { .. })).count();
+            (pending, committed)
+        })
+    }
+
+    pub fn list_upload_sessions(&self) -> Vec<(u64, crate::session::UploadSessionMeta)> {
+        with_session_compat(|sessions| sessions.list_upload_sessions())
+    }
+
+    pub fn cleanup_expired_sessions(&self, expiry_ms: u64) {
+        with_session_compat(|sessions| sessions.cleanup_expired_sessions(expiry_ms));
     }
 }
 
@@ -494,7 +555,7 @@ mod tests {
         let bytes = vec![1, 2, 3, 4];
 
         // Test that committed sessions are rejected
-        let committed_status = SessionStatus::Committed { blob_id: 123 };
+        let committed_status = SessionStatus::Committed { completed_at: 123 };
         match committed_status {
             SessionStatus::Committed { .. } => {
                 // This should trigger rejection in put_chunk
@@ -719,11 +780,11 @@ mod tests {
         let total_len = 100;
 
         // Test idempotent retry scenario
-        let committed_status = SessionStatus::Committed { blob_id: 123 };
+        let committed_status = SessionStatus::Committed { completed_at: 123 };
         match committed_status {
-            SessionStatus::Committed { blob_id } => {
+            SessionStatus::Committed { completed_at } => {
                 // This should trigger idempotent retry logic
-                assert_eq!(blob_id, 123, "Blob ID should match");
+                assert_eq!(completed_at, 123, "Completed timestamp should match");
                 assert!(true, "Committed sessions should allow retry");
             }
             _ => panic!("Expected committed status"),
@@ -784,7 +845,10 @@ mod tests {
     #[test]
     fn test_chunk_size_constant() {
         // Test that CHUNK_SIZE is reasonable
-        assert_eq!(CHUNK_SIZE, 1_800_000, "CHUNK_SIZE should be 1.8MB (ICP expert recommended)");
+        assert_eq!(
+            CHUNK_SIZE, 1_800_000,
+            "CHUNK_SIZE should be 1.8MB (ICP expert recommended)"
+        );
         assert!(CHUNK_SIZE > 0, "CHUNK_SIZE should be positive");
         assert!(
             CHUNK_SIZE < 2 * 1024 * 1024,

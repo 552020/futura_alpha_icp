@@ -1,10 +1,19 @@
 // External imports
 use candid::Principal;
+use hex;
+use sha2::{Digest, Sha256};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 
 // Internal imports
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{Error, Result_13, Result_14, Result_15, UploadFinishResult};
+
+// Rolling hash storage for upload verification
+thread_local! {
+    static UPLOAD_HASH: RefCell<BTreeMap<u64, Sha256>> = RefCell::new(BTreeMap::new());
+}
 
 // Import modules
 mod admin;
@@ -17,6 +26,7 @@ mod gallery;
 mod memories;
 mod memory;
 mod person;
+mod session;
 mod state;
 mod types;
 mod unified_types;
@@ -453,7 +463,15 @@ fn uploads_begin(
         let mut upload_service = upload::service::UploadService::new();
         upload_service.begin_upload(store, capsule_id, asset_metadata, expected_chunks, idem)
     }) {
-        Ok(session_id) => Result_13::Ok(session_id.0),
+        Ok(session_id) => {
+            let sid = session_id.0;
+            // Initialize rolling hash for this session
+            UPLOAD_HASH.with(|m| {
+                m.borrow_mut().insert(sid, Sha256::new());
+            });
+            ic_cdk::println!("UPLOAD_HASH_INIT sid={}", sid);
+            Result_13::Ok(sid)
+        }
         Err(error) => Result_13::Err(error),
     }
 }
@@ -480,7 +498,20 @@ async fn uploads_put_chunk(
         hex
     );
 
-    // Use real UploadService with actual store integration
+    // Update rolling hash FIRST (before writing)
+    match UPLOAD_HASH.with(|m| {
+        if let Some(hasher) = m.borrow_mut().get_mut(&session_id) {
+            hasher.update(&bytes);
+            Ok(())
+        } else {
+            Err(Error::NotFound)
+        }
+    }) {
+        Ok(()) => {}
+        Err(e) => return Err(e),
+    }
+
+    // Then write chunk to storage
     memory::with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
@@ -494,14 +525,53 @@ async fn uploads_put_chunk(
 /// Commit chunks to create final memory
 #[ic_cdk::update]
 async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u64) -> Result_15 {
+    ic_cdk::println!("FINISH_START sid={} expected_len={}", session_id, total_len);
+
+    // Verify rolling hash FIRST (before any other operations)
+    let computed_hash = match UPLOAD_HASH.with(|m| {
+        if let Some(hasher) = m.borrow_mut().remove(&session_id) {
+            Ok(hasher.finalize().to_vec())
+        } else {
+            Err(Error::NotFound)
+        }
+    }) {
+        Ok(hash) => hash,
+        Err(e) => {
+            ic_cdk::println!("FINISH_ERROR sid={} err=hash_not_found", session_id);
+            return Result_15::Err(e);
+        }
+    };
+
+    // Compare with client's expected hash
+    if computed_hash != expected_sha256 {
+        ic_cdk::println!(
+            "FINISH_ERROR sid={} err=checksum_mismatch computed={:?} expected={:?}",
+            session_id,
+            &computed_hash[..8],
+            &expected_sha256[..8]
+        );
+        return Result_15::Err(Error::InvalidArgument(format!(
+            "checksum_mismatch: computed={}, expected={}",
+            hex::encode(&computed_hash),
+            hex::encode(&expected_sha256)
+        )));
+    }
+
+    ic_cdk::println!("FINISH_HASH_OK sid={} len={}", session_id, total_len);
+
     // Use real UploadService with actual store integration
     let hash: [u8; 32] = match expected_sha256.clone().try_into() {
         Ok(h) => h,
         Err(_) => {
+            ic_cdk::println!(
+                "FINISH_ERROR sid={} err=invalid_hash_length got={}",
+                session_id,
+                expected_sha256.len()
+            );
             return Result_15::Err(types::Error::InvalidArgument(format!(
                 "invalid_hash_length: expected 32 bytes, got {}",
                 expected_sha256.len()
-            )))
+            )));
         }
     };
 
@@ -510,8 +580,15 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
         let session_id = upload::types::SessionId(session_id);
         match upload_service.commit(store, session_id, hash, total_len) {
             Ok((blob_id, memory_id)) => {
+                ic_cdk::println!(
+                    "FINISH_INDEX_COMMITTED sid={} blob={} mem={}",
+                    session_id.0,
+                    blob_id,
+                    memory_id
+                );
+
                 let result = UploadFinishResult {
-                    memory_id,
+                    memory_id: memory_id.clone(),
                     blob_id: blob_id.clone(),
                     remote_id: None,
                     size: total_len,
@@ -521,9 +598,14 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
                     uploaded_at: ic_cdk::api::time(),
                     expires_at: None,
                 };
+
+                ic_cdk::println!("FINISH_OK sid={}", session_id.0);
                 Result_15::Ok(result)
             }
-            Err(err) => Result_15::Err(err),
+            Err(err) => {
+                ic_cdk::println!("FINISH_ERROR sid={} err={:?}", session_id.0, err);
+                Result_15::Err(err)
+            }
         }
     })
 }
@@ -550,8 +632,8 @@ async fn uploads_abort(session_id: u64) -> std::result::Result<(), Error> {
 #[ic_cdk::update]
 fn sessions_clear_all() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let mut upload_service = upload::service::UploadService::new();
-        upload_service.sessions.clear_all_sessions();
+        let upload_service = upload::service::UploadService::new();
+        upload_service.clear_all_sessions();
         Ok("All sessions cleared".to_string())
     })
 }
@@ -560,9 +642,9 @@ fn sessions_clear_all() -> std::result::Result<String, Error> {
 #[ic_cdk::query]
 fn sessions_stats() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let mut upload_service = upload::service::UploadService::new();
-        let total = upload_service.sessions.total_session_count();
-        let (pending, committed) = upload_service.sessions.session_count_by_status();
+        let upload_service = upload::service::UploadService::new();
+        let total = upload_service.total_session_count();
+        let (pending, committed) = upload_service.session_count_by_status();
 
         let stats = format!(
             "Total sessions: {}, Pending: {}, Committed: {}",
@@ -576,16 +658,16 @@ fn sessions_stats() -> std::result::Result<String, Error> {
 #[ic_cdk::query]
 fn sessions_list() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let mut upload_service = upload::service::UploadService::new();
-        let sessions = upload_service.sessions.list_all_sessions();
+        let upload_service = upload::service::UploadService::new();
+        let sessions = upload_service.list_upload_sessions();
 
         let mut result = String::new();
         result.push_str(&format!("Found {} sessions:\n", sessions.len()));
 
         for (id, session) in sessions {
             let status = match session.status {
-                upload::types::SessionStatus::Pending => "Pending",
-                upload::types::SessionStatus::Committed { .. } => "Committed",
+                session::types::SessionStatus::Pending => "Pending",
+                session::types::SessionStatus::Committed { .. } => "Committed",
             };
 
             result.push_str(&format!(
@@ -602,11 +684,9 @@ fn sessions_list() -> std::result::Result<String, Error> {
 #[ic_cdk::update]
 fn sessions_cleanup_expired() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let mut upload_service = upload::service::UploadService::new();
+        let upload_service = upload::service::UploadService::new();
         const SESSION_EXPIRY_MS: u64 = 30 * 60 * 1000; // 30 minutes
-        upload_service
-            .sessions
-            .cleanup_expired_sessions(SESSION_EXPIRY_MS);
+        upload_service.cleanup_expired_sessions(SESSION_EXPIRY_MS);
         Ok("Expired sessions cleaned up".to_string())
     })
 }
@@ -945,6 +1025,28 @@ fn post_upgrade() {
     // If restore fails, start with empty state (no panic)
 
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
+}
+
+// DEBUG: Cross-call canary to test StableBTreeMap persistence
+#[ic_cdk::update]
+fn debug_blob_write_canary(pmid: String, idx: u32, n: u32) {
+    use crate::upload::blob_store::pmid_hash32;
+    let stem = pmid_hash32(&pmid);
+    let payload = vec![0xAA; n as usize];
+    ic_cdk::println!("CANARY_WRITE pmid={} idx={} len={}", pmid, idx, n);
+    upload::blob_store::STABLE_BLOB_STORE.with(|s| {
+        s.borrow_mut().insert((stem, idx), payload);
+    });
+}
+
+#[ic_cdk::query]
+fn debug_blob_read_canary(pmid: String, idx: u32) -> Option<u32> {
+    use crate::upload::blob_store::pmid_hash32;
+    let stem = pmid_hash32(&pmid);
+    let result = upload::blob_store::STABLE_BLOB_STORE
+        .with(|s| s.borrow().get(&(stem, idx)).map(|v| v.len() as u32));
+    ic_cdk::println!("CANARY_READ pmid={} idx={} result={:?}", pmid, idx, result);
+    result
 }
 
 // Temporary diagnostic endpoint to probe inline bytes length

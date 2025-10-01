@@ -384,6 +384,8 @@ service : {
   clear_creation_state : (principal) -> (Result_5);
   clear_migration_state : (principal) -> (Result_5);
   create_personal_canister : () -> (PersonalCanisterCreationResponse);
+  debug_blob_read_canary : (text, nat32) -> (opt nat32) query;
+  debug_blob_write_canary : (text, nat32, nat32) -> ();
   // Debug endpoint to finish upload with hex hash (dev only)
   debug_finish_hex : (nat64, text, nat64) -> (Result_6);
   // Debug endpoint to upload chunk with base64 data (dev only)

@@ -1,6 +1,6 @@
 use crate::memory::{MEM_BLOBS, MEM_BLOB_COUNTER, MEM_BLOB_META, MM};
+use crate::session::{ByteSink, SessionAdapter};
 use crate::types::Error;
-use crate::upload::sessions::SessionStore;
 use crate::upload::types::{BlobId, BlobMeta};
 use hex;
 use ic_stable_structures::memory_manager::VirtualMemory;
@@ -9,10 +9,30 @@ use ic_stable_structures::{StableBTreeMap, StableCell};
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 
+/// Deterministic hash of provisional_memory_id for stable chunk keys
+/// CRITICAL: This MUST be used everywhere chunks are written/read
+/// Includes session_id to prevent parallel key collisions
+pub fn pmid_hash32(pmid: &str) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(pmid.as_bytes());
+    h.finalize().into()
+}
+
+/// Deterministic hash including session_id for parallel-safe chunk keys
+pub fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
+    let mut h = Sha256::new();
+    h.update(pmid.as_bytes());
+    h.update(b"#"); // Separator
+    h.update(&session_id.to_le_bytes());
+    h.finalize().into()
+}
+
 type Memory = VirtualMemory<DefaultMemoryImpl>;
 
 thread_local! {
-    static STABLE_BLOB_STORE: RefCell<StableBTreeMap<(u64, u32), Vec<u8>, Memory>> = RefCell::new(
+    // Key changed to ([u8; 32] SHA256 of provisional_memory_id, u32 chunk_idx) for determinism
+    // Note: This is a BREAKING CHANGE - existing blob data will need migration
+    pub static STABLE_BLOB_STORE: RefCell<StableBTreeMap<([u8; 32], u32), Vec<u8>, Memory>> = RefCell::new(
         StableBTreeMap::init(MM.with(|m| m.borrow().get(MEM_BLOBS)))
     );
 
@@ -45,56 +65,74 @@ impl BlobStore {
     // Note: put_inline method removed - not currently used
 
     /// Store chunks from session as a blob with integrity verification
+    /// NOTE: This method is being phased out in favor of write-through ByteSink design
+    /// where chunks are written directly to storage during put_chunk
     pub fn store_from_chunks(
         &self,
-        session_store: &SessionStore,
+        session_store: &crate::session::SessionCompat,
         session_id: &crate::upload::types::SessionId,
         chunk_count: u32,
         expected_len: u64,
         expected_hash: [u8; 32],
     ) -> std::result::Result<BlobId, Error> {
-        let blob_id = BlobId::new();
-        let mut hasher = Sha256::new();
+        // Get session metadata to retrieve the provisional_memory_id (used as blob_id during write)
+        let session_meta = session_store
+            .get(session_id)
+            .map_err(|e| Error::Internal(format!("Failed to get session: {:?}", e)))?
+            .ok_or(Error::NotFound)?;
+
+        // Derive pmid_hash the EXACT same way StableBlobSink does (deterministic SHA256 + session_id)
+        let pmid_hash = pmid_session_hash32(&session_meta.provisional_memory_id, session_meta.session_id);
+
+        // Create blob_id from first 8 bytes of hash for metadata storage
+        let blob_id = BlobId(u64::from_be_bytes([
+            pmid_hash[0],
+            pmid_hash[1],
+            pmid_hash[2],
+            pmid_hash[3],
+            pmid_hash[4],
+            pmid_hash[5],
+            pmid_hash[6],
+            pmid_hash[7],
+        ]));
+
+        // NOTE: Hash verification is now done using rolling hash in uploads_finish()
+        // This function just verifies chunks exist and returns the blob_id
+        // (Chunks were already written via StableBlobSink during put_chunk)
+
         let mut total_written = 0u64;
 
-        // Stream chunks into blob store pages
-        let chunk_iter = session_store.iter_chunks(session_id, chunk_count);
-        for (page_idx, chunk_data) in chunk_iter.enumerate() {
-            // Debug logging: Log the exact bytes being hashed
-            let first_10_bytes = if chunk_data.len() >= 10 {
-                format!("{:?}", &chunk_data[..10])
-            } else {
-                format!("{:?}", &chunk_data[..])
-            };
+        // Verify all chunks exist in blob store
+        for page_idx in 0..chunk_count {
+            let page_key = (pmid_hash, page_idx);
+            let chunk_data =
+                STABLE_BLOB_STORE.with(|store| store.borrow().get(&page_key).unwrap_or_default());
+
             ic_cdk::println!(
-                "STORE_FROM_CHUNKS: session_id={}, page_idx={}, data_len={}, first_10_bytes={}",
+                "BLOB_READ sid={} chunk_idx={} found={} len={} pmid_hash={:?}",
                 session_id.0,
                 page_idx,
+                !chunk_data.is_empty(),
                 chunk_data.len(),
-                first_10_bytes
+                &pmid_hash[..8]
             );
 
-            hasher.update(&chunk_data);
+            if chunk_data.is_empty() {
+                ic_cdk::println!(
+                    "BLOB_READ_NOTFOUND sid={} chunk_idx={} pmid_hash={:?}",
+                    session_id.0,
+                    page_idx,
+                    &pmid_hash[..8]
+                );
+                // Cleanup on failure
+                self.delete_blob(&blob_id)?;
+                return Err(Error::NotFound);
+            }
+
             total_written += chunk_data.len() as u64;
-
-            // Store as blob page
-            let page_key = (blob_id.0, page_idx as u32);
-            STABLE_BLOB_STORE.with(|store| {
-                store.borrow_mut().insert(page_key, chunk_data);
-            });
         }
 
-        // Verify integrity
-        let actual_hash: [u8; 32] = hasher.finalize().into();
-        if actual_hash != expected_hash {
-            // Cleanup on failure
-            self.delete_blob(&blob_id)?;
-            return Err(Error::InvalidArgument(format!(
-                "checksum_mismatch: expected={}, actual={}",
-                hex::encode(expected_hash),
-                hex::encode(actual_hash)
-            )));
-        }
+        // Verify total size matches expected
         if total_written != expected_len {
             // Cleanup on failure
             self.delete_blob(&blob_id)?;
@@ -104,11 +142,12 @@ impl BlobStore {
             )));
         }
 
-        // Store blob metadata
+        // Store blob metadata (use expected_hash since we already verified it with rolling hash)
         let meta = BlobMeta {
             size: total_written,
-            checksum: actual_hash,
+            checksum: expected_hash,
             created_at: ic_cdk::api::time(),
+            pmid_hash, // Save for later retrieval/deletion
         };
 
         STABLE_BLOB_META.with(|metas| {
@@ -128,7 +167,7 @@ impl BlobStore {
         let mut page_idx = 0u32;
 
         loop {
-            let page_key = (blob_id.0, page_idx);
+            let page_key = (meta.pmid_hash, page_idx); // Use stored pmid_hash
             let page_data = STABLE_BLOB_STORE.with(|store| store.borrow().get(&page_key));
 
             match page_data {
@@ -151,13 +190,15 @@ impl BlobStore {
 
     /// Delete blob and all its pages
     pub fn delete_blob(&self, blob_id: &BlobId) -> std::result::Result<(), Error> {
-        // Delete metadata first
-        STABLE_BLOB_META.with(|metas| metas.borrow_mut().remove(&blob_id.0));
+        // Get meta to retrieve pmid_hash before deleting
+        let meta = STABLE_BLOB_META
+            .with(|metas| metas.borrow_mut().remove(&blob_id.0))
+            .ok_or(Error::NotFound)?;
 
-        // Delete all pages
+        // Delete all pages using pmid_hash
         let mut page_idx = 0u32;
         loop {
-            let page_key = (blob_id.0, page_idx);
+            let page_key = (meta.pmid_hash, page_idx); // Use stored pmid_hash
             let removed = STABLE_BLOB_STORE.with(|store| store.borrow_mut().remove(&page_key));
 
             if removed.is_none() {
@@ -260,9 +301,12 @@ fn read_blob_chunk(
     blob_id: &crate::upload::types::BlobId,
     chunk_index: u32,
 ) -> std::result::Result<Vec<u8>, Error> {
-    // Note: The stable blob store is accessed directly via STABLE_BLOB_STORE
+    // Get meta to retrieve pmid_hash
+    let meta = STABLE_BLOB_META
+        .with(|metas| metas.borrow().get(&blob_id.0))
+        .ok_or(Error::NotFound)?;
 
-    let page_key = (blob_id.0, chunk_index);
+    let page_key = (meta.pmid_hash, chunk_index); // Use stored pmid_hash
     let page_data = STABLE_BLOB_STORE.with(|store| store.borrow().get(&page_key));
 
     Ok(page_data.unwrap_or_default())
@@ -322,7 +366,7 @@ pub fn blob_get_meta(locator: String) -> std::result::Result<crate::types::BlobM
         // Each chunk is stored as a page, and we need to count how many pages exist
         let mut chunk_count = 0u32;
         loop {
-            let page_key = (blob_id.0, chunk_count);
+            let page_key = (meta.pmid_hash, chunk_count); // Use stored pmid_hash
             let exists = STABLE_BLOB_STORE.with(|store| store.borrow().contains_key(&page_key));
             if !exists {
                 break;
@@ -489,5 +533,100 @@ mod tests {
 
         let data = result.unwrap();
         assert!(data.is_empty());
+    }
+}
+
+// ============================================================================
+// ByteSink Implementation for Direct Chunk Writing
+// ============================================================================
+
+/// StableBlobSink implements ByteSink for direct chunk writing to stable storage
+pub struct StableBlobSink {
+    pmid_hash: [u8; 32], // Deterministic key stem (SHA256 of provisional_memory_id)
+    chunk_size: usize,
+    #[allow(dead_code)]
+    capsule_id: crate::types::CapsuleId, // Keep for potential future use
+}
+
+impl StableBlobSink {
+    /// Create a new StableBlobSink from UploadSessionMeta
+    pub fn for_meta(meta: &crate::session::UploadSessionMeta) -> Result<Self, Error> {
+        Ok(Self {
+            pmid_hash: pmid_session_hash32(&meta.provisional_memory_id, meta.session_id),
+            chunk_size: meta.chunk_size,
+            capsule_id: meta.capsule_id.clone(),
+        })
+    }
+
+    fn write_at_impl(&mut self, offset: u64, data: &[u8]) -> Result<(), Error> {
+        // Validate alignment (all chunks must be aligned to chunk_size boundary)
+        if offset % (self.chunk_size as u64) != 0 {
+            return Err(Error::InvalidArgument("unaligned offset".into()));
+        }
+
+        // Calculate chunk index from offset
+        let chunk_idx = (offset / self.chunk_size as u64) as u32;
+
+        // Validate chunk size (no oversized chunks)
+        if data.len() > self.chunk_size {
+            return Err(Error::InvalidArgument("oversized chunk".into()));
+        }
+
+        // Debug logging
+        ic_cdk::println!(
+            "WRITE_AT: pmid_hash={:?}, chunk_idx={}, offset={}, data_len={}",
+            &self.pmid_hash[..4], // First 4 bytes for logging
+            chunk_idx,
+            offset,
+            data.len()
+        );
+
+        // Store chunk directly in stable storage (write-through, no buffering)
+        // Key: (pmid_hash, chunk_idx) - deterministic key using SHA256 of provisional_memory_id
+        STABLE_BLOB_STORE.with(|store| {
+            let mut store = store.borrow_mut();
+            store.insert((self.pmid_hash, chunk_idx), data.to_vec());
+        });
+
+        // CRITICAL: Same-call verification to diagnose value bound issues
+        let verify = STABLE_BLOB_STORE.with(|store| {
+            store
+                .borrow()
+                .get(&(self.pmid_hash, chunk_idx))
+                .map(|d| d.len())
+        });
+        match verify {
+            Some(len) if len == data.len() => {
+                ic_cdk::println!(
+                    "BLOB_VERIFY_SAMECALL idx={} wrote={} read={} ✅",
+                    chunk_idx,
+                    data.len(),
+                    len
+                );
+            }
+            Some(len) => {
+                ic_cdk::println!(
+                    "BLOB_VERIFY_SAMECALL_MISMATCH idx={} wrote={} read={} ❌",
+                    chunk_idx,
+                    data.len(),
+                    len
+                );
+            }
+            None => {
+                ic_cdk::println!(
+                    "BLOB_VERIFY_SAMECALL_MISS idx={} wrote={} read=None ❌❌❌",
+                    chunk_idx,
+                    data.len()
+                );
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl ByteSink for StableBlobSink {
+    fn write_at(&mut self, offset: u64, data: &[u8]) -> Result<(), Error> {
+        self.write_at_impl(offset, data)
     }
 }

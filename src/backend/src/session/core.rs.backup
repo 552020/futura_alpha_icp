@@ -1,0 +1,294 @@
+use crate::types::{CapsuleId, Error};
+use crate::upload::types::{SessionId, SessionMeta};
+use std::collections::{BTreeMap, BTreeSet};
+// Note: Sha256 not used in current implementation, but available for future use
+
+/// Pure Rust core session management logic (no IC dependencies)
+/// This can be tested independently and reused across different storage backends
+pub struct SessionCore {
+    next_id: u64,
+    pub sessions: BTreeMap<u64, Session>,
+}
+
+#[derive(Clone)]
+pub struct Session {
+    pub owner: Vec<u8>, // Caller ID as bytes (opaque)
+    pub capsule_id: CapsuleId,
+    pub chunk_size: usize,
+    pub bytes_expected: u64,
+    pub bytes_received: u64,
+    pub received_idxs: BTreeSet<u32>,
+    pub session_meta: SessionMeta,
+    pub chunks: BTreeMap<u32, Vec<u8>>,
+}
+
+impl Default for SessionCore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SessionCore {
+    pub fn new() -> Self {
+        Self {
+            next_id: 1,
+            sessions: BTreeMap::new(),
+        }
+    }
+
+    /// Create a new session
+    pub fn create_session(
+        &mut self,
+        owner: Vec<u8>,
+        capsule_id: CapsuleId,
+        chunk_size: usize,
+        session_meta: SessionMeta,
+    ) -> SessionId {
+        let session_id = SessionId(self.next_id);
+        self.next_id += 1;
+
+        let session = Session {
+            owner,
+            capsule_id,
+            chunk_size,
+            bytes_expected: 0,
+            bytes_received: 0,
+            received_idxs: BTreeSet::new(),
+            session_meta,
+            chunks: BTreeMap::new(),
+        };
+
+        self.sessions.insert(session_id.0, session);
+        session_id
+    }
+
+    /// Get session by ID
+    pub fn get_session(&self, session_id: &SessionId) -> Option<&Session> {
+        self.sessions.get(&session_id.0)
+    }
+
+    /// Get mutable session by ID
+    pub fn get_session_mut(&mut self, session_id: &SessionId) -> Option<&mut Session> {
+        self.sessions.get_mut(&session_id.0)
+    }
+
+    /// Update session with chunk data
+    pub fn put_chunk(
+        &mut self,
+        session_id: &SessionId,
+        chunk_idx: u32,
+        bytes: Vec<u8>,
+    ) -> Result<(), Error> {
+        let session = self
+            .sessions
+            .get_mut(&session_id.0)
+            .ok_or(Error::NotFound)?;
+
+        // Update session state
+        session.bytes_received += bytes.len() as u64;
+        session.received_idxs.insert(chunk_idx);
+        session.chunks.insert(chunk_idx, bytes);
+
+        Ok(())
+    }
+
+    /// Remove session
+    pub fn remove_session(&mut self, session_id: &SessionId) -> Option<Session> {
+        self.sessions.remove(&session_id.0)
+    }
+
+    /// Find pending session by capsule, caller, and idempotency key
+    pub fn find_pending(
+        &self,
+        capsule_id: &CapsuleId,
+        caller: &[u8],
+        idem: &str,
+    ) -> Option<SessionId> {
+        self.sessions.iter().find_map(|(sid, session)| {
+            if &session.capsule_id == capsule_id
+                && &session.owner == caller
+                && session.session_meta.idem == idem
+                && matches!(
+                    session.session_meta.status,
+                    crate::upload::types::SessionStatus::Pending
+                )
+            {
+                Some(SessionId(*sid))
+            } else {
+                None
+            }
+        })
+    }
+
+    /// Count active sessions for a caller/capsule combination
+    pub fn count_active_for(&self, capsule_id: &CapsuleId, caller: &[u8]) -> usize {
+        self.sessions
+            .iter()
+            .filter(|(_, session)| {
+                &session.capsule_id == capsule_id
+                    && &session.owner == caller
+                    && matches!(
+                        session.session_meta.status,
+                        crate::upload::types::SessionStatus::Pending
+                    )
+            })
+            .count()
+    }
+
+    /// Clean up expired sessions
+    pub fn cleanup_expired(&mut self, now_ms: u64, expiry_ms: u64) -> Vec<SessionId> {
+        let mut expired = Vec::new();
+
+        for (session_id, session) in &self.sessions {
+            if now_ms - session.session_meta.created_at > expiry_ms {
+                expired.push(SessionId(*session_id));
+            }
+        }
+
+        for session_id in &expired {
+            self.sessions.remove(&session_id.0);
+        }
+
+        expired
+    }
+
+    /// Get total session count
+    pub fn total_sessions(&self) -> usize {
+        self.sessions.len()
+    }
+
+    /// Get session count by status
+    pub fn session_count_by_status(&self) -> (usize, usize) {
+        let mut pending = 0;
+        let mut committed = 0;
+
+        for session in self.sessions.values() {
+            match session.session_meta.status {
+                crate::upload::types::SessionStatus::Pending => pending += 1,
+                crate::upload::types::SessionStatus::Committed { .. } => committed += 1,
+            }
+        }
+
+        (pending, committed)
+    }
+
+    /// List all sessions (for debugging)
+    pub fn list_sessions(&self) -> Vec<(u64, SessionMeta)> {
+        self.sessions
+            .iter()
+            .map(|(id, session)| (*id, session.session_meta.clone()))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{AssetMetadata, AssetMetadataBase, AssetType, ImageAssetMetadata};
+    use crate::upload::types::SessionStatus;
+
+    fn create_test_session_meta() -> SessionMeta {
+        SessionMeta {
+            capsule_id: "test-capsule".to_string(),
+            provisional_memory_id: "test-memory".to_string(),
+            caller: candid::Principal::anonymous(),
+            chunk_count: 3,
+            expected_len: Some(300),
+            expected_hash: Some([0u8; 32]),
+            status: SessionStatus::Pending,
+            created_at: 1234567890,
+            asset_metadata: AssetMetadata::Image(ImageAssetMetadata {
+                base: AssetMetadataBase {
+                    name: "test.txt".to_string(),
+                    description: Some("Test file".to_string()),
+                    tags: vec!["test".to_string()],
+                    asset_type: AssetType::Original,
+                    bytes: 300,
+                    mime_type: "text/plain".to_string(),
+                    sha256: Some([0u8; 32]),
+                    width: None,
+                    height: None,
+                    url: None,
+                    storage_key: None,
+                    bucket: None,
+                    processing_status: None,
+                    processing_error: None,
+                    created_at: 1234567890,
+                    updated_at: 1234567890,
+                    deleted_at: None,
+                    asset_location: None,
+                },
+                color_space: None,
+                exif_data: None,
+                compression_ratio: None,
+                dpi: None,
+                orientation: None,
+            }),
+            idem: "test-idem".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_create_session() {
+        let mut core = SessionCore::new();
+        let caller = b"test-caller".to_vec();
+        let capsule_id = "test-capsule".to_string();
+        let session_meta = create_test_session_meta();
+
+        let session_id =
+            core.create_session(caller.clone(), capsule_id.clone(), 1024, session_meta);
+
+        assert_eq!(session_id.0, 1);
+        assert_eq!(core.total_sessions(), 1);
+        assert!(core.get_session(&session_id).is_some());
+    }
+
+    #[test]
+    fn test_put_chunk() {
+        let mut core = SessionCore::new();
+        let caller = b"test-caller".to_vec();
+        let capsule_id = "test-capsule".to_string();
+        let session_meta = create_test_session_meta();
+
+        let session_id = core.create_session(caller, capsule_id, 1024, session_meta);
+        let chunk_data = b"test chunk data".to_vec();
+
+        let result = core.put_chunk(&session_id, 0, chunk_data.clone());
+        assert!(result.is_ok());
+
+        let session = core.get_session(&session_id).unwrap();
+        assert_eq!(session.bytes_received, chunk_data.len() as u64);
+        assert!(session.received_idxs.contains(&0));
+        assert_eq!(session.chunks.get(&0), Some(&chunk_data));
+    }
+
+    #[test]
+    fn test_find_pending() {
+        let mut core = SessionCore::new();
+        let caller = b"test-caller".to_vec();
+        let capsule_id = "test-capsule".to_string();
+        let session_meta = create_test_session_meta();
+
+        let session_id =
+            core.create_session(caller.clone(), capsule_id.clone(), 1024, session_meta);
+
+        let found = core.find_pending(&capsule_id, &caller, "test-idem");
+        assert_eq!(found, Some(session_id));
+    }
+
+    #[test]
+    fn test_cleanup_expired() {
+        let mut core = SessionCore::new();
+        let caller = b"test-caller".to_vec();
+        let capsule_id = "test-capsule".to_string();
+        let mut session_meta = create_test_session_meta();
+        session_meta.created_at = 1000; // Very old
+
+        let session_id = core.create_session(caller, capsule_id, 1024, session_meta);
+
+        let expired = core.cleanup_expired(2000, 500); // 500ms expiry
+        assert_eq!(expired.len(), 1);
+        assert_eq!(expired[0], session_id);
+        assert_eq!(core.total_sessions(), 0);
+    }
+}
