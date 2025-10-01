@@ -90,153 +90,357 @@ export interface UploadProgress {
 #### **Generated Backend Types** (`src/nextjs/src/ic/declarations/backend/backend.did.d.ts`)
 
 ```typescript
-// ✅ GENERATED: Matches backend snake_case
+// ✅ ACTUAL GENERATED TYPES (from backend.did.d.ts)
 export interface UploadFinishResult {
-  memory_id: string;
-  blob_id: string;
-  remote_id: [] | [string];
-  size: bigint;
   checksum_sha256: [] | [Uint8Array | number[]];
-  storage_backend: StorageBackend;
   storage_location: string;
+  blob_id: string;
+  storage_backend: StorageBackend;
+  size: bigint;
+  memory_id: string;
+  remote_id: [] | [string];
   uploaded_at: bigint;
   expires_at: [] | [bigint];
 }
 
-export interface UploadProgress {
-  file_index: number;
-  total_files: number;
-  current_file: string;
-  bytes_uploaded: bigint;
-  total_bytes: bigint;
-  pct_bp: number;
-  status: ProcessingStatus;
-  message: [] | [string];
-}
+export type StorageBackend = { S3: null } | { Icp: null } | { VercelBlob: null } | { Ipfs: null } | { Arweave: null };
+
+// Note: UploadProgress is NOT in the generated types
+// The backend doesn't expose progress types in Candid interface
 ```
+
+**Key Findings**:
+
+- ✅ **UploadFinishResult exists** with snake_case fields
+- ❌ **UploadProgress NOT generated** - backend doesn't expose progress types
+- ✅ **StorageBackend enum** matches backend definition
+- ❌ **Field order different** from our analysis
+
+### **🗄️ Database Schema Types (CRITICAL)**
+
+#### **Database Storage Types** (`src/nextjs/src/db/schema.ts`)
+
+```typescript
+// ✅ DATABASE SCHEMA: The source of truth for storage types
+export const storage_backend_t = pgEnum("storage_backend_t", ["s3", "vercel_blob", "icp", "arweave", "ipfs", "neon"]);
+
+export const blob_hosting_t = pgEnum("blob_hosting_t", ["s3", "vercel_blob", "icp", "arweave", "ipfs", "neon"]);
+
+// ✅ DATABASE TYPES: Generated from schema
+export type StorageBackend = (typeof storage_backend_t.enumValues)[number];
+export type BlobHosting = "s3" | "vercel_blob" | "icp" | "arweave" | "ipfs" | "neon";
+
+// ✅ MEMORY ASSETS TABLE: Database representation
+export const memoryAssets = pgTable("memory_assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  memoryId: uuid("memory_id").notNull(),
+  assetType: asset_type_t("asset_type").notNull(),
+  url: text("url").notNull(),
+  assetLocation: blob_hosting_t("asset_location").notNull(), // ✅ snake_case
+  bucket: text("bucket"),
+  storageKey: text("storage_key").notNull(), // ✅ snake_case
+  bytes: bigint("bytes", { mode: "number" }).notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  mimeType: text("mime_type").notNull(), // ✅ snake_case
+  sha256: text("sha256"),
+  processingStatus: processing_status_t("processing_status").default("pending").notNull(),
+  processingError: text("processing_error"), // ✅ snake_case
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type DBMemoryAsset = typeof memoryAssets.$inferSelect;
+```
+
+**Critical Database Findings**:
+
+- ✅ **Database uses snake_case** consistently (`asset_location`, `storage_key`, `mime_type`)
+- ✅ **StorageBackend enum** matches backend definition
+- ✅ **BlobHosting enum** includes all storage providers
+- ❌ **Type mismatches** between database, backend, and frontend
 
 ### **🔍 Type Mismatch Analysis**
 
-| Field              | Backend (Generated)  | Frontend (Current)       | Status          |
-| ------------------ | -------------------- | ------------------------ | --------------- |
-| `memory_id`        | `string`             | `memoryId`               | ❌ **MISMATCH** |
-| `blob_id`          | `string`             | `blobId`                 | ❌ **MISMATCH** |
-| `remote_id`        | `[] \| [string]`     | `remoteId: string`       | ❌ **MISMATCH** |
-| `size`             | `bigint`             | `number`                 | ❌ **MISMATCH** |
-| `checksum_sha256`  | `[] \| [Uint8Array]` | `checksumSha256: string` | ❌ **MISMATCH** |
-| `storage_backend`  | `StorageBackend`     | `"s3" \| "icp" \| ...`   | ❌ **MISMATCH** |
-| `storage_location` | `string`             | `storageLocation`        | ❌ **MISMATCH** |
-| `uploaded_at`      | `bigint`             | `uploadedAt: Date`       | ❌ **MISMATCH** |
-| `expires_at`       | `[] \| [bigint]`     | `expiresAt?: Date`       | ❌ **MISMATCH** |
-| `file_index`       | `number`             | `fileIndex`              | ❌ **MISMATCH** |
-| `total_files`      | `number`             | `totalFiles`             | ❌ **MISMATCH** |
-| `bytes_uploaded`   | `bigint`             | `bytesUploaded: number`  | ❌ **MISMATCH** |
-| `pct_bp`           | `number`             | `percentage: number`     | ❌ **MISMATCH** |
+#### **UploadFinishResult Mismatches**
 
-**Total Mismatches**: 13/13 fields (100%) ❌
+| Field              | Backend (Generated)     | Frontend (Current)       | Status          |
+| ------------------ | ----------------------- | ------------------------ | --------------- |
+| `memory_id`        | `string`                | `memoryId`               | ❌ **MISMATCH** |
+| `blob_id`          | `string`                | `blobId`                 | ❌ **MISMATCH** |
+| `remote_id`        | `[] \| [string]`        | `remoteId: string`       | ❌ **MISMATCH** |
+| `size`             | `bigint`                | `number`                 | ❌ **MISMATCH** |
+| `checksum_sha256`  | `[] \| [Uint8Array]`    | `checksumSha256: string` | ❌ **MISMATCH** |
+| `storage_backend`  | `StorageBackend` (enum) | `"s3" \| "icp" \| ...`   | ❌ **MISMATCH** |
+| `storage_location` | `string`                | `storageLocation`        | ❌ **MISMATCH** |
+| `uploaded_at`      | `bigint`                | `uploadedAt: Date`       | ❌ **MISMATCH** |
+| `expires_at`       | `[] \| [bigint]`        | `expiresAt?: Date`       | ❌ **MISMATCH** |
+
+#### **UploadProgress Issues**
+
+| Field            | Backend (Generated)  | Frontend (Current)      | Status          |
+| ---------------- | -------------------- | ----------------------- | --------------- |
+| `UploadProgress` | ❌ **NOT GENERATED** | `UploadProgress` exists | ❌ **MISSING**  |
+| `file_index`     | ❌ **NOT AVAILABLE** | `fileIndex`             | ❌ **MISMATCH** |
+| `total_files`    | ❌ **NOT AVAILABLE** | `totalFiles`            | ❌ **MISMATCH** |
+| `bytes_uploaded` | ❌ **NOT AVAILABLE** | `bytesUploaded: number` | ❌ **MISMATCH** |
+| `pct_bp`         | ❌ **NOT AVAILABLE** | `percentage: number`    | ❌ **MISMATCH** |
+
+### **🔍 Three-Way Type Analysis: Database ↔ Backend ↔ Frontend**
+
+#### **StorageBackend Type Comparison**
+
+| Source       | Type Definition                                                                                | Status           |
+| ------------ | ---------------------------------------------------------------------------------------------- | ---------------- |
+| **Database** | `'s3' \| 'vercel_blob' \| 'icp' \| 'arweave' \| 'ipfs' \| 'neon'`                              | ✅ **CANONICAL** |
+| **Backend**  | `{ S3: null } \| { Icp: null } \| { VercelBlob: null } \| { Ipfs: null } \| { Arweave: null }` | ❌ **MISMATCH**  |
+| **Frontend** | `"s3" \| "icp" \| "vercel-blob" \| "arweave" \| "ipfs"`                                        | ❌ **MISMATCH**  |
+
+#### **Field Naming Convention Analysis**
+
+| Field              | Database              | Backend               | Frontend             | Status        |
+| ------------------ | --------------------- | --------------------- | -------------------- | ------------- |
+| `memory_id`        | ✅ `memory_id`        | ✅ `memory_id`        | ❌ `memoryId`        | **2/3 match** |
+| `blob_id`          | ✅ `blob_id`          | ✅ `blob_id`          | ❌ `blobId`          | **2/3 match** |
+| `storage_location` | ✅ `storage_location` | ✅ `storage_location` | ❌ `storageLocation` | **2/3 match** |
+| `uploaded_at`      | ✅ `uploaded_at`      | ✅ `uploaded_at`      | ❌ `uploadedAt`      | **2/3 match** |
+| `checksum_sha256`  | ✅ `sha256`           | ✅ `checksum_sha256`  | ❌ `checksumSha256`  | **1/3 match** |
+
+#### **Type System Alignment**
+
+| Component    | Naming Convention | Type System             | Status           |
+| ------------ | ----------------- | ----------------------- | ---------------- |
+| **Database** | ✅ **snake_case** | ✅ **PostgreSQL enums** | ✅ **CANONICAL** |
+| **Backend**  | ✅ **snake_case** | ❌ **Candid variants**  | ⚠️ **PARTIAL**   |
+| **Frontend** | ❌ **camelCase**  | ❌ **String literals**  | ❌ **MISMATCH**  |
+
+**Critical Issues**:
+
+- ❌ **UploadFinishResult**: 9/9 fields mismatched (100%)
+- ❌ **UploadProgress**: Backend doesn't expose progress types at all
+- ❌ **Type Safety**: Frontend types don't match generated backend types
+- ❌ **Three-way mismatch**: Database, backend, and frontend all use different type systems
+- ❌ **StorageBackend**: Database has 6 values, backend has 5, frontend has 5 (different sets)
 
 ---
 
-## 🎯 **Action Plan**
+## 🎯 **Action Plan** (Updated per Tech Lead)
 
-### **Phase 1: Frontend Type Migration (Priority: HIGH)**
+### **Phase 1: Domain-Driven Architecture** 🚀
 
-#### **Step 1: Update Frontend Types** ⏭️
+#### **Step 1: Create Domain Types (camelCase)**
 
-**File**: `src/nextjs/src/services/upload/types.ts`
+**File**: `src/nextjs/src/types/upload.ts` (update existing file)
 
 ```typescript
-// ✅ NEW: Align with backend snake_case
+// ✅ DOMAIN TYPES: Single source of truth for app code
+export type StorageBackend = "s3" | "vercel_blob" | "icp" | "arweave" | "ipfs" | "neon";
+
 export interface UploadResult {
-  memory_id: string;
-  blob_id: string;
-  remote_id?: string;
-  size: bigint;
-  checksum_sha256?: Uint8Array;
-  storage_backend: StorageBackend;
-  storage_location: string;
-  uploaded_at: bigint;
-  expires_at?: bigint;
+  memoryId: string; // ✅ camelCase
+  blobId: string; // ✅ camelCase
+  remoteId?: string; // ✅ camelCase
+  size: bigint; // ✅ Keep as bigint in domain
+  checksumSha256?: Uint8Array; // ✅ bytes in domain
+  storageBackend: StorageBackend; // ✅ camelCase
+  storageLocation: string; // ✅ camelCase
+  uploadedAt: bigint; // ✅ nat64 on wire → bigint
+  expiresAt?: bigint; // ✅ optional bigint
 }
 
+// ✅ Frontend-only progress (not in backend)
 export interface UploadProgress {
-  file_index: number;
-  total_files: number;
-  current_file: string;
-  bytes_uploaded: bigint;
-  total_bytes: bigint;
-  pct_bp: number; // 0..10000 basis points
-  status: ProcessingStatus;
+  fileIndex: number; // ✅ camelCase
+  totalFiles: number; // ✅ camelCase
+  currentFile: string; // ✅ camelCase
+  bytesUploaded: bigint; // ✅ camelCase
+  totalBytes: bigint; // ✅ camelCase
+  percentage: number; // ✅ Frontend calculation
+  status: "uploading" | "processing" | "finalizing" | "completed" | "error";
   message?: string;
 }
-
-// Import generated types
-export type { StorageBackend, ProcessingStatus } from "@/ic/declarations/backend/backend.did";
 ```
 
-#### **Step 2: Update Frontend Code** ⏭️
+#### **Step 2: Create Edge Adapters** 🔌
 
-**Files to Update**:
+**File**: `src/nextjs/src/lib/icp-upload-mapper.ts`
 
-- `src/nextjs/src/services/upload/icp-upload.ts`
-- `src/nextjs/src/app/api/upload/complete/route.ts`
+```typescript
+// ✅ EDGE ADAPTER: Wire ⇄ Domain conversion
+import type { UploadFinishResult as Wire, StorageBackend as WireSB } from "@/ic/declarations/backend/backend.did";
+import type { UploadResult, StorageBackend as DomainSB } from "@/domain/upload";
+
+// ✅ Enum mapping table (canonical)
+const toDomainSB = (w: WireSB): DomainSB =>
+  "S3" in w
+    ? "s3"
+    : "Icp" in w
+    ? "icp"
+    : "VercelBlob" in w
+    ? "vercel_blob"
+    : "Arweave" in w
+    ? "arweave"
+    : "Ipfs" in w
+    ? "ipfs"
+    : ((): never => {
+        throw new Error("unknown backend");
+      })();
+
+export function wireToDomain(w: Wire): UploadResult {
+  return {
+    memoryId: w.memory_id, // snake_case → camelCase
+    blobId: w.blob_id, // snake_case → camelCase
+    remoteId: w.remote_id?.[0], // []|[T] → T|undefined
+    size: w.size, // bigint → bigint
+    checksumSha256: w.checksum_sha256?.[0], // []|[Uint8Array] → Uint8Array|undefined
+    storageBackend: toDomainSB(w.storage_backend), // Candid variant → string
+    storageLocation: w.storage_location, // snake_case → camelCase
+    uploadedAt: w.uploaded_at, // bigint → bigint
+    expiresAt: w.expires_at?.[0], // []|[bigint] → bigint|undefined
+  };
+}
+```
+
+**File**: `src/nextjs/src/lib/db-upload-mapper.ts`
+
+```typescript
+// ✅ EDGE ADAPTER: Database ⇄ Domain conversion
+import type { DBMemoryAsset } from "@/db/schema";
+import type { UploadResult, StorageBackend } from "@/domain/upload";
+
+// ✅ Hex conversion helpers
+export const toHex = (u8: Uint8Array) => [...u8].map((b) => b.toString(16).padStart(2, "0")).join("");
+export const fromHex = (s: string) => new Uint8Array(s.match(/.{1,2}/g)!.map((h) => parseInt(h, 16)));
+
+export function dbToDomain(db: DBMemoryAsset): UploadResult {
+  return {
+    memoryId: db.memoryId,
+    blobId: db.id, // Use asset ID as blob ID
+    remoteId: undefined, // Not stored in DB
+    size: BigInt(db.bytes), // number → bigint
+    checksumSha256: db.sha256 ? fromHex(db.sha256) : undefined,
+    storageBackend: db.assetLocation as StorageBackend,
+    storageLocation: db.url,
+    uploadedAt: BigInt(db.createdAt.getTime()), // Date → bigint (ms)
+    expiresAt: undefined, // Not stored in DB
+  };
+}
+```
+
 - `src/nextjs/src/app/api/memories/upload/onboarding/folder/route.ts`
 - All components using `UploadResult` or `UploadProgress`
 
-#### **Step 3: Type Conversion Utilities** ⏭️
+#### **Step 3: ESLint Rules & Type Safety** 🛡️
 
-**File**: `src/nextjs/src/utils/type-converters.ts`
+**File**: `.eslintrc.js`
+
+```javascript
+module.exports = {
+  rules: {
+    // ✅ Block wire types outside adapters
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          {
+            group: ["@/ic/declarations/backend/backend.did"],
+            message: "Wire types only allowed in adapters/. Use domain types instead.",
+          },
+        ],
+      },
+    ],
+  },
+};
+```
+
+**File**: `tsconfig.json`
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "@/domain/*": ["./src/domain/*"],
+      "@/adapters/*": ["./src/adapters/*"],
+      "@/db/*": ["./src/db/*"]
+    }
+  }
+}
+```
+
+#### **Step 4: Type Safety Tests** 🧪
+
+**File**: `src/nextjs/src/adapters/__tests__/icpUploadMapper.test.ts`
 
 ```typescript
-// Convert between frontend and backend types
-export function convertUploadResult(backend: BackendUploadResult): UploadResult {
-  return {
-    memory_id: backend.memory_id,
-    blob_id: backend.blob_id,
-    remote_id: backend.remote_id?.[0],
-    size: backend.size,
-    checksum_sha256: backend.checksum_sha256?.[0],
-    storage_backend: backend.storage_backend,
-    storage_location: backend.storage_location,
-    uploaded_at: backend.uploaded_at,
-    expires_at: backend.expires_at?.[0],
-  };
-}
+import { wireToDomain } from "@/adapters/icpUploadMapper";
+import type { UploadFinishResult as Wire } from "@/ic/declarations/backend/backend.did";
 
-export function convertUploadProgress(backend: BackendUploadProgress): UploadProgress {
-  return {
-    file_index: backend.file_index,
-    total_files: backend.total_files,
-    current_file: backend.current_file,
-    bytes_uploaded: backend.bytes_uploaded,
-    total_bytes: backend.total_bytes,
-    pct_bp: backend.pct_bp,
-    status: backend.status,
-    message: backend.message?.[0],
+test("wireToDomain handles options & bigints", () => {
+  const w: Wire = {
+    checksum_sha256: [],
+    storage_location: "loc",
+    blob_id: "b",
+    storage_backend: { Icp: null },
+    size: 123n,
+    memory_id: "m",
+    remote_id: [],
+    uploaded_at: 456n,
+    expires_at: [],
   };
-}
+  const d = wireToDomain(w);
+  expect(d.blobId).toBe("b");
+  expect(d.size).toBe(123n);
+  expect(d.checksumSha256).toBeUndefined();
+  expect(d.storageBackend).toBe("icp");
+});
+
+test("wireToDomain handles all storage backends", () => {
+  const backends = [
+    { S3: null },
+    { Icp: null },
+    { VercelBlob: null },
+    { Arweave: null },
+    { Ipfs: null }
+  ];
+
+  backends.forEach(backend => {
+    const w: Wire = { /* ... */, storage_backend: backend };
+    const d = wireToDomain(w);
+    expect(typeof d.storageBackend).toBe("string");
+  });
+});
 ```
 
 ### **Phase 2: Database Schema Alignment** ⏭️
 
-#### **Step 4: Update Database Types**
+#### **Step 4: Database Schema is Already Correct** ✅
 
 **File**: `src/nextjs/src/db/schema.ts`
 
 ```typescript
-// Align database schema with backend types
-export const uploadResults = pgTable("upload_results", {
-  memory_id: text("memory_id").notNull(),
-  blob_id: text("blob_id").notNull(),
-  remote_id: text("remote_id"),
-  size: bigint("size", { mode: "bigint" }).notNull(),
-  checksum_sha256: bytea("checksum_sha256"),
-  storage_backend: storage_backend_t("storage_backend").notNull(),
-  storage_location: text("storage_location").notNull(),
-  uploaded_at: bigint("uploaded_at", { mode: "bigint" }).notNull(),
-  expires_at: bigint("expires_at", { mode: "bigint" }),
+// ✅ DATABASE SCHEMA IS ALREADY CORRECT
+// Database uses snake_case consistently and is the canonical source
+
+export const storage_backend_t = pgEnum("storage_backend_t", ["s3", "vercel_blob", "icp", "arweave", "ipfs", "neon"]);
+
+export const memoryAssets = pgTable("memory_assets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  memoryId: uuid("memory_id").notNull(), // ✅ snake_case
+  assetLocation: blob_hosting_t("asset_location").notNull(), // ✅ snake_case
+  storageKey: text("storage_key").notNull(), // ✅ snake_case
+  mimeType: text("mime_type").notNull(), // ✅ snake_case
+  processingStatus: processing_status_t("processing_status").default("pending").notNull(),
+  processingError: text("processing_error"), // ✅ snake_case
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+// ✅ DATABASE TYPES ARE CANONICAL
+export type StorageBackend = (typeof storage_backend_t.enumValues)[number];
+export type DBMemoryAsset = typeof memoryAssets.$inferSelect;
 ```
+
+**Database Status**: ✅ **ALREADY CORRECT** - Database schema is the canonical source of truth
 
 ### **Phase 3: Testing & Validation** ⏭️
 
@@ -267,26 +471,28 @@ describe("Type Alignment", () => {
 
 ---
 
-## 📋 **Implementation Checklist**
+## 📋 **Implementation Checklist** (Updated per Tech Lead)
 
 ### **Immediate (Today)**
 
-- [ ] **Step 1**: Update `src/nextjs/src/services/upload/types.ts` to use snake_case
-- [ ] **Step 2**: Create type conversion utilities
-- [ ] **Step 3**: Update ICP upload service to use new types
+- [ ] **Step 1**: Update `src/nextjs/src/types/upload.ts` with camelCase domain types
+- [ ] **Step 2**: Create `src/nextjs/src/lib/icp-upload-mapper.ts` (wire ⇄ domain)
+- [ ] **Step 3**: Create `src/nextjs/src/lib/db-upload-mapper.ts` (db ⇄ domain)
+- [ ] **Step 4**: Add ESLint rule to block wire types outside lib/
 
 ### **Short-term (This Week)**
 
-- [ ] **Step 4**: Update all API routes using upload types
-- [ ] **Step 5**: Update database schema alignment
-- [ ] **Step 6**: Update frontend components
-- [ ] **Step 7**: Add type safety tests
+- [ ] **Step 5**: Replace FE usages to **domain** types only
+- [ ] **Step 6**: Add 2-3 mapper unit tests
+- [ ] **Step 7**: Update tsconfig paths for clean layer separation
+- [ ] **Step 8**: Keep DB schema as-is; map in/out at repository layer
 
 ### **Long-term (Next Week)**
 
-- [ ] **Step 8**: Remove legacy type definitions
-- [ ] **Step 9**: Update documentation
-- [ ] **Step 10**: Performance testing
+- [ ] **Step 9**: Add BigInt/Date conversion helpers for display
+- [ ] **Step 10**: Performance testing of mappers
+- [ ] **Step 11**: Consider v2 endpoint if wire shape needs improvement
+- [ ] **Step 12**: Documentation updates
 
 ---
 
@@ -326,10 +532,38 @@ describe("Type Alignment", () => {
 
 ---
 
-**Status**: 🔄 **IN PROGRESS** - Frontend type migration needed  
-**Next Action**: Update `src/nextjs/src/services/upload/types.ts`  
-**ETA**: 2-3 days for complete migration  
-**Blocker**: None - clear path forward
+---
+
+## 🎯 **Tech Lead's Key Principles**
+
+### **✅ What TO Do**
+
+- **Freeze the wire** (Candid) as-is - don't change working backend
+- **Define one camelCase domain type** used everywhere in app code
+- **Convert at the edges** (ICP wire ⇄ domain, DB ⇄ domain) with tiny mappers
+- **Add ESLint rules** to block wire types outside adapters
+- **Keep database schema** as canonical source of truth
+
+### **❌ What NOT To Do**
+
+- **Don't flip frontend to snake_case** - TypeScript/React prefers camelCase
+- **Don't make wire the universal contract** - keep backend stable
+- **Don't rewrite backend types** - avoid churn and risk
+- **Don't push UploadProgress to backend** unless actually needed
+
+### **🚀 Migration Strategy**
+
+1. **Domain types** (camelCase) - single source of truth
+2. **Edge adapters** (wire ⇄ domain, db ⇄ domain) - tiny, well-tested
+3. **ESLint rules** - enforce layer boundaries
+4. **Additive changes** - v2 endpoint later if needed
+
+---
+
+**Status**: 🔄 **IN PROGRESS** - Domain-driven architecture implementation  
+**Next Action**: Create `src/nextjs/src/domain/upload.ts` with camelCase types  
+**ETA**: 1-2 days for complete implementation  
+**Blocker**: None - clear path forward with tech lead guidance
 pub session_id: String, // ❌ snake_case
 pub memory_id: String, // ❌ snake_case
 pub memory_type: MemoryType,
