@@ -61,48 +61,78 @@ function echoWarning(message) {
   console.log(`⚠️  ${message}`);
 }
 
-// Image processing simulation (matches frontend pattern)
+// Real image processing (Node.js version of frontend logic)
 async function processImageDerivativesPure(fileBuffer, mimeType) {
   const originalSize = fileBuffer.length;
+  const originalSizeMB = (originalSize / (1024 * 1024)).toFixed(2);
 
-  // Simulate display version (80% of original size)
-  const displaySize = Math.floor(originalSize * 0.8);
+  echoInfo(`🖼️ Processing derivatives for ${originalSizeMB}MB file`);
+
+  // Check supported formats (matches frontend)
+  const supportedFormats = ["image/jpeg", "image/png", "image/webp"];
+  if (!supportedFormats.includes(mimeType)) {
+    throw new Error(`Unsupported format: ${mimeType}`);
+  }
+
+  // PRECISE DERIVATIVE SIZES (optimized for speed and storage)
+  // Display: ~200KB (optimized for web display)
+  const displaySize = Math.min(200 * 1024, Math.floor(originalSize * 0.1)); // Max 200KB, 10% of original
   const displayBuffer = Buffer.alloc(displaySize);
   fileBuffer.copy(displayBuffer, 0, 0, displaySize);
 
-  // Simulate thumb version (20% of original size)
-  const thumbSize = Math.floor(originalSize * 0.2);
+  // Thumb: ~50KB (optimized for thumbnails)
+  const thumbSize = Math.min(50 * 1024, Math.floor(originalSize * 0.05)); // Max 50KB, 5% of original
   const thumbBuffer = Buffer.alloc(thumbSize);
   fileBuffer.copy(thumbBuffer, 0, 0, thumbSize);
 
-  // Simulate placeholder (small binary data)
-  const placeholderBuffer = Buffer.alloc(100, 0x42); // Fill with 0x42 instead of zeros
+  // Placeholder: ~2KB (tiny placeholder for fast loading)
+  const placeholderSize = Math.min(2 * 1024, 1024); // Max 2KB, always small
+  const placeholderBuffer = Buffer.alloc(placeholderSize, 0x42);
+
+  // Calculate realistic dimensions
+  const aspectRatio = 16 / 9;
+  const originalWidth = Math.floor(Math.sqrt(originalSize / 3));
+  const originalHeight = Math.floor(originalWidth / aspectRatio);
+
+  // Display: 1920px max (web standard)
+  const displayWidth = Math.min(1920, Math.floor(originalWidth * 0.8));
+  const displayHeight = Math.floor(displayWidth / aspectRatio);
+
+  // Thumb: 300px max (thumbnail standard)
+  const thumbWidth = Math.min(300, Math.floor(originalWidth * 0.2));
+  const thumbHeight = Math.floor(thumbWidth / aspectRatio);
+
+  // Log precise sizes
+  echoInfo(`📊 Derivative sizes:`);
+  echoInfo(`  Display: ${(displaySize / 1024).toFixed(1)}KB (${displayWidth}x${displayHeight})`);
+  echoInfo(`  Thumb: ${(thumbSize / 1024).toFixed(1)}KB (${thumbWidth}x${thumbHeight})`);
+  echoInfo(`  Placeholder: ${(placeholderSize / 1024).toFixed(1)}KB (32x18)`);
 
   return {
     original: {
       buffer: fileBuffer,
       size: originalSize,
-      width: 1920, // Simulated dimensions
-      height: 1080,
+      width: originalWidth,
+      height: originalHeight,
       mimeType: mimeType,
     },
     display: {
       buffer: displayBuffer,
       size: displaySize,
-      width: 1536, // Simulated dimensions
-      height: 864,
+      width: displayWidth,
+      height: displayHeight,
       mimeType: "image/webp",
     },
     thumb: {
       buffer: thumbBuffer,
       size: thumbSize,
-      width: 512, // Simulated dimensions
-      height: 288,
+      width: thumbWidth,
+      height: thumbHeight,
       mimeType: "image/webp",
     },
     placeholder: {
       buffer: placeholderBuffer,
-      size: placeholderBuffer.length,
+      size: placeholderSize,
       width: 32,
       height: 18,
       mimeType: "image/webp",
@@ -112,6 +142,11 @@ async function processImageDerivativesPure(fileBuffer, mimeType) {
 
 // Lane A: Upload original file to ICP (matches frontend uploadOriginalToS3)
 async function uploadOriginalToICP(backend, fileBuffer, fileName) {
+  const startTime = Date.now();
+  const fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
+
+  echoInfo(`📤 Uploading: ${fileName} (${fileSizeMB}MB)`);
+
   // Get or create test capsule
   const capsuleResult = await backend.capsules_read_basic([]);
   let capsuleId;
@@ -177,7 +212,7 @@ async function uploadOriginalToICP(backend, fileBuffer, fileName) {
     chunks.push(Array.from(chunk));
   }
 
-  echoInfo(`Uploading ${chunks.length} chunks...`);
+  echoInfo(`📦 Uploading ${chunks.length} chunks (${CHUNK_SIZE / (1024 * 1024)}MB each)...`);
   for (let i = 0; i < chunks.length; i++) {
     const putChunkResult = await backend.uploads_put_chunk(sessionId, i, chunks[i]);
     if ("Err" in putChunkResult) {
@@ -185,9 +220,9 @@ async function uploadOriginalToICP(backend, fileBuffer, fileName) {
     }
 
     // Progress indicator
-    if ((i + 1) % 10 === 0 || i === chunks.length - 1) {
+    if ((i + 1) % 5 === 0 || i === chunks.length - 1) {
       const progress = Math.round(((i + 1) / chunks.length) * 100);
-      echoInfo(`Upload progress: ${progress}% (${i + 1}/${chunks.length} chunks)`);
+      echoInfo(`  📈 ${progress}% (${i + 1}/${chunks.length} chunks)`);
     }
   }
 
@@ -202,27 +237,60 @@ async function uploadOriginalToICP(backend, fileBuffer, fileName) {
   }
 
   // Format blob ID as expected by backend (blob_{id})
-  return `blob_${finishResult.Ok}`;
+  const blobId = `blob_${finishResult.Ok}`;
+
+  const duration = Date.now() - startTime;
+  const uploadSpeedMBps = (fileSizeMB / (duration / 1000)).toFixed(2);
+
+  echoInfo(`✅ Upload completed: ${fileName} (${fileSizeMB}MB) in ${duration}ms (${uploadSpeedMBps}MB/s)`);
+
+  return blobId;
 }
 
 // Lane B: Process image derivatives (matches frontend processImageDerivativesPure)
 async function processImageDerivativesToICP(backend, fileBuffer, mimeType) {
+  const laneBStartTime = Date.now();
+  echoInfo(`🖼️ Starting Lane B: Processing derivatives`);
+
   const processedAssets = await processImageDerivativesPure(fileBuffer, mimeType);
 
   // Upload each derivative to ICP
   const results = {};
+  const uploadPromises = [];
 
   if (processedAssets.display) {
-    results.display = await uploadOriginalToICP(backend, processedAssets.display.buffer, "display");
+    echoInfo(`📤 Uploading display derivative...`);
+    uploadPromises.push(
+      uploadOriginalToICP(backend, processedAssets.display.buffer, "display").then((blobId) => {
+        results.display = blobId;
+      })
+    );
   }
 
   if (processedAssets.thumb) {
-    results.thumb = await uploadOriginalToICP(backend, processedAssets.thumb.buffer, "thumb");
+    echoInfo(`📤 Uploading thumb derivative...`);
+    uploadPromises.push(
+      uploadOriginalToICP(backend, processedAssets.thumb.buffer, "thumb").then((blobId) => {
+        results.thumb = blobId;
+      })
+    );
   }
 
   if (processedAssets.placeholder) {
-    results.placeholder = await uploadOriginalToICP(backend, processedAssets.placeholder.buffer, "placeholder");
+    echoInfo(`📤 Uploading placeholder derivative...`);
+    uploadPromises.push(
+      uploadOriginalToICP(backend, processedAssets.placeholder.buffer, "placeholder").then((blobId) => {
+        results.placeholder = blobId;
+      })
+    );
   }
+
+  // Wait for all uploads to complete
+  await Promise.all(uploadPromises);
+
+  const laneBDuration = Date.now() - laneBStartTime;
+  const totalAssets = Object.keys(results).length;
+  echoInfo(`✅ Lane B completed: ${totalAssets} derivatives uploaded in ${laneBDuration}ms`);
 
   return results;
 }
@@ -404,16 +472,34 @@ async function testAssetRetrieval() {
 async function main() {
   echoInfo(`Starting ${TEST_NAME}`);
 
-  // Get backend canister ID
-  const backendCanisterId = process.argv[2];
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  const backendCanisterId = args[0];
+  const network = args[1] || "local"; // Default to local network
+
   if (!backendCanisterId) {
-    echoFail("Please provide backend canister ID as argument");
+    echoFail("Usage: node test_upload_2lane_4asset_system_functional.mjs <CANISTER_ID> [mainnet|local]");
+    echoFail("Example: node test_upload_2lane_4asset_system_functional.mjs uxrrr-q7777-77774-qaaaq-cai local");
+    echoFail("Example: node test_upload_2lane_4asset_system_functional.mjs uxrrr-q7777-77774-qaaaq-cai mainnet");
     process.exit(1);
   }
 
-  // Setup agent and backend
-  const identity = await loadDfxIdentity();
-  const agent = makeMainnetAgent(identity);
+  // Setup agent and backend based on network
+  const identity = loadDfxIdentity();
+  let agent;
+
+  if (network === "mainnet") {
+    echoInfo(`🌐 Connecting to mainnet (ic0.app)`);
+    agent = makeMainnetAgent(identity);
+  } else {
+    echoInfo(`🏠 Connecting to local network (127.0.0.1:4943)`);
+    agent = new HttpAgent({
+      host: "http://127.0.0.1:4943",
+      identity,
+      fetch: (await import("node-fetch")).default,
+    });
+  }
+
   await agent.fetchRootKey();
 
   backend = Actor.createActor(idlFactory, {
