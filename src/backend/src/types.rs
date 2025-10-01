@@ -32,6 +32,27 @@ pub enum Result_14 {
     Err(Error),
 }
 
+/// Result type for uploads_finish function (text or Error)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum Result_6 {
+    Ok(String),
+    Err(Error),
+}
+
+/// Upload finish result containing both blob ID and memory ID
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct UploadFinishResult {
+    pub blob_id: String,
+    pub memory_id: String,
+}
+
+/// Result type for uploads_finish function (UploadFinishResult or Error)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum Result_15 {
+    Ok(UploadFinishResult),
+    Err(Error),
+}
+
 // ============================================================================
 // STORAGE EDGE TYPES
 // ============================================================================

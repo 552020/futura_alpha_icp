@@ -313,15 +313,16 @@ type ResourceType = variant { Memory; Capsule; Gallery };
 type Result = variant { Ok; Err : Error };
 type Result_1 = variant { Ok : BlobMeta; Err : Error };
 type Result_10 = variant { Ok : opt DetailedCreationStatus; Err : Error };
-type Result_11 = variant { Ok : vec MemoryPresenceResult; Err : Error };
-type Result_12 = variant { Ok : Memory; Err : Error };
+type Result_11 = variant { Ok : text; Err : Error };
+type Result_12 = variant { Ok : vec MemoryPresenceResult; Err : Error };
 type Result_13 = variant { Ok : nat64; Err : Error };
 type Result_14 = variant { Ok : principal; Err : Error };
+type Result_15 = variant { Ok : UploadFinishResult; Err : Error };
 type Result_2 = variant { Ok : blob; Err : Error };
 type Result_3 = variant { Ok : Capsule; Err : Error };
 type Result_4 = variant { Ok : CapsuleInfo; Err : Error };
 type Result_5 = variant { Ok : bool; Err : Error };
-type Result_6 = variant { Ok : text; Err : Error };
+type Result_6 = variant { Ok : record { text; text }; Err : Error };
 type Result_7 = variant { Ok : Gallery; Err : Error };
 type Result_8 = variant {
   Ok : vec record { principal; DetailedCreationStatus };
@@ -335,6 +336,7 @@ type UploadConfig = record {
   chunk_size : nat32;
   inline_budget_per_capsule : nat32;
 };
+type UploadFinishResult = record { blob_id : text; memory_id : text };
 type VideoAssetMetadata = record {
   duration : opt nat64;
   base : AssetMetadataBase;
@@ -418,26 +420,26 @@ service : {
       opt blob,
       AssetMetadata,
       text,
-    ) -> (Result_6);
+    ) -> (Result_11);
   memories_delete : (text) -> (MemoryOperationResponse);
   memories_list : (text) -> (MemoryListResponse) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (Result_11) query;
-  memories_read : (text) -> (Result_12) query;
+  memories_ping : (vec text) -> (Result_12) query;
+  memories_read : (text) -> (Result_13) query;
   memories_read_asset : (text, nat32) -> (Result_2) query;
-  memories_read_with_assets : (text) -> (Result_12) query;
+  memories_read_with_assets : (text) -> (Result_13) query;
   memories_update : (text, MemoryUpdateData) -> (MemoryOperationResponse);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   register_with_nonce : (text) -> (Result);
   remove_admin : (principal) -> (Result);
   // Clean up expired sessions
-  sessions_cleanup_expired : () -> (Result_6);
+  sessions_cleanup_expired : () -> (Result_11);
   // Clear all upload sessions (development/debugging only)
-  sessions_clear_all : () -> (Result_6);
+  sessions_clear_all : () -> (Result_11);
   // List all sessions for debugging
-  sessions_list : () -> (Result_6) query;
+  sessions_list : () -> (Result_11) query;
   // Get session statistics for monitoring
-  sessions_stats : () -> (Result_6) query;
+  sessions_stats : () -> (Result_11) query;
   set_migration_enabled : (bool) -> (Result);
   set_personal_canister_creation_enabled : (bool) -> (Result);
   update_gallery_storage_location : (text, GalleryStorageLocation) -> (Result);
@@ -448,7 +450,7 @@ service : {
   // Begin chunked upload for large files
   uploads_begin : (text, AssetMetadata, nat32, text) -> (Result_13);
   // Commit chunks to create final memory
-  uploads_finish : (nat64, blob, nat64) -> (Result_6);
+  uploads_finish : (nat64, blob, nat64) -> (Result_15);
   // Upload a chunk for an active session
   uploads_put_chunk : (nat64, nat32, blob) -> (Result);
   verify_nonce : (text) -> (Result_14) query;

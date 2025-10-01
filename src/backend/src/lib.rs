@@ -4,7 +4,7 @@ use candid::Principal;
 // Internal imports
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
-use crate::types::{Error, Result_13, Result_14};
+use crate::types::{Error, Result_13, Result_14, Result_15, UploadFinishResult};
 
 // Import modules
 mod admin;
@@ -497,12 +497,12 @@ async fn uploads_finish(
     session_id: u64,
     expected_sha256: Vec<u8>,
     total_len: u64,
-) -> std::result::Result<types::MemoryId, Error> {
+) -> Result_15 {
     // Use real UploadService with actual store integration
     let hash: [u8; 32] = match expected_sha256.clone().try_into() {
         Ok(h) => h,
         Err(_) => {
-            return Err(types::Error::InvalidArgument(format!(
+            return Result_15::Err(types::Error::InvalidArgument(format!(
                 "invalid_hash_length: expected 32 bytes, got {}",
                 expected_sha256.len()
             )))
@@ -513,8 +513,14 @@ async fn uploads_finish(
         let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
         match upload_service.commit(store, session_id, hash, total_len) {
-            Ok(memory_id) => Ok(memory_id),
-            Err(err) => Err(err),
+            Ok((blob_id, memory_id)) => {
+                let result = UploadFinishResult {
+                    blob_id,
+                    memory_id,
+                };
+                Result_15::Ok(result)
+            },
+            Err(err) => Result_15::Err(err),
         }
     })
 }
@@ -686,7 +692,7 @@ async fn debug_finish_hex(
     session_id: u64,
     sha256_hex: String,
     total_len: u64,
-) -> std::result::Result<types::MemoryId, Error> {
+) -> std::result::Result<(String, types::MemoryId), Error> {
     let bytes =
         hex::decode(sha256_hex).map_err(|_| types::Error::InvalidArgument("bad hex".into()))?;
     if bytes.len() != 32 {
@@ -701,7 +707,7 @@ async fn debug_finish_hex(
         let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
         match upload_service.commit(store, session_id, hash_array, total_len) {
-            Ok(memory_id) => Ok(memory_id),
+            Ok((blob_id, memory_id)) => Ok((blob_id, memory_id)),
             Err(e) => Err(types::Error::from(e)),
         }
     })

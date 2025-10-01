@@ -248,26 +248,34 @@ async function uploadOriginalToICP(backend, fileBuffer, fileName) {
   const finishResult = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
 
   // Handle different response formats for finish
-  let memoryId;
+  let blobId, memoryId;
   if (typeof finishResult === "string") {
-    // Direct response (memory ID string) - this is the current backend behavior
+    // Direct response (legacy format) - fallback
     memoryId = finishResult;
+    blobId = memoryId; // Assume it's blob ID for legacy
     echoInfo(`✅ Upload finished successfully: ${memoryId}`);
   } else if (finishResult && typeof finishResult === "object") {
     // Object response with Ok/Err structure
     try {
       validateUploadResponse(finishResult, ["Ok"]);
-      memoryId = finishResult.Ok;
-      echoInfo(`✅ Upload finished successfully: ${memoryId}`);
+      const result = finishResult.Ok;
+      if (result && typeof result === "object" && "blob_id" in result && "memory_id" in result) {
+        // New format: UploadFinishResult with both IDs
+        blobId = result.blob_id;
+        memoryId = result.memory_id;
+        echoInfo(`✅ Upload finished successfully: blob_id=${blobId}, memory_id=${memoryId}`);
+      } else {
+        // Legacy format: direct string
+        memoryId = result;
+        blobId = memoryId;
+        echoInfo(`✅ Upload finished successfully: ${memoryId}`);
+      }
     } catch (error) {
       throw handleUploadError(error, "Upload finish");
     }
   } else {
     throw new Error(`Unexpected finish response format: ${typeof finishResult} - ${JSON.stringify(finishResult)}`);
   }
-
-  // Format blob ID as expected by backend (blob_{id})
-  const blobId = `blob_${memoryId}`;
 
   const duration = Date.now() - startTime;
   const uploadSpeed = formatUploadSpeed(fileBuffer.length, duration);

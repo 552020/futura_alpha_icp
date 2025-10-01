@@ -184,7 +184,7 @@ impl UploadService {
         session_id: SessionId,
         expected_sha256: [u8; 32],
         total_len: u64,
-    ) -> std::result::Result<MemoryId, Error> {
+    ) -> std::result::Result<(String, MemoryId), Error> {
         let mut session = self.sessions.get(&session_id)?.ok_or(Error::NotFound)?;
 
         // Verify caller matches
@@ -203,7 +203,7 @@ impl UploadService {
                 {
                     // Already committed and attached
                     self.sessions.cleanup(&session_id);
-                    return Ok(session.provisional_memory_id);
+                    return Ok((format!("blob_{}", blob_id), session.provisional_memory_id));
                 }
             }
 
@@ -222,7 +222,7 @@ impl UploadService {
             })?;
 
             self.sessions.cleanup(&session_id);
-            return Ok(memory_id);
+            return Ok((format!("blob_{}", blob_id), memory_id));
         }
 
         // First-time commit
@@ -271,7 +271,8 @@ impl UploadService {
         // 6. Cleanup session and chunks
         self.sessions.cleanup(&session_id);
 
-        Ok(memory_id)
+        // Return both blob ID and memory ID
+        Ok((format!("blob_{}", blob_id.0), memory_id))
     }
 
     /// Abort upload and cleanup with authorization
