@@ -33,16 +33,17 @@
 
 ### STEP 4: REGENERATE CANDID
 
-4.1 [ ] Deploy with `dfx deploy` to regenerate `.did` file
+4.1 [x] Deploy with `dfx deploy` to regenerate `.did` file
 4.2 [ ] Update frontend to use generated types
 
 ## Execution Order
 
 1. ✅ Keep `unified_types.rs` (DON'T DELETE IT)
-2. 🔄 Clean up `types.rs` (remove duplicates)
-3. 🔄 Update imports in other files
-4. 🔄 Update backend functions
-5. 🔄 Deploy and regenerate Candid
+2. ✅ Clean up `types.rs` (remove duplicates)
+3. ✅ Update imports in other files
+4. ✅ Update backend functions
+5. ✅ Deploy and regenerate Candid
+6. 🔄 Update frontend to use generated types
 
 **The key insight: `unified_types.rs` IS our canonical schema. Everything else should import from it.**
 
@@ -54,12 +55,15 @@
 2. [x] Created memories/types.rs
 3. [x] Updated upload/types.rs to import unified types
 4. [x] Clean up types.rs (remove duplicates)
+5. [x] Update backend functions to use unified types
+6. [x] Deploy and regenerate Candid interface (Oct 1, 23:27)
 
 ### 🔄 IN PROGRESS
 
-5. [ ] Update backend functions to use unified types
+7. [ ] Update frontend to use generated types
 
 ### ⏳ PENDING TASKS
 
-6. [ ] Deploy and regenerate Candid interface
-7. [ ] Update frontend to use generated types
+8. [ ] Audit frontend type inconsistencies
+9. [ ] Migrate frontend to use unified backend types
+10. [ ] Test type safety across frontend-backend boundary
