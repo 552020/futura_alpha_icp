@@ -72,7 +72,9 @@ impl UploadService {
         }
 
         // 2) idempotency: if a pending session with same (capsule, caller, idem) exists, return it
-        if let Some(existing) = with_session_compat(|sessions| sessions.find_pending(&capsule_id, &caller, &idem)) {
+        if let Some(existing) =
+            with_session_compat(|sessions| sessions.find_pending(&capsule_id, &caller, &idem))
+        {
             return Ok(existing);
         }
 
@@ -85,7 +87,8 @@ impl UploadService {
 
         // 4) back-pressure: cap concurrent sessions per caller/capsule
         const MAX_ACTIVE_PER_CALLER: usize = 100; // Increased for development
-        let active_count = with_session_compat(|sessions| sessions.count_active_for(&capsule_id, &caller));
+        let active_count =
+            with_session_compat(|sessions| sessions.count_active_for(&capsule_id, &caller));
         let total_count = with_session_compat(|sessions| sessions.total_session_count());
 
         // Log session count for monitoring
@@ -145,7 +148,8 @@ impl UploadService {
         bytes: Vec<u8>,
     ) -> std::result::Result<(), Error> {
         // Verify session exists and caller matches
-        let session = with_session_compat(|sessions| sessions.get(session_id))?.ok_or(Error::NotFound)?;
+        let session =
+            with_session_compat(|sessions| sessions.get(session_id))?.ok_or(Error::NotFound)?;
 
         let caller = ic_cdk::api::msg_caller();
         if session.caller != caller {
@@ -210,7 +214,8 @@ impl UploadService {
         expected_sha256: [u8; 32],
         total_len: u64,
     ) -> std::result::Result<(String, MemoryId), Error> {
-        let mut session = with_session_compat(|sessions| sessions.get(&session_id))?.ok_or(Error::NotFound)?;
+        let mut session =
+            with_session_compat(|sessions| sessions.get(&session_id))?.ok_or(Error::NotFound)?;
 
         // Verify caller matches
         let caller = ic_cdk::api::msg_caller();
@@ -278,7 +283,11 @@ impl UploadService {
                 expected_sha256,
             )
         })?;
-        ic_cdk::println!("COMMIT: sid={} hash_verified blob_id={}", session_id.0, blob_id.0);
+        ic_cdk::println!(
+            "COMMIT: sid={} hash_verified blob_id={}",
+            session_id.0,
+            blob_id.0
+        );
 
         // 3. Mark session as committed (crash-safe checkpoint)
         session.status = SessionStatus::Committed {
@@ -336,7 +345,7 @@ impl UploadService {
     }
 
     // Public session management methods (for lib.rs query endpoints)
-    
+
     pub fn clear_all_sessions(&self) {
         with_session_compat(|sessions| sessions.clear_all_sessions());
     }
@@ -348,8 +357,14 @@ impl UploadService {
     pub fn session_count_by_status(&self) -> (usize, usize) {
         with_session_compat(|sessions| {
             let all = sessions.list_upload_sessions();
-            let pending = all.iter().filter(|(_, m)| matches!(m.status, SessionStatus::Pending)).count();
-            let committed = all.iter().filter(|(_, m)| matches!(m.status, SessionStatus::Committed { .. })).count();
+            let pending = all
+                .iter()
+                .filter(|(_, m)| matches!(m.status, SessionStatus::Pending))
+                .count();
+            let committed = all
+                .iter()
+                .filter(|(_, m)| matches!(m.status, SessionStatus::Committed { .. }))
+                .count();
             (pending, committed)
         })
     }

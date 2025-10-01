@@ -82,7 +82,8 @@ impl BlobStore {
             .ok_or(Error::NotFound)?;
 
         // Derive pmid_hash the EXACT same way StableBlobSink does (deterministic SHA256 + session_id)
-        let pmid_hash = pmid_session_hash32(&session_meta.provisional_memory_id, session_meta.session_id);
+        let pmid_hash =
+            pmid_session_hash32(&session_meta.provisional_memory_id, session_meta.session_id);
 
         // Create blob_id from first 8 bytes of hash for metadata storage
         let blob_id = BlobId(u64::from_be_bytes([

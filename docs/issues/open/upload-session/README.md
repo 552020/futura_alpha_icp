@@ -10,27 +10,30 @@
 
 ### 🎯 Start Here
 
-| Document | Purpose | Audience |
-|----------|---------|----------|
-| **README.md** (this file) | Quick reference, navigation | Everyone |
-| **IMPLEMENTATION_GUIDE.md** | Complete implementation details | Developers |
-| **ARCHITECTURE.md** | Design decisions and data flow | Architects |
-| **CHANGELOG.md** | What changed and why | Tech leads |
-| **REFACTORING_TODO.md** | Next steps to complete refactoring | Future developers |
+| Document                    | Purpose                            | Audience          |
+| --------------------------- | ---------------------------------- | ----------------- |
+| **README.md** (this file)   | Quick reference, navigation        | Everyone          |
+| **IMPLEMENTATION_GUIDE.md** | Complete implementation details    | Developers        |
+| **ARCHITECTURE.md**         | Design decisions and data flow     | Architects        |
+| **CHANGELOG.md**            | What changed and why               | Tech leads        |
+| **REFACTORING_TODO.md**     | Next steps to complete refactoring | Future developers |
 
 ### 📖 Reading Order
 
 **For New Developers**:
+
 1. README.md (this file) - Get overview
 2. ARCHITECTURE.md - Understand design
 3. IMPLEMENTATION_GUIDE.md - See how it works
 
 **For Debugging**:
+
 1. IMPLEMENTATION_GUIDE.md - Check critical fixes
 2. CHANGELOG.md - Review known issues
 3. ARCHITECTURE.md - Understand data flow
 
 **For Refactoring**:
+
 1. REFACTORING_TODO.md - Read complete plan
 2. ARCHITECTURE.md - Understand current structure
 3. IMPLEMENTATION_GUIDE.md - Review what to preserve
@@ -41,22 +44,22 @@
 
 ### Test Results (5/5 Passing)
 
-| Test | Status | Description |
-|------|--------|-------------|
-| test_session_persistence.mjs | ✅ PASS | Single 21MB upload |
-| test_session_isolation.mjs | ✅ PASS | Parallel 2-lane upload system |
-| test_asset_retrieval_debug.mjs | ✅ PASS | Image processing + derivatives |
-| test_session_collision.mjs | ✅ PASS | Concurrent sessions don't collide |
-| test_session_debug.mjs | ✅ PASS | Session lifecycle validation |
+| Test                           | Status  | Description                       |
+| ------------------------------ | ------- | --------------------------------- |
+| test_session_persistence.mjs   | ✅ PASS | Single 21MB upload                |
+| test_session_isolation.mjs     | ✅ PASS | Parallel 2-lane upload system     |
+| test_asset_retrieval_debug.mjs | ✅ PASS | Image processing + derivatives    |
+| test_session_collision.mjs     | ✅ PASS | Concurrent sessions don't collide |
+| test_session_debug.mjs         | ✅ PASS | Session lifecycle validation      |
 
 ### Performance Metrics
 
-| Metric | Value |
-|--------|-------|
-| Single 21MB upload | 33.4s (0.62 MB/s) |
-| Parallel 4-file upload | 42s (0.50 MB/s) |
-| Parallel efficiency | 79% |
-| Test success rate | **100% (5/5)** |
+| Metric                 | Value             |
+| ---------------------- | ----------------- |
+| Single 21MB upload     | 33.4s (0.62 MB/s) |
+| Parallel 4-file upload | 42s (0.50 MB/s)   |
+| Parallel efficiency    | 79%               |
+| Test success rate      | **100% (5/5)**    |
 
 ---
 
@@ -65,6 +68,7 @@
 ### Problem Solved
 
 Upload large files (>2MB) to ICP canisters using chunked uploads with:
+
 - ✅ **Parallel upload support** (multiple files simultaneously)
 - ✅ **Rolling hash verification** (incremental integrity checks)
 - ✅ **Session isolation** (no race conditions)
@@ -142,6 +146,7 @@ key_B = (hash("preview.jpg#session_43"), chunk_0)
 Clean separation: `SessionService` (generic) + `SessionCompat` (upload-specific)
 
 **Current Structure**:
+
 ```
 UploadService → SessionCompat (compat) → SessionService (generic) → StableBlobSink
 ```
@@ -155,11 +160,13 @@ UploadService → SessionCompat (compat) → SessionService (generic) → Stable
 ### Layer Responsibilities
 
 1. **SessionService** (`src/backend/src/session/service.rs`)
+
    - Generic session lifecycle management
    - Chunk bookkeeping
    - No upload-specific logic
 
 2. **SessionCompat** (`src/backend/src/session/compat.rs`)
+
    - Compatibility layer for old upload API
    - Bridges to generic SessionService
    - Upload-specific metadata handling
@@ -206,12 +213,12 @@ For detailed data flow, see **ARCHITECTURE.md**.
 
 ## 🚀 From 0% to 100%
 
-| Phase | Tests Passing | Key Fix |
-|-------|---------------|---------|
-| Start | 0/5 (0%) | NotFound errors everywhere |
-| After fresh memory | 2/5 (40%) | Cleared corrupted stable memory |
-| After rolling hash | 4/5 (80%) | Eliminated read-back issues |
-| After session_id keys | **5/5 (100%)** | **Parallel uploads work!** |
+| Phase                 | Tests Passing  | Key Fix                         |
+| --------------------- | -------------- | ------------------------------- |
+| Start                 | 0/5 (0%)       | NotFound errors everywhere      |
+| After fresh memory    | 2/5 (40%)      | Cleared corrupted stable memory |
+| After rolling hash    | 4/5 (80%)      | Eliminated read-back issues     |
+| After session_id keys | **5/5 (100%)** | **Parallel uploads work!**      |
 
 For complete progression, see **CHANGELOG.md**.
 
@@ -327,6 +334,7 @@ node test_session_debug.mjs
 ### Expected Results
 
 All 5 tests should pass with:
+
 - ✅ Successful uploads
 - ✅ Correct hash verification
 - ✅ No parallel collisions
@@ -372,31 +380,31 @@ tests/backend/shared-capsule/upload/session/
 
 ### Key Types
 
-| Type | Description |
-|------|-------------|
-| `SessionId` | Unique session identifier (u64) |
-| `SessionSpec` | Generic session parameters |
-| `UploadSessionMeta` | Upload-specific metadata |
-| `BlobMeta` | Stored blob metadata |
-| `ByteSink` | Trait for chunk writing |
+| Type                | Description                     |
+| ------------------- | ------------------------------- |
+| `SessionId`         | Unique session identifier (u64) |
+| `SessionSpec`       | Generic session parameters      |
+| `UploadSessionMeta` | Upload-specific metadata        |
+| `BlobMeta`          | Stored blob metadata            |
+| `ByteSink`          | Trait for chunk writing         |
 
 ### Key Functions
 
-| Function | Purpose |
-|----------|---------|
-| `pmid_session_hash32()` | Derive deterministic chunk key |
-| `SessionService::begin_with_id()` | Create new session |
-| `SessionService::put_chunk()` | Write chunk (generic) |
-| `SessionCompat::create()` | Create upload session |
-| `StableBlobSink::write_at()` | Write chunk to stable memory |
+| Function                          | Purpose                        |
+| --------------------------------- | ------------------------------ |
+| `pmid_session_hash32()`           | Derive deterministic chunk key |
+| `SessionService::begin_with_id()` | Create new session             |
+| `SessionService::put_chunk()`     | Write chunk (generic)          |
+| `SessionCompat::create()`         | Create upload session          |
+| `StableBlobSink::write_at()`      | Write chunk to stable memory   |
 
 ### Stable Memory Stores
 
-| Store | Key | Value | Purpose |
-|-------|-----|-------|---------|
-| `STABLE_BLOB_STORE` | `([u8;32], u32)` | `Vec<u8>` | Chunk storage |
-| `STABLE_BLOB_META` | `u64` | `BlobMeta` | Blob metadata |
-| `UPLOAD_HASH` | `u64` | `Sha256` | Rolling hash state |
+| Store               | Key              | Value      | Purpose            |
+| ------------------- | ---------------- | ---------- | ------------------ |
+| `STABLE_BLOB_STORE` | `([u8;32], u32)` | `Vec<u8>`  | Chunk storage      |
+| `STABLE_BLOB_META`  | `u64`            | `BlobMeta` | Blob metadata      |
+| `UPLOAD_HASH`       | `u64`            | `Sha256`   | Rolling hash state |
 
 ---
 

@@ -38,6 +38,7 @@ StableBlobSink (ByteSink trait - direct stable memory writes)
 **Problem**: Formula `chunk_count * chunk_size` didn't match actual file size
 
 **Solution**:
+
 ```rust
 // Before (WRONG):
 bytes_expected: (meta.chunk_count as u64) * (meta.chunk_size as u64)
@@ -54,12 +55,14 @@ bytes_expected: meta.asset_metadata.get_base().bytes
 
 **Problem**: Used `DefaultHasher` (non-deterministic) for chunk keys
 
-**Impact**: 
+**Impact**:
+
 - Keys changed between calls
 - Chunks written but not found on read
 - Complete data loss in parallel scenarios
 
 **Solution**:
+
 ```rust
 // Before (WRONG):
 use std::hash::{Hash, Hasher, DefaultHasher};
@@ -78,11 +81,13 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 ```
 
 **Changes**:
+
 - `STABLE_BLOB_STORE` key type: `(u64, u32)` → `([u8; 32], u32)`
 - All chunk operations use SHA256-derived keys
 - Added `pmid_hash: [u8; 32]` to `BlobMeta` struct
 
 **Files**:
+
 - `src/backend/src/upload/blob_store.rs`
 - `src/backend/src/upload/types.rs`
 
@@ -97,7 +102,7 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 ```rust
 // In lib.rs
 thread_local! {
-    static UPLOAD_HASH: RefCell<BTreeMap<u64, Sha256>> = 
+    static UPLOAD_HASH: RefCell<BTreeMap<u64, Sha256>> =
         RefCell::new(BTreeMap::new());
 }
 
@@ -124,6 +129,7 @@ UPLOAD_HASH.with(|h| {
 ```
 
 **Benefits**:
+
 - ✅ No read-back needed (faster)
 - ✅ Detects corruption immediately
 - ✅ Works perfectly with parallel uploads
@@ -161,6 +167,7 @@ sink_factory: Box<dyn Fn(&UploadSessionMeta) -> Result<StableBlobSink, Error>>
 **Problem**: Parallel uploads with same `provisional_memory_id` collided
 
 **Root Cause**:
+
 ```rust
 // Before:
 pmid_hash32("preview.jpg")  // Same for both sessions!
@@ -184,6 +191,7 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 ```
 
 **Changes**:
+
 - Added `session_id: u64` to `UploadSessionMeta`
 - Updated `StableBlobSink::for_meta()` to use `pmid_session_hash32()`
 - Updated `BlobStore::store_from_chunks()` to use session-aware keys
@@ -191,6 +199,7 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 **Impact**: Parallel uploads now fully isolated, no race conditions
 
 **Files**:
+
 - `src/backend/src/upload/blob_store.rs`
 - `src/backend/src/session/compat.rs`
 
@@ -203,6 +212,7 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 **File**: `src/backend/src/session/service.rs`
 
 **Responsibilities**:
+
 - Session lifecycle (begin, put_chunk, finish, expire)
 - Chunk bookkeeping (received_idxs, bytes_received)
 - Idempotency handling
@@ -210,6 +220,7 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 - **No upload-specific logic**
 
 **Key Methods**:
+
 ```rust
 pub fn begin_with_id(&mut self, id: SessionId, spec: SessionSpec, clock: &impl Clock)
 pub fn put_chunk(&mut self, id: SessionId, idx: u32, bytes: &[u8], sink: &mut impl ByteSink, clock: &impl Clock)
@@ -221,12 +232,14 @@ pub fn finish(&mut self, id: SessionId, clock: &impl Clock)
 **File**: `src/backend/src/session/compat.rs`
 
 **Responsibilities**:
+
 - Bridge old upload API → generic SessionService
 - Manage upload-specific metadata (UploadSessionMeta)
 - Create StableBlobSink instances
 - **Temporary compatibility layer** (see REFACTORING_TODO.md)
 
 **Key Methods**:
+
 ```rust
 pub fn create(&mut self, id: SessionId, meta: UploadSessionMeta)
 pub fn put_chunk(&mut self, id: &SessionId, chunk_idx: u32, bytes: &[u8])
@@ -238,12 +251,14 @@ pub fn verify_chunks_complete(&self, id: &SessionId, expected_chunks: u32)
 **File**: `src/backend/src/upload/blob_store.rs`
 
 **Responsibilities**:
+
 - Direct writes to `STABLE_BLOB_STORE`
 - Chunk alignment and validation
 - Session-aware key derivation
 - **Zero heap buffering**
 
 **Key Methods**:
+
 ```rust
 impl ByteSink for StableBlobSink {
     fn write_at(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error>
@@ -257,12 +272,14 @@ pub fn for_meta(meta: &UploadSessionMeta) -> Result<Self, Error>
 **File**: `src/backend/src/upload/blob_store.rs`
 
 **Responsibilities**:
+
 - Finalize chunks into complete blob
 - Store blob metadata (BlobMeta)
 - Read/delete blobs
 - Manage `STABLE_BLOB_STORE` and `STABLE_BLOB_META`
 
 **Key Methods**:
+
 ```rust
 pub fn store_from_chunks(&self, sessions: &SessionCompat, session_id: &SessionId, ...) -> Result<u64, Error>
 pub fn read_blob(&self, blob_id: u64) -> Result<Vec<u8>, Error>
@@ -275,15 +292,16 @@ pub fn delete_blob(&self, blob_id: u64) -> Result<(), Error>
 
 ### E2E Tests (5/5 Passing) ✅
 
-| Test | Status | Description |
-|------|--------|-------------|
-| test_session_persistence.mjs | ✅ PASS | Single 21MB upload |
-| test_session_isolation.mjs | ✅ PASS | Parallel 2-lane upload system |
-| test_asset_retrieval_debug.mjs | ✅ PASS | Image processing + derivatives |
-| test_session_collision.mjs | ✅ PASS | Concurrent sessions don't collide |
-| test_session_debug.mjs | ✅ PASS | Session lifecycle validation |
+| Test                           | Status  | Description                       |
+| ------------------------------ | ------- | --------------------------------- |
+| test_session_persistence.mjs   | ✅ PASS | Single 21MB upload                |
+| test_session_isolation.mjs     | ✅ PASS | Parallel 2-lane upload system     |
+| test_asset_retrieval_debug.mjs | ✅ PASS | Image processing + derivatives    |
+| test_session_collision.mjs     | ✅ PASS | Concurrent sessions don't collide |
+| test_session_debug.mjs         | ✅ PASS | Session lifecycle validation      |
 
 **Performance**:
+
 - Single 21MB upload: 33.4s (0.62 MB/s)
 - Parallel 4-file upload: 42s (0.50 MB/s)
 - Parallel efficiency: 79%
@@ -297,12 +315,14 @@ pub fn delete_blob(&self, blob_id: u64) -> Result<(), Error>
 **Lesson**: Changing `StableBTreeMap<K, V>` key/value types corrupts memory
 
 **Solution**:
+
 - Local dev: `dfx canister uninstall-code backend`
 - Production: Implement migration or use versioned memory regions
 
 ### 2. Rolling Hash > Read-Back Verification
 
 **Why**:
+
 - ✅ Faster (no extra read pass)
 - ✅ More reliable (no stale data issues)
 - ✅ Simpler code
@@ -311,11 +331,13 @@ pub fn delete_blob(&self, blob_id: u64) -> Result<(), Error>
 ### 3. Session ID in Keys for Parallel Safety
 
 **Without session_id**:
+
 - ❌ Parallel uploads collide
 - ❌ Last write wins
 - ❌ Data loss
 
 **With session_id**:
+
 - ✅ Fully isolated sessions
 - ✅ No race conditions
 - ✅ Predictable behavior
@@ -323,11 +345,13 @@ pub fn delete_blob(&self, blob_id: u64) -> Result<(), Error>
 ### 4. Deterministic Keys Are Critical
 
 **Non-deterministic keys** (DefaultHasher):
+
 - ❌ Keys change between calls
 - ❌ Data written but not found
 - ❌ Complete system failure
 
 **Deterministic keys** (SHA256):
+
 - ✅ Same input → same key (always)
 - ✅ Works across canister upgrades
 - ✅ Reliable data retrieval
@@ -356,12 +380,12 @@ src/backend/src/
 
 ## 🚀 Progression Timeline
 
-| Date | Phase | Tests Passing | Key Achievement |
-|------|-------|---------------|----------------|
-| 2025-09-30 | Initial | 0/5 (0%) | Started implementation |
-| 2025-10-01 AM | Memory cleared | 2/5 (40%) | Fixed corrupted stable memory |
-| 2025-10-01 Mid | Rolling hash | 4/5 (80%) | Eliminated read-back issues |
-| 2025-10-01 PM | Session-aware keys | **5/5 (100%)** | **Parallel uploads work!** |
+| Date           | Phase              | Tests Passing  | Key Achievement               |
+| -------------- | ------------------ | -------------- | ----------------------------- |
+| 2025-09-30     | Initial            | 0/5 (0%)       | Started implementation        |
+| 2025-10-01 AM  | Memory cleared     | 2/5 (40%)      | Fixed corrupted stable memory |
+| 2025-10-01 Mid | Rolling hash       | 4/5 (80%)      | Eliminated read-back issues   |
+| 2025-10-01 PM  | Session-aware keys | **5/5 (100%)** | **Parallel uploads work!**    |
 
 ---
 
@@ -476,4 +500,3 @@ async fn debug_blob_read_canary(key: String) -> Result<bool, String> { ... }
 **Status**: ✅ Production Ready  
 **Next Step**: Monitor in production, then refactor per REFACTORING_TODO.md  
 **Maintainer**: Backend Team
-

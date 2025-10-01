@@ -9,17 +9,20 @@
 ## 🎯 Design Goals
 
 1. **Separation of Concerns**
+
    - Generic session lifecycle (SessionService)
    - Upload-specific semantics (SessionCompat, UploadService)
    - Storage abstraction (ByteSink trait)
 
 2. **Reliability**
+
    - Deterministic keys (SHA256)
    - Rolling hash verification
    - Session isolation (parallel-safe)
    - Atomic operations
 
 3. **Performance**
+
    - Zero-copy chunk writes
    - Direct stable memory writes (no heap buffering)
    - Incremental hash computation
@@ -103,11 +106,13 @@
 **Why**: Enable reuse for other chunked operations (downloads, streaming, etc.)
 
 **How**:
+
 - Session lifecycle independent of upload semantics
 - Uses abstract `ByteSink` trait
 - No knowledge of capsules, memories, or assets
 
 **Benefits**:
+
 - ✅ Single responsibility principle
 - ✅ Testable in isolation
 - ✅ Future-proof for new features
@@ -117,16 +122,19 @@
 **Why**: Gradual migration without breaking existing code
 
 **How**:
+
 - `SessionCompat` bridges old API → new `SessionService`
 - Manages upload-specific metadata (`UploadSessionMeta`)
 - Creates `StableBlobSink` instances with proper context
 
 **Benefits**:
+
 - ✅ All tests pass during migration
 - ✅ Low-risk incremental refactoring
 - ✅ Can remove layer later (see REFACTORING_TODO.md)
 
 **Trade-offs**:
+
 - ❌ Extra indirection (temporary)
 - ❌ More complex call chain (temporary)
 
@@ -135,6 +143,7 @@
 **Why**: Decouple session management from storage implementation
 
 **How**:
+
 ```rust
 pub trait ByteSink {
     fn write_at(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error>;
@@ -142,6 +151,7 @@ pub trait ByteSink {
 ```
 
 **Benefits**:
+
 - ✅ SessionService doesn't know about stable memory
 - ✅ Easy to test with mock sinks
 - ✅ Could support other storage backends (heap, file, etc.)
@@ -151,6 +161,7 @@ pub trait ByteSink {
 **Why**: Non-deterministic keys (DefaultHasher) caused complete data loss
 
 **How**:
+
 ```rust
 fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -161,6 +172,7 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 ```
 
 **Benefits**:
+
 - ✅ Same input → same key (always)
 - ✅ Works across canister upgrades
 - ✅ Reliable data retrieval
@@ -171,6 +183,7 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 **Why**: Parallel uploads with same `provisional_memory_id` collided
 
 **How**: Include `session_id` in key derivation
+
 ```rust
 // Key format: (pmid_session_hash32(pmid, session_id), chunk_idx)
 let key = (pmid_session_hash32(&meta.provisional_memory_id, meta.session_id), chunk_idx);
@@ -178,6 +191,7 @@ STABLE_BLOB_STORE.insert(key, chunk_data);
 ```
 
 **Benefits**:
+
 - ✅ Sessions fully isolated
 - ✅ No race conditions in parallel uploads
 - ✅ Same asset can upload in multiple sessions simultaneously
@@ -187,6 +201,7 @@ STABLE_BLOB_STORE.insert(key, chunk_data);
 **Why**: Read-back verification was slow and unreliable
 
 **How**: Incremental SHA256 during upload
+
 ```rust
 thread_local! {
     static UPLOAD_HASH: RefCell<BTreeMap<u64, Sha256>> = ...;
@@ -207,6 +222,7 @@ let computed = UPLOAD_HASH.with(|h| {
 ```
 
 **Benefits**:
+
 - ✅ No read-back needed (faster)
 - ✅ Detects corruption immediately
 - ✅ Works perfectly with parallel uploads
@@ -217,6 +233,7 @@ let computed = UPLOAD_HASH.with(|h| {
 **Why**: Minimize memory usage and improve performance
 
 **How**: `ByteSink::write_at()` writes directly to stable memory
+
 ```rust
 impl ByteSink for StableBlobSink {
     fn write_at(&mut self, offset: usize, bytes: &[u8]) -> Result<(), Error> {
@@ -231,6 +248,7 @@ impl ByteSink for StableBlobSink {
 ```
 
 **Benefits**:
+
 - ✅ No intermediate heap buffering
 - ✅ Lower memory footprint
 - ✅ Direct stable memory writes
@@ -400,10 +418,12 @@ thread_local! {
 ### Chunk Keys
 
 **Format**: `([u8; 32], u32)` where:
+
 - `[u8; 32]` = `pmid_session_hash32(provisional_memory_id, session_id)`
 - `u32` = `chunk_idx`
 
 **Derivation**:
+
 ```rust
 fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
     let mut hasher = Sha256::new();
@@ -414,12 +434,14 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 ```
 
 **Why SHA256**:
+
 - ✅ Deterministic (same input → same output)
 - ✅ Cryptographically sound (no collisions)
 - ✅ Fixed size (32 bytes)
 - ✅ Works across canister upgrades
 
 **Why Include session_id**:
+
 - ✅ Parallel uploads don't collide
 - ✅ Same asset can upload in multiple sessions
 - ✅ Session isolation guaranteed
@@ -429,11 +451,13 @@ fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
 **Format**: `u64` derived from first 8 bytes of `pmid_hash`
 
 **Derivation**:
+
 ```rust
 let blob_id = u64::from_le_bytes(pmid_hash[0..8].try_into().unwrap());
 ```
 
 **Why This Works**:
+
 - ✅ Deterministic (same pmid_hash → same blob_id)
 - ✅ Compatible with existing BlobMeta key type (u64)
 - ✅ Low collision risk (256-bit hash → 64-bit truncation)
@@ -447,12 +471,14 @@ let blob_id = u64::from_le_bytes(pmid_hash[0..8].try_into().unwrap());
 Located in module tests (e.g., `src/backend/src/session/service.rs`)
 
 **Coverage**:
+
 - Session lifecycle (begin, put_chunk, finish)
 - Idempotency handling
 - Chunk bookkeeping
 - Expiration logic
 
 **Limitations**:
+
 - Cannot test `ic_cdk::api::time()` (panics outside canister)
 - Must use mock Clock implementation
 
@@ -461,6 +487,7 @@ Located in module tests (e.g., `src/backend/src/session/service.rs`)
 Located in `tests/backend/shared-capsule/upload/session/`
 
 **Coverage**:
+
 - Single 21MB upload (test_session_persistence.mjs)
 - Parallel 2-lane system (test_session_isolation.mjs)
 - Asset retrieval + derivatives (test_asset_retrieval_debug.mjs)
@@ -478,16 +505,19 @@ See **REFACTORING_TODO.md** for complete plan.
 ### Goal: Remove SessionCompat Layer
 
 **Current**:
+
 ```
 UploadService → SessionCompat → SessionService → StableBlobSink
 ```
 
 **Target**:
+
 ```
 UploadService → SessionService → StableBlobSink
 ```
 
 **Benefits**:
+
 - ✅ Simpler code (fewer indirections)
 - ✅ Better performance
 - ✅ Easier to maintain
@@ -508,4 +538,3 @@ UploadService → SessionService → StableBlobSink
 **Reviewed**: 2025-10-01  
 **Status**: ✅ Production Ready  
 **Next Review**: After production stabilization
-
