@@ -54,7 +54,7 @@ fi
 echo_info "Backend canister ID: $BACKEND_CANISTER_ID"
 
 # Check if test image exists
-TEST_IMAGE_PATH="tests/backend/shared-capsule/upload/assets/input/avocado_medium.jpg"
+TEST_IMAGE_PATH="tests/backend/shared-capsule/upload/assets/input/avocado_big_21mb.jpg"
 if [ ! -f "$TEST_IMAGE_PATH" ]; then
     echo_error "Test image not found: $TEST_IMAGE_PATH"
     echo_info "Please ensure the test assets are available"

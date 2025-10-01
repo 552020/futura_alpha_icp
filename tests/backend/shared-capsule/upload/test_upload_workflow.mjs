@@ -256,13 +256,18 @@ async function testCompleteUploadWorkflow(backend) {
   echoInfo(`Total length: ${totalLen}`);
 
   const finishResult = await backend.uploads_finish(sessionId, expectedHash, totalLen);
-  echoInfo(`Finish result: ${JSON.stringify(finishResult)}`);
+  
+  // Handle BigInt serialization for logging
+  const logResult = JSON.stringify(finishResult, (key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+  echoInfo(`Finish result: ${logResult}`);
 
   if ("Ok" in finishResult) {
     echoInfo("Complete upload workflow successful");
     return true;
   } else {
-    echoInfo(`Upload workflow failed at finish: ${JSON.stringify(finishResult)}`);
+    echoInfo(`Upload workflow failed at finish: ${logResult}`);
     return false;
   }
 }
@@ -419,13 +424,18 @@ async function testLargeFileWorkflow(backend) {
   echoInfo(`Total length: ${totalLen}`);
 
   const finishResult = await backend.uploads_finish(sessionId, expectedHash, totalLen);
-  echoInfo(`Finish result: ${JSON.stringify(finishResult)}`);
+  
+  // Handle BigInt serialization for logging
+  const logResult = JSON.stringify(finishResult, (key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+  echoInfo(`Finish result: ${logResult}`);
 
   if ("Ok" in finishResult) {
     echoInfo("Large file workflow completed successfully");
     return true;
   } else {
-    echoInfo(`Large file workflow failed: ${JSON.stringify(finishResult)}`);
+    echoInfo(`Large file workflow failed: ${logResult}`);
     return false;
   }
 }

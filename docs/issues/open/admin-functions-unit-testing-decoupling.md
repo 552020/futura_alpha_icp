@@ -203,4 +203,3 @@ Until this refactoring is implemented:
 - [ ] Integration tests still pass
 - [ ] Documentation updated with testing patterns
 - [ ] Performance benchmarks show no regression
-

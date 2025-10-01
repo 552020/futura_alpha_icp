@@ -1,106 +1,7 @@
-use crate::types::{AssetMetadata, CapsuleId, MemoryId, MemoryType};
+use crate::types::{AssetMetadata, CapsuleId, MemoryId};
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_stable_structures::{storable::Bound, Storable};
-use serde::Serialize;
 use std::borrow::Cow;
-
-// ============================================================================
-// UPLOAD TYPES (moved from unified_types.rs)
-// ============================================================================
-
-/// Storage backend types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq, Eq)]
-pub enum StorageBackend {
-    S3,
-    Icp,
-    VercelBlob,
-    Arweave,
-    Ipfs,
-}
-
-/// Processing status types
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq, Eq)]
-pub enum ProcessingStatus {
-    Uploading,
-    Processing,
-    Finalizing,
-    Completed,
-    Error,
-}
-
-// MemoryType moved to memories/types.rs
-
-/// Unified upload result for all storage backends
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct UploadFinishResult {
-    pub memory_id: String,
-    pub blob_id: String,
-    pub remote_id: Option<String>,
-    pub size: u64,
-    pub checksum_sha256: Option<[u8; 32]>, // 32 bytes
-    pub storage_backend: StorageBackend,
-    pub storage_location: String, // URL or key
-    pub uploaded_at: u64,         // ms since epoch
-    pub expires_at: Option<u64>,
-}
-
-/// Unified upload progress for all storage backends
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct UploadProgress {
-    pub file_index: u32,
-    pub total_files: u32,
-    pub current_file: String,
-    pub bytes_uploaded: u64,
-    pub total_bytes: u64,
-    pub pct_bp: u16, // 0..10000 basis points
-    pub status: ProcessingStatus,
-    pub message: Option<String>,
-}
-
-/// Upload configuration for client discoverability
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct UploadConfig {
-    /// Maximum size for inline uploads (bytes)
-    pub inline_max: u32,
-    /// Recommended chunk size for chunked uploads (bytes)
-    pub chunk_size: u32,
-    /// Maximum inline budget per capsule (bytes)
-    pub inline_budget_per_capsule: u32,
-}
-
-/// Upload session for tracking upload progress
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct UploadSession {
-    pub session_id: String,
-    pub memory_id: String,
-    pub memory_type: MemoryType,
-    pub expected_hash: String,
-    pub chunk_count: u32,
-    pub total_size: u64,
-    pub created_at: u64,
-    pub chunks_received: Vec<bool>, // Track which chunks have been received
-    pub bytes_received: u64,        // Total bytes received so far
-}
-
-/// Structure for storing individual chunk data
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct ChunkData {
-    pub session_id: String,
-    pub chunk_index: u32,
-    pub data: Vec<u8>,
-    pub received_at: u64,
-}
-
-/// Commit response for upload operations
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct CommitResponse {
-    pub success: bool,
-    pub memory_id: String,
-    pub final_hash: String,
-    pub total_bytes: u64,
-    pub message: String,
-    pub error: Option<crate::types::Error>,
-}
 
 // Size constants aligned with senior developer feedback
 pub const INLINE_MAX: u64 = 32 * 1024; // 32KB (fits in Capsule bound)
@@ -258,11 +159,4 @@ impl Storable for BlobMeta {
         assert_eq!(version, 1, "Unsupported BlobMeta version");
         meta
     }
-}
-
-/// Result type for uploads_finish function (UploadFinishResult or Error)
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum Result_15 {
-    Ok(UploadFinishResult),
-    Err(crate::types::Error),
 }

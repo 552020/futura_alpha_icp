@@ -48,7 +48,7 @@ import {
 
 // Test configuration
 const TEST_NAME = "2-Lane + 4-Asset Upload System Test";
-const TEST_IMAGE_PATH = "./assets/input/avocado_small_372kb.jpg";
+const TEST_IMAGE_PATH = "./assets/input/avocado_big_21mb.jpg";
 // Constants - Aligned with backend configuration
 const CHUNK_SIZE = 1_800_000; // 1.8MB - matches backend CHUNK_SIZE in types.rs
 const INLINE_MAX = 32 * 1024; // 32KB - matches backend INLINE_MAX in types.rs
@@ -192,7 +192,6 @@ async function uploadOriginalToICP(backend, fileBuffer, fileName) {
 
   // Begin upload session
   const beginResult = await backend.uploads_begin(capsuleId, assetMetadata, chunkCount, idempotencyKey);
-
 
   // Handle different response formats
   let sessionId;

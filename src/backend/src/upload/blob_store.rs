@@ -435,7 +435,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Unsupported locator format"));
+            .contains("unsupported locator format. expected"));
     }
 
     #[test]

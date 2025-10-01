@@ -14,7 +14,7 @@ export const UPLOAD_LIMITS_S3 = {
   MAX_FILE_SIZE_MB: 24, // 20MB + 20% safety
   MAX_FILES_PER_UPLOAD: 600, // 500 + 20% safety
   MAX_TOTAL_UPLOAD_SIZE_MB: 12000, // 10GB + 20% safety
-  
+
   // Inline storage limit (for database storage)
   INLINE_MAX_BYTES: 32 * 1024, // 32KB (database storage limit)
 };
@@ -28,7 +28,7 @@ export const UPLOAD_LIMITS_ICP = {
   CHUNK_SIZE_BYTES: 1.5 * 1024 * 1024, // 1.5MB chunks (frontend optimized)
   MAX_CHUNKS: 512, // Maximum number of chunks allowed
   MAX_FILE_SIZE_MB: 768, // 512 chunks × 1.5MB
-  
+
   // Inline storage limit (for database storage - same as S3)
   INLINE_MAX_BYTES: 32 * 1024, // 32KB (database storage limit)
 };

@@ -76,10 +76,20 @@ impl CapsuleAcl for CapsuleAccess {
 mod tests {
     use super::*;
     use crate::types::PersonRef;
+    use candid::Principal;
     use std::collections::BTreeMap;
 
     fn create_test_person(id: &str) -> PersonRef {
-        PersonRef::Principal(id.parse().unwrap())
+        // Create a valid Principal from a simple string
+        let principal = Principal::from_text(id).unwrap_or_else(|_| {
+            // If parsing fails, create a Principal from bytes
+            let bytes = id.as_bytes();
+            let mut principal_bytes = [0u8; 29];
+            let len = bytes.len().min(29);
+            principal_bytes[..len].copy_from_slice(&bytes[..len]);
+            Principal::from_slice(&principal_bytes)
+        });
+        PersonRef::Principal(principal)
     }
 
     #[test]

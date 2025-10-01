@@ -15,11 +15,11 @@ mod capsule_acl;
 mod capsule_store;
 mod gallery;
 mod memories;
-mod memories_core;
 mod memory;
 mod person;
 mod state;
 mod types;
+mod unified_types;
 mod upload;
 mod user;
 
@@ -264,8 +264,8 @@ fn memories_create(
     asset_metadata: types::AssetMetadata,
     idem: String,
 ) -> std::result::Result<types::MemoryId, Error> {
+    use crate::memories::core::memories_create_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
-    use crate::memories_core::memories_create_core;
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
@@ -288,8 +288,8 @@ fn memories_create(
 
 #[ic_cdk::query]
 fn memories_read(memory_id: String) -> std::result::Result<types::Memory, Error> {
+    use crate::memories::core::memories_read_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
-    use crate::memories_core::memories_read_core;
 
     let env = CanisterEnv;
     let store = StoreAdapter;
@@ -309,8 +309,8 @@ fn memories_read(memory_id: String) -> std::result::Result<types::Memory, Error>
 
 #[ic_cdk::query]
 fn memories_read_with_assets(memory_id: String) -> std::result::Result<types::Memory, Error> {
+    use crate::memories::core::memories_read_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
-    use crate::memories_core::memories_read_core;
 
     let env = CanisterEnv;
     let store = StoreAdapter;
@@ -321,8 +321,8 @@ fn memories_read_with_assets(memory_id: String) -> std::result::Result<types::Me
 
 #[ic_cdk::query]
 fn memories_read_asset(memory_id: String, asset_index: u32) -> std::result::Result<Vec<u8>, Error> {
+    use crate::memories::core::memories_read_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
-    use crate::memories_core::memories_read_core;
 
     let env = CanisterEnv;
     let store = StoreAdapter;
@@ -370,8 +370,8 @@ fn memories_update(
     memory_id: String,
     updates: types::MemoryUpdateData,
 ) -> types::MemoryOperationResponse {
+    use crate::memories::core::memories_update_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
-    use crate::memories_core::memories_update_core;
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
@@ -392,8 +392,8 @@ fn memories_update(
 
 #[ic_cdk::update]
 fn memories_delete(memory_id: String) -> types::MemoryOperationResponse {
+    use crate::memories::core::memories_delete_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
-    use crate::memories_core::memories_delete_core;
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
@@ -493,11 +493,7 @@ async fn uploads_put_chunk(
 
 /// Commit chunks to create final memory
 #[ic_cdk::update]
-async fn uploads_finish(
-    session_id: u64,
-    expected_sha256: Vec<u8>,
-    total_len: u64,
-) -> Result_15 {
+async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u64) -> Result_15 {
     // Use real UploadService with actual store integration
     let hash: [u8; 32] = match expected_sha256.clone().try_into() {
         Ok(h) => h,
@@ -515,11 +511,18 @@ async fn uploads_finish(
         match upload_service.commit(store, session_id, hash, total_len) {
             Ok((blob_id, memory_id)) => {
                 let result = UploadFinishResult {
-                    blob_id,
                     memory_id,
+                    blob_id: blob_id.clone(),
+                    remote_id: None,
+                    size: total_len,
+                    checksum_sha256: Some(hash),
+                    storage_backend: upload::types::StorageBackend::Icp,
+                    storage_location: format!("icp://blob/{}", blob_id),
+                    uploaded_at: ic_cdk::api::time(),
+                    expires_at: None,
                 };
                 Result_15::Ok(result)
-            },
+            }
             Err(err) => Result_15::Err(err),
         }
     })

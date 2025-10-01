@@ -329,6 +329,7 @@ type Result_8 = variant {
   Err : Error;
 };
 type Result_9 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
+type StorageBackend = variant { S3; Icp; VercelBlob; Ipfs; Arweave };
 type StorageEdgeBlobType = variant { S3; Icp; VercelBlob; Ipfs; Neon; Arweave };
 type StorageEdgeDatabaseType = variant { Icp; Neon };
 type UploadConfig = record {
@@ -336,7 +337,17 @@ type UploadConfig = record {
   chunk_size : nat32;
   inline_budget_per_capsule : nat32;
 };
-type UploadFinishResult = record { blob_id : text; memory_id : text };
+type UploadFinishResult = record {
+  checksum_sha256 : opt blob;
+  storage_location : text;
+  blob_id : text;
+  storage_backend : StorageBackend;
+  size : nat64;
+  memory_id : text;
+  remote_id : opt text;
+  expires_at : opt nat64;
+  uploaded_at : nat64;
+};
 type VideoAssetMetadata = record {
   duration : opt nat64;
   base : AssetMetadataBase;

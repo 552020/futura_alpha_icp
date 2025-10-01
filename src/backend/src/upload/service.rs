@@ -64,7 +64,7 @@ impl UploadService {
         // 4) back-pressure: cap concurrent sessions per caller/capsule
         const MAX_ACTIVE_PER_CALLER: usize = 100; // Increased for development
         let active_count = self.sessions.count_active_for(&capsule_id, &caller);
-        
+
         // Log session count for monitoring
         ic_cdk::println!(
             "UPLOAD_BEGIN: caller={}, capsule={}, active_sessions={}, total_sessions={}",
@@ -73,7 +73,7 @@ impl UploadService {
             active_count,
             self.sessions.total_session_count()
         );
-        
+
         if active_count >= MAX_ACTIVE_PER_CALLER {
             return Err(Error::ResourceExhausted); // "too many active uploads"
         }
@@ -784,11 +784,11 @@ mod tests {
     #[test]
     fn test_chunk_size_constant() {
         // Test that CHUNK_SIZE is reasonable
-        assert_eq!(CHUNK_SIZE, 64 * 1024, "CHUNK_SIZE should be 64KB");
+        assert_eq!(CHUNK_SIZE, 1_800_000, "CHUNK_SIZE should be 1.8MB (ICP expert recommended)");
         assert!(CHUNK_SIZE > 0, "CHUNK_SIZE should be positive");
         assert!(
-            CHUNK_SIZE < 1024 * 1024,
-            "CHUNK_SIZE should be less than 1MB"
+            CHUNK_SIZE < 2 * 1024 * 1024,
+            "CHUNK_SIZE should be less than 2MB"
         );
     }
 

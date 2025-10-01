@@ -4,11 +4,6 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-// Re-export types from specialized modules
-pub use crate::memories::types::*;
-pub use crate::unified_types::*;
-pub use crate::upload::types::*;
-
 // ============================================================================
 // TYPE ALIASES
 // ============================================================================
@@ -44,19 +39,160 @@ pub enum Result_6 {
     Err(Error),
 }
 
-// UploadFinishResult moved to upload/types.rs
+/// Upload finish result containing both blob ID and memory ID
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct UploadFinishResult {
+    pub blob_id: String,
+    pub memory_id: String,
+}
 
-// Result_15 moved to upload/types.rs (uses UploadFinishResult from there)
+/// Result type for uploads_finish function (UploadFinishResult or Error)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum Result_15 {
+    Ok(UploadFinishResult),
+    Err(Error),
+}
 
-// Storage edge types moved to unified_types.rs
+// ============================================================================
+// STORAGE EDGE TYPES
+// ============================================================================
 
-// Asset metadata types moved to memories/types.rs
+/// Database storage edge types - where memory metadata/records are stored
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum StorageEdgeDatabaseType {
+    Icp,  // ICP canister storage
+    Neon, // Neon database
+}
 
-// All asset metadata types moved to memories/types.rs
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum StorageEdgeBlobType {
+    Icp,        // ICP canister storage
+    VercelBlob, // Vercel Blob storage
+    S3,         // AWS S3 storage
+    Arweave,    // Arweave storage
+    Ipfs,       // IPFS storage
+    Neon,       // Neon database - for small assets
+}
 
-// AssetMetadata impl moved to memories/types.rs
+/// Type alias for unified error handling - see Error enum below
+/// Enhanced asset metadata with all fields from database memory_assets table
+// Base asset metadata (shared across all asset types)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct AssetMetadataBase {
+    // Basic info
+    pub name: String,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
 
-// UploadConfig moved to upload/types.rs
+    // Asset classification
+    pub asset_type: AssetType, // Moved from asset struct to metadata
+
+    // File properties
+    pub bytes: u64,                  // File size
+    pub mime_type: String,           // MIME type
+    pub sha256: Option<[u8; 32]>,    // File hash
+    pub width: Option<u32>,          // Image/video width
+    pub height: Option<u32>,         // Image/video height
+    pub url: Option<String>,         // External URL
+    pub storage_key: Option<String>, // Storage identifier
+    pub bucket: Option<String>,      // Storage bucket
+
+    // Processing status
+    pub processing_status: Option<String>,
+    pub processing_error: Option<String>,
+
+    // Timestamps
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub deleted_at: Option<u64>,
+
+    // Storage location
+    pub asset_location: Option<String>, // Where the asset is stored
+}
+
+// Type-specific asset metadata extensions
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct ImageAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub color_space: Option<String>,
+    pub exif_data: Option<String>,
+    pub compression_ratio: Option<f32>,
+    pub dpi: Option<u32>,
+    pub orientation: Option<u8>,
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct VideoAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub duration: Option<u64>,      // Duration in milliseconds
+    pub frame_rate: Option<f32>,    // Frames per second
+    pub codec: Option<String>,      // Video codec (H.264, VP9, etc.)
+    pub bitrate: Option<u64>,       // Bitrate in bits per second
+    pub resolution: Option<String>, // Resolution string (e.g., "1920x1080")
+    pub aspect_ratio: Option<f32>,  // Aspect ratio
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct AudioAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub duration: Option<u64>,    // Duration in milliseconds
+    pub sample_rate: Option<u32>, // Sample rate in Hz
+    pub channels: Option<u8>,     // Number of audio channels
+    pub bitrate: Option<u64>,     // Bitrate in bits per second
+    pub codec: Option<String>,    // Audio codec (MP3, AAC, etc.)
+    pub bit_depth: Option<u8>,    // Bit depth (16, 24, 32)
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct DocumentAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub page_count: Option<u32>,       // Number of pages
+    pub document_type: Option<String>, // PDF, DOCX, etc.
+    pub language: Option<String>,      // Document language
+    pub word_count: Option<u32>,       // Word count
+}
+
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct NoteAssetMetadata {
+    pub base: AssetMetadataBase,
+    pub word_count: Option<u32>,  // Word count
+    pub language: Option<String>, // Note language
+    pub format: Option<String>,   // Markdown, plain text, etc.
+}
+
+// Unified asset metadata enum
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub enum AssetMetadata {
+    Image(ImageAssetMetadata),
+    Video(VideoAssetMetadata),
+    Audio(AudioAssetMetadata),
+    Document(DocumentAssetMetadata),
+    Note(NoteAssetMetadata),
+}
+
+impl AssetMetadata {
+    /// Get the base metadata that's common to all asset types
+    pub fn get_base(&self) -> &AssetMetadataBase {
+        match self {
+            AssetMetadata::Image(img) => &img.base,
+            AssetMetadata::Video(vid) => &vid.base,
+            AssetMetadata::Audio(aud) => &aud.base,
+            AssetMetadata::Document(doc) => &doc.base,
+            AssetMetadata::Note(note) => &note.base,
+        }
+    }
+}
+
+/// Upload configuration for TS client discoverability
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct UploadConfig {
+    /// Maximum size for inline uploads (bytes)
+    pub inline_max: u32,
+    /// Recommended chunk size for chunked uploads (bytes)
+    pub chunk_size: u32,
+    /// Maximum inline budget per capsule (bytes)
+    pub inline_budget_per_capsule: u32,
+}
 
 // ============================================================================
 // MVP ICP ERROR MODEL - Essential error types for ICP operations
@@ -139,7 +275,27 @@ pub struct HttpRequest {
 
 // Memory artifacts system removed - metadata stored in capsules instead
 
-// UploadSession and ChunkData moved to upload/types.rs
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct UploadSession {
+    pub session_id: String,
+    pub memory_id: String,
+    pub memory_type: MemoryType, // Added to support different memory types
+    pub expected_hash: String,
+    pub chunk_count: u32,
+    pub total_size: u64,
+    pub created_at: u64,
+    pub chunks_received: Vec<bool>, // Track which chunks have been received
+    pub bytes_received: u64,        // Total bytes received so far
+}
+
+// Structure for storing individual chunk data
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
+pub struct ChunkData {
+    pub session_id: String,
+    pub chunk_index: u32,
+    pub data: Vec<u8>,
+    pub received_at: u64,
+}
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
 pub struct MemoryPresenceResult {
@@ -352,7 +508,14 @@ pub struct GalleryHeader {
 // New unified memory system
 // Old metadata structures removed - replaced with new AssetMetadata enum and AssetMetadataBase
 
-// MemoryType moved to upload/types.rs
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub enum MemoryType {
+    Image,
+    Video,
+    Audio,
+    Document,
+    Note,
+}
 
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub enum MemoryAccess {
@@ -458,7 +621,15 @@ pub struct BlobMeta {
 //     pub data: Option<Vec<u8>>, // inline data (for IcCanister storage)
 // }
 
-// AssetType moved to memories/types.rs
+// Asset type for categorizing different asset variants
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub enum AssetType {
+    Original,   // Original file
+    Thumbnail,  // Small preview/thumbnail
+    Preview,    // Medium preview
+    Derivative, // Processed/derived version
+    Metadata,   // Metadata-only asset
+}
 
 // Inline asset (stored directly in memory)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]

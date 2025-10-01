@@ -6,8 +6,6 @@
 //! - Post-write assertions to catch silent failures
 
 use crate::capsule_acl::{CapsuleAccess, CapsuleAcl};
-use crate::capsule_store::CapsuleStore;
-use crate::memory;
 use crate::types::{
     AssetMetadata, BlobRef, CapsuleId, Error, Memory, MemoryAccess, MemoryAssetBlobExternal,
     MemoryAssetBlobInternal, MemoryAssetInline, MemoryId, MemoryMetadata, MemoryType,
@@ -267,13 +265,8 @@ pub fn memories_update_core<E: Env, S: Store>(
             // Update timestamp with captured value
             memory.metadata.updated_at = now;
 
-            // Save the updated memory using update_with to replace existing memory
-            memory::with_capsule_store_mut(|capsule_store| {
-                capsule_store.update_with(&capsule_id, |capsule_data| {
-                    capsule_data.memories.insert(memory.id.clone(), memory);
-                    Ok(())
-                })
-            })?;
+            // Save the updated memory back to the store
+            store.insert_memory(&capsule_id, memory)?;
 
             // POST-WRITE ASSERTION: Verify memory was actually updated
             if let Some(updated_memory) = store.get_memory(&capsule_id, &memory_id) {
@@ -719,12 +712,25 @@ pub struct InMemoryStore {
     by_capsule: BTreeMap<CapsuleId, BTreeMap<MemoryId, Memory>>,
     // caller -> accessible_capsules
     accessible_capsules: HashMap<PersonRef, Vec<CapsuleId>>,
+    // Test configuration for ACL behavior
+    permissive_acl: bool,
 }
 
 impl InMemoryStore {
     #[allow(dead_code)] // Used in tests
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            permissive_acl: true, // Default to permissive for most tests
+            ..Default::default()
+        }
+    }
+
+    #[allow(dead_code)] // Used in tests
+    pub fn new_restrictive() -> Self {
+        Self {
+            permissive_acl: false, // Restrictive ACL for unauthorized tests
+            ..Default::default()
+        }
     }
 
     #[allow(dead_code)] // Used in tests
@@ -779,9 +785,43 @@ impl Store for InMemoryStore {
     }
 
     fn get_capsule_for_acl(&self, _capsule_id: &CapsuleId) -> Option<CapsuleAccess> {
-        // For InMemoryStore, we don't have actual capsule data, so we return None
-        // This is only used in tests, so we can return None for now
-        None
+        use crate::capsule_acl::CapsuleAccess;
+        use crate::types::{ControllerState, OwnerState};
+        use std::collections::HashMap;
+
+        if self.permissive_acl {
+            // Create a permissive ACL that allows all operations for testing
+            let mut owners = HashMap::new();
+            let mut controllers = HashMap::new();
+
+            // Add anonymous principal as both owner and controller for testing
+            let anonymous = PersonRef::Principal(Principal::anonymous());
+            owners.insert(
+                anonymous.clone(),
+                OwnerState {
+                    since: 0,
+                    last_activity_at: 0,
+                },
+            );
+            controllers.insert(
+                anonymous.clone(),
+                ControllerState {
+                    granted_at: 0,
+                    granted_by: anonymous.clone(),
+                },
+            );
+
+            Some(CapsuleAccess::new(anonymous, owners, controllers))
+        } else {
+            // Create a restrictive ACL that denies all operations
+            // Use a different subject to ensure the caller doesn't match
+            let different_principal = PersonRef::Principal(Principal::from_slice(&[2; 29]));
+            Some(CapsuleAccess::new(
+                different_principal,
+                HashMap::new(), // No owners
+                HashMap::new(), // No controllers
+            ))
+        }
     }
 }
 
@@ -919,7 +959,7 @@ mod tests {
             caller: Principal::anonymous(),
             now: 111_222_333,
         };
-        let mut store = InMemoryStore::new();
+        let mut store = InMemoryStore::new_restrictive(); // Use restrictive ACL
         let capsule_id = "cap_1".to_string();
 
         // Don't add capsule access - should fail
