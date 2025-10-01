@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 // Size constants aligned with senior developer feedback
 pub const INLINE_MAX: u64 = 32 * 1024; // 32KB (fits in Capsule bound)
-pub const CHUNK_SIZE: usize = 64 * 1024; // 64KB
+pub const CHUNK_SIZE: usize = 1_800_000; // 1.8MB - ICP expert recommended optimal size
                                          // Removed unused constant: PAGE_SIZE
 pub const CAPSULE_INLINE_BUDGET: u64 = 32 * 1024; // Max inline bytes per capsule
 

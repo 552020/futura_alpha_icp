@@ -125,13 +125,18 @@ pub fn memories_create_core<E: Env, S: Store>(
 
     // Check if capsule exists and caller has write access using centralized ACL
     let caller = env.caller();
-    let capsule_access = store.get_capsule_for_acl(&capsule_id)
+    let capsule_access = store
+        .get_capsule_for_acl(&capsule_id)
         .ok_or(Error::NotFound)?;
-    
+
     if !capsule_access.can_write(&caller) {
         ic_cdk::println!(
             "[ACL] op=create caller={} cap={} read={} write={} delete={} - UNAUTHORIZED",
-            caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+            caller,
+            capsule_id,
+            capsule_access.can_read(&caller),
+            capsule_access.can_write(&caller),
+            capsule_access.can_delete(&caller)
         );
         return Err(Error::Unauthorized);
     }
@@ -139,7 +144,11 @@ pub fn memories_create_core<E: Env, S: Store>(
     // Log successful ACL check
     ic_cdk::println!(
         "[ACL] op=create caller={} cap={} read={} write={} delete={} - AUTHORIZED",
-        caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+        caller,
+        capsule_id,
+        capsule_access.can_read(&caller),
+        capsule_access.can_write(&caller),
+        capsule_access.can_delete(&caller)
     );
 
     // Capture timestamp once for consistency
@@ -198,7 +207,8 @@ pub fn memories_create_core<E: Env, S: Store>(
     // Debug: Log successful memory creation
     ic_cdk::println!(
         "[DEBUG] memories_create: successfully created memory {} in capsule {}",
-        memory_id, capsule_id
+        memory_id,
+        capsule_id
     );
 
     Ok(memory_id)
@@ -292,20 +302,25 @@ pub fn memories_delete_core<E: Env, S: Store>(
     memory_id: MemoryId,
 ) -> std::result::Result<(), Error> {
     let caller = env.caller();
-    
+
     // Find the memory across all accessible capsules
     let accessible_capsules = store.get_accessible_capsules(&caller);
 
     for capsule_id in accessible_capsules {
         if let Some(memory) = store.get_memory(&capsule_id, &memory_id) {
             // Check delete permissions using centralized ACL
-            let capsule_access = store.get_capsule_for_acl(&capsule_id)
+            let capsule_access = store
+                .get_capsule_for_acl(&capsule_id)
                 .ok_or(Error::NotFound)?;
-            
+
             if !capsule_access.can_delete(&caller) {
                 ic_cdk::println!(
                     "[ACL] op=delete caller={} cap={} read={} write={} delete={} - UNAUTHORIZED",
-                    caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+                    caller,
+                    capsule_id,
+                    capsule_access.can_read(&caller),
+                    capsule_access.can_write(&caller),
+                    capsule_access.can_delete(&caller)
                 );
                 return Err(Error::Unauthorized);
             }
@@ -313,7 +328,11 @@ pub fn memories_delete_core<E: Env, S: Store>(
             // Log successful ACL check
             ic_cdk::println!(
                 "[ACL] op=delete caller={} cap={} read={} write={} delete={} - AUTHORIZED",
-                caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
+                caller,
+                capsule_id,
+                capsule_access.can_read(&caller),
+                capsule_access.can_write(&caller),
+                capsule_access.can_delete(&caller)
             );
 
             // CRITICAL: Clean up assets before deleting the memory
