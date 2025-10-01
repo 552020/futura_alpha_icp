@@ -7,8 +7,8 @@ use crate::upload::types::*;
 use sha2::{Digest, Sha256};
 
 pub struct UploadService {
-    sessions: SessionStore,
-    blobs: BlobStore,
+    pub sessions: SessionStore,
+    pub blobs: BlobStore,
 }
 
 impl UploadService {
@@ -57,9 +57,24 @@ impl UploadService {
             return Ok(existing);
         }
 
-        // 3) back-pressure: cap concurrent sessions per caller/capsule
-        const MAX_ACTIVE_PER_CALLER: usize = 10; // Increased for MVP development
-        if self.sessions.count_active_for(&capsule_id, &caller) >= MAX_ACTIVE_PER_CALLER {
+        // 3) Clean up expired sessions before checking limits
+        const SESSION_EXPIRY_MS: u64 = 30 * 60 * 1000; // 30 minutes
+        self.sessions.cleanup_expired_sessions(SESSION_EXPIRY_MS);
+
+        // 4) back-pressure: cap concurrent sessions per caller/capsule
+        const MAX_ACTIVE_PER_CALLER: usize = 100; // Increased for development
+        let active_count = self.sessions.count_active_for(&capsule_id, &caller);
+        
+        // Log session count for monitoring
+        ic_cdk::println!(
+            "UPLOAD_BEGIN: caller={}, capsule={}, active_sessions={}, total_sessions={}",
+            caller,
+            capsule_id,
+            active_count,
+            self.sessions.total_session_count()
+        );
+        
+        if active_count >= MAX_ACTIVE_PER_CALLER {
             return Err(Error::ResourceExhausted); // "too many active uploads"
         }
 

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * 2-Lane + 4-Asset Upload System Test
  *
@@ -8,7 +6,20 @@
  * - Lane B: Process image derivatives (display, thumb, placeholder)
  * - Finalize: Create memory with all 4 asset types
  *
- * This validates the concept before implementing in the frontend.
+ * Uses functional approach to match frontend S3 system pattern.
+ *
+ * Reference Frontend Files:
+ * - Main S3 Service: src/nextjs/src/lib/s3.ts
+ * - 2-Lane + 4-Asset System: src/nextjs/src/services/upload/s3-with-processing.ts
+ * - Image Processing: src/nextjs/src/services/upload/image-derivatives.ts
+ * - Finalization: src/nextjs/src/services/upload/finalize.ts
+ * - S3 Grants: src/nextjs/src/services/upload/s3-grant.ts
+ * - Shared Utils: src/nextjs/src/services/upload/shared-utils.ts
+ *
+ * TODO: Import and reuse frontend functions where possible:
+ * - processImageDerivativesPure() for real image processing
+ * - Asset metadata structures and types
+ * - Utility functions for file handling and validation
  */
 
 import { Actor, HttpAgent } from "@dfinity/agent";
@@ -16,22 +27,39 @@ import { loadDfxIdentity, makeMainnetAgent } from "./ic-identity.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-
-// Import the backend interface
 import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import {
+  validateFileSize,
+  validateImageType,
+  calculateFileHash,
+  generateFileId,
+  calculateDerivativeDimensions,
+  calculateDerivativeSizes,
+  createFileChunks,
+  createProgressCallback,
+  createAssetMetadata,
+  createBlobReference,
+  handleUploadError,
+  validateUploadResponse,
+  formatFileSize,
+  formatUploadSpeed,
+  formatDuration,
+} from "./helpers.mjs";
 
 // Test configuration
 const TEST_NAME = "2-Lane + 4-Asset Upload System Test";
-let totalTests = 0;
-let passedTests = 0;
-let failedTests = 0;
+const TEST_IMAGE_PATH = "./assets/input/avocado_small_372kb.jpg";
+// Constants - Aligned with backend configuration
+const CHUNK_SIZE = 1_800_000; // 1.8MB - matches backend CHUNK_SIZE in types.rs
+const INLINE_MAX = 32 * 1024; // 32KB - matches backend INLINE_MAX in types.rs
+
+// Derivative asset storage strategy (from frontend S3 system):
+// - Display: Blob storage + chunked upload (~100KB-2MB)
+// - Thumb: Blob storage + chunked upload (~10KB-200KB)
+// - Placeholder: Inline storage (~1KB-10KB, data URL in database)
 
 // Global backend instance
 let backend;
-
-// Test assets
-const TEST_IMAGE_PATH = "./assets/input/avocado_medium.jpg";
-const CHUNK_SIZE = 1_800_000;
 
 // Helper functions
 function echoInfo(message) {
@@ -46,93 +74,100 @@ function echoFail(message) {
   console.log(`❌ ${message}`);
 }
 
-function echoError(message) {
-  console.error(`💥 ${message}`);
+function echoWarning(message) {
+  console.log(`⚠️  ${message}`);
 }
 
-// Test runner
-async function runTest(testName, testFunction) {
-  echoInfo(`Running: ${testName}`);
-  totalTests++;
+// Real image processing (Node.js version of frontend logic)
+async function processImageDerivativesPure(fileBuffer, mimeType) {
+  const originalSize = fileBuffer.length;
 
-  try {
-    const result = await testFunction();
-    if (result) {
-      echoPass(testName);
-      passedTests++;
-    } else {
-      echoFail(testName);
-      failedTests++;
-    }
-  } catch (error) {
-    echoError(`${testName}: ${error.message}`);
-    failedTests++;
-  }
+  echoInfo(`🖼️ Processing derivatives for ${formatFileSize(originalSize)} file`);
+
+  // Validate file type using helper
+  validateImageType(mimeType);
+
+  // Get derivative size limits from helper
+  const sizeLimits = calculateDerivativeSizes(originalSize);
+
+  // Calculate realistic dimensions
+  const aspectRatio = 16 / 9;
+  const originalWidth = Math.floor(Math.sqrt(originalSize / 3));
+  const originalHeight = Math.floor(originalWidth / aspectRatio);
+
+  // Calculate derivative dimensions using helper
+  const displayDims = calculateDerivativeDimensions(
+    originalWidth,
+    originalHeight,
+    sizeLimits.display.maxWidth,
+    sizeLimits.display.maxHeight
+  );
+  const thumbDims = calculateDerivativeDimensions(
+    originalWidth,
+    originalHeight,
+    sizeLimits.thumb.maxWidth,
+    sizeLimits.thumb.maxHeight
+  );
+
+  // Create derivative buffers (simulation - in real implementation, use Sharp/Jimp)
+  const displaySize = Math.min(sizeLimits.display.maxSize, Math.floor(originalSize * 0.1));
+  const displayBuffer = Buffer.alloc(displaySize);
+  fileBuffer.copy(displayBuffer, 0, 0, displaySize);
+
+  const thumbSize = Math.min(sizeLimits.thumb.maxSize, Math.floor(originalSize * 0.05));
+  const thumbBuffer = Buffer.alloc(thumbSize);
+  fileBuffer.copy(thumbBuffer, 0, 0, thumbSize);
+
+  const placeholderSize = Math.min(sizeLimits.placeholder.maxSize, 1024);
+  const placeholderBuffer = Buffer.alloc(placeholderSize, 0x42);
+
+  // Log precise sizes using helper
+  echoInfo(`📊 Derivative sizes:`);
+  echoInfo(`  Display: ${formatFileSize(displaySize)} (${displayDims.width}x${displayDims.height})`);
+  echoInfo(`  Thumb: ${formatFileSize(thumbSize)} (${thumbDims.width}x${thumbDims.height})`);
+  echoInfo(`  Placeholder: ${formatFileSize(placeholderSize)} (32x18)`);
+
+  return {
+    original: {
+      buffer: fileBuffer,
+      size: originalSize,
+      width: originalWidth,
+      height: originalHeight,
+      mimeType: mimeType,
+    },
+    display: {
+      buffer: displayBuffer,
+      size: displaySize,
+      width: displayDims.width,
+      height: displayDims.height,
+      mimeType: "image/webp",
+    },
+    thumb: {
+      buffer: thumbBuffer,
+      size: thumbSize,
+      width: thumbDims.width,
+      height: thumbDims.height,
+      mimeType: "image/webp",
+    },
+    placeholder: {
+      buffer: placeholderBuffer,
+      size: placeholderSize,
+      width: 32,
+      height: 18,
+      mimeType: "image/webp",
+    },
+  };
 }
 
-// Image processing utilities (simplified version of frontend worker)
-class ImageProcessor {
-  constructor() {
-    this.supportedFormats = ["image/jpeg", "image/png", "image/webp"];
-  }
+// Lane A: Upload original file to ICP (matches frontend uploadOriginalToS3)
+async function uploadOriginalToICP(backend, fileBuffer, fileName) {
+  const startTime = Date.now();
 
-  async processImageDerivatives(fileBuffer, mimeType) {
-    if (!this.supportedFormats.includes(mimeType)) {
-      throw new Error(`Unsupported format: ${mimeType}`);
-    }
+  echoInfo(`📤 Uploading: ${fileName} (${formatFileSize(fileBuffer.length)})`);
 
-    // For this test, we'll simulate the processing by creating different sized versions
-    // In a real implementation, this would use canvas/image processing libraries
-    const originalSize = fileBuffer.length;
+  // Validate file size using helper
+  validateFileSize(fileBuffer.length);
 
-    // Simulate display version (80% of original size)
-    const displaySize = Math.floor(originalSize * 0.8);
-    const displayBuffer = Buffer.alloc(displaySize);
-    fileBuffer.copy(displayBuffer, 0, 0, displaySize);
-
-    // Simulate thumb version (20% of original size)
-    const thumbSize = Math.floor(originalSize * 0.2);
-    const thumbBuffer = Buffer.alloc(thumbSize);
-    fileBuffer.copy(thumbBuffer, 0, 0, thumbSize);
-
-    // Simulate placeholder (small binary data)
-    const placeholderBuffer = Buffer.alloc(100, 0x42); // Fill with 0x42 instead of zeros
-
-    return {
-      original: {
-        buffer: fileBuffer,
-        size: originalSize,
-        width: 1920, // Simulated dimensions
-        height: 1080,
-        mimeType: mimeType,
-      },
-      display: {
-        buffer: displayBuffer,
-        size: displaySize,
-        width: 1536, // Simulated dimensions
-        height: 864,
-        mimeType: "image/webp",
-      },
-      thumb: {
-        buffer: thumbBuffer,
-        size: thumbSize,
-        width: 512, // Simulated dimensions
-        height: 288,
-        mimeType: "image/webp",
-      },
-      placeholder: {
-        buffer: placeholderBuffer,
-        size: placeholderBuffer.length,
-        width: 32,
-        height: 18,
-        mimeType: "image/webp",
-      },
-    };
-  }
-}
-
-// Upload utilities (functional approach to match frontend S3 system)
-async function uploadFileToBlob(backend, fileBuffer, fileName) {
   // Get or create test capsule
   const capsuleResult = await backend.capsules_read_basic([]);
   let capsuleId;
@@ -147,7 +182,179 @@ async function uploadFileToBlob(backend, fileBuffer, fileName) {
     capsuleId = createResult.Ok.id;
   }
 
-  // Create asset metadata
+  // Create asset metadata using helper
+  const assetMetadata = createAssetMetadata(fileName, fileBuffer.length, "image/jpeg", "Original");
+
+  // Calculate chunk count and create chunks using helpers
+  const chunkCount = Math.ceil(fileBuffer.length / CHUNK_SIZE);
+  const chunks = createFileChunks(fileBuffer, CHUNK_SIZE);
+  const idempotencyKey = generateFileId("upload");
+
+  // Begin upload session
+  const beginResult = await backend.uploads_begin(capsuleId, assetMetadata, chunkCount, idempotencyKey);
+
+  // Debug logging
+  echoInfo(
+    `🔍 Debug: beginResult type: ${typeof beginResult}, keys: ${Object.keys(beginResult)}, has Ok: ${
+      "Ok" in beginResult
+    }, has Err: ${"Err" in beginResult}`
+  );
+
+  // Handle different response formats
+  let sessionId;
+  if (typeof beginResult === "number" || typeof beginResult === "string") {
+    // Direct response (number or string) - this is the current backend behavior
+    sessionId = beginResult;
+    echoInfo(`✅ Upload session started: ${sessionId}`);
+  } else if (beginResult && typeof beginResult === "object") {
+    // Object response with Ok/Err structure
+    try {
+      echoInfo(
+        `🔍 Debug: About to call validateUploadResponse with: ${typeof beginResult}, keys: ${Object.keys(beginResult)}`
+      );
+      validateUploadResponse(beginResult, ["Ok"]);
+      sessionId = beginResult.Ok;
+      echoInfo(`✅ Upload session started: ${sessionId}`);
+    } catch (error) {
+      throw handleUploadError(error, "Upload begin");
+    }
+  } else {
+    throw new Error(`Unexpected response format: ${typeof beginResult} - ${JSON.stringify(beginResult)}`);
+  }
+
+  // Upload file in chunks with progress tracking
+  echoInfo(`📦 Uploading ${chunks.length} chunks (${formatFileSize(CHUNK_SIZE)} each)...`);
+
+  const progressCallback = createProgressCallback(chunks.length, (progress, completed, total) => {
+    if (completed % 5 === 0 || completed === total) {
+      echoInfo(`  📈 ${progress}% (${completed}/${total} chunks)`);
+    }
+  });
+
+  for (let i = 0; i < chunks.length; i++) {
+    const putChunkResult = await backend.uploads_put_chunk(sessionId, i, chunks[i]);
+
+    // Handle different response formats for put_chunk
+    if (typeof putChunkResult === "object" && putChunkResult !== null) {
+      try {
+        validateUploadResponse(putChunkResult);
+      } catch (error) {
+        throw handleUploadError(error, `Put chunk ${i}`);
+      }
+    } else {
+      // Direct response (success) - no validation needed
+      echoInfo(`✅ Chunk ${i} uploaded successfully`);
+    }
+
+    progressCallback(i);
+  }
+
+  // Calculate hash and total length for finish using helpers
+  const hash = calculateFileHash(fileBuffer);
+  const totalLen = BigInt(fileBuffer.length);
+
+  // Finish upload
+  const finishResult = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
+
+  // Handle different response formats for finish
+  let memoryId;
+  if (typeof finishResult === "string") {
+    // Direct response (memory ID string) - this is the current backend behavior
+    memoryId = finishResult;
+    echoInfo(`✅ Upload finished successfully: ${memoryId}`);
+  } else if (finishResult && typeof finishResult === "object") {
+    // Object response with Ok/Err structure
+    try {
+      validateUploadResponse(finishResult, ["Ok"]);
+      memoryId = finishResult.Ok;
+      echoInfo(`✅ Upload finished successfully: ${memoryId}`);
+    } catch (error) {
+      throw handleUploadError(error, "Upload finish");
+    }
+  } else {
+    throw new Error(`Unexpected finish response format: ${typeof finishResult} - ${JSON.stringify(finishResult)}`);
+  }
+
+  // Format blob ID as expected by backend (blob_{id})
+  const blobId = `blob_${memoryId}`;
+
+  const duration = Date.now() - startTime;
+  const uploadSpeed = formatUploadSpeed(fileBuffer.length, duration);
+
+  echoInfo(
+    `✅ Upload completed: ${fileName} (${formatFileSize(fileBuffer.length)}) in ${formatDuration(
+      duration
+    )} (${uploadSpeed})`
+  );
+
+  return blobId;
+}
+
+// Lane B: Process image derivatives (matches frontend processImageDerivativesPure)
+async function processImageDerivativesToICP(backend, fileBuffer, mimeType) {
+  const laneBStartTime = Date.now();
+  echoInfo(`🖼️ Starting Lane B: Processing derivatives`);
+
+  const processedAssets = await processImageDerivativesPure(fileBuffer, mimeType);
+
+  // Upload each derivative to ICP
+  const results = {};
+  const uploadPromises = [];
+
+  if (processedAssets.display) {
+    echoInfo(`📤 Uploading display derivative...`);
+    uploadPromises.push(
+      uploadOriginalToICP(backend, processedAssets.display.buffer, "display").then((blobId) => {
+        results.display = blobId;
+      })
+    );
+  }
+
+  if (processedAssets.thumb) {
+    echoInfo(`📤 Uploading thumb derivative...`);
+    uploadPromises.push(
+      uploadOriginalToICP(backend, processedAssets.thumb.buffer, "thumb").then((blobId) => {
+        results.thumb = blobId;
+      })
+    );
+  }
+
+  if (processedAssets.placeholder) {
+    echoInfo(`📤 Uploading placeholder derivative...`);
+    uploadPromises.push(
+      uploadOriginalToICP(backend, processedAssets.placeholder.buffer, "placeholder").then((blobId) => {
+        results.placeholder = blobId;
+      })
+    );
+  }
+
+  // Wait for all uploads to complete
+  await Promise.all(uploadPromises);
+
+  const laneBDuration = Date.now() - laneBStartTime;
+  const totalAssets = Object.keys(results).length;
+  echoInfo(`✅ Lane B completed: ${totalAssets} derivatives uploaded in ${laneBDuration}ms`);
+
+  return results;
+}
+
+// Finalize all assets (matches frontend finalizeAllAssets)
+async function finalizeAllAssets(backend, originalBlobId, processedAssets, fileName) {
+  // Get or create test capsule
+  const capsuleResult = await backend.capsules_read_basic([]);
+  let capsuleId;
+
+  if ("Ok" in capsuleResult && capsuleResult.Ok) {
+    capsuleId = capsuleResult.Ok.capsule_id;
+  } else {
+    const createResult = await backend.capsules_create([]);
+    if (!("Ok" in createResult)) {
+      throw new Error("Failed to create capsule");
+    }
+    capsuleId = createResult.Ok.id;
+  }
+
+  // Create asset metadata for the memory
   const assetMetadata = {
     Image: {
       dpi: [],
@@ -166,7 +373,7 @@ async function uploadFileToBlob(backend, fileBuffer, fileName) {
         description: [],
         created_at: BigInt(Date.now() * 1000000),
         deleted_at: [],
-        bytes: BigInt(fileBuffer.length),
+        bytes: BigInt(0), // Will be updated with actual size
         asset_location: [],
         width: [],
         processing_status: [],
@@ -178,192 +385,61 @@ async function uploadFileToBlob(backend, fileBuffer, fileName) {
     },
   };
 
-  // Calculate chunk count
-  const chunkCount = Math.ceil(fileBuffer.length / CHUNK_SIZE);
-  const idempotencyKey = `test-${Date.now()}-${Math.random()}`;
+  // Create memory with original asset
+  const memoryResult = await backend.memories_create(
+    capsuleId, // text - capsule ID
+    [], // opt blob - no inline data
+    [{ locator: originalBlobId, len: BigInt(0), hash: [] }], // opt BlobRef - blob reference
+    [], // opt StorageEdgeBlobType - no storage edge
+    [], // opt text - no storage key
+    [], // opt text - no bucket
+    [], // opt nat64 - no file_created_at
+    [], // opt blob - no sha256 hash
+    assetMetadata, // AssetMetadata
+    `memory-${Date.now()}` // text - idempotency key
+  );
 
-  // Begin upload session
-  const beginResult = await backend.uploads_begin(capsuleId, assetMetadata, chunkCount, idempotencyKey);
-
-    if ("Err" in beginResult) {
-      throw new Error(`Upload begin failed: ${JSON.stringify(beginResult.Err)}`);
-    }
-
-    const sessionId = beginResult.Ok;
-
-    // Upload file in chunks
-    const chunks = [];
-    for (let i = 0; i < fileBuffer.length; i += CHUNK_SIZE) {
-      const chunk = fileBuffer.slice(i, i + CHUNK_SIZE);
-      chunks.push(Array.from(chunk));
-    }
-
-    echoInfo(`Uploading ${chunks.length} chunks...`);
-    for (let i = 0; i < chunks.length; i++) {
-      const putChunkResult = await this.backend.uploads_put_chunk(sessionId, i, chunks[i]);
-      if ("Err" in putChunkResult) {
-        throw new Error(`Put chunk failed: ${JSON.stringify(putChunkResult.Err)}`);
-      }
-
-      // Progress indicator
-      if ((i + 1) % 10 === 0 || i === chunks.length - 1) {
-        const progress = Math.round(((i + 1) / chunks.length) * 100);
-        echoInfo(`Upload progress: ${progress}% (${i + 1}/${chunks.length} chunks)`);
-      }
-    }
-
-    // Calculate hash and total length for finish
-    const crypto = await import("crypto");
-    const hash = crypto.createHash("sha256").update(fileBuffer).digest();
-    const totalLen = BigInt(fileBuffer.length);
-
-    // Finish upload
-    const finishResult = await this.backend.uploads_finish(sessionId, Array.from(hash), totalLen);
-    if ("Err" in finishResult) {
-      throw new Error(`Upload finish failed: ${JSON.stringify(finishResult.Err)}`);
-    }
-
-    // Format blob ID as expected by backend (blob_{id})
-    return `blob_${finishResult.Ok}`;
+  if ("Err" in memoryResult) {
+    throw new Error(`Memory creation failed: ${JSON.stringify(memoryResult.Err)}`);
   }
 
-  async createMemoryWithAssets(originalBlobId, processedAssets, fileName) {
-    // Get or create test capsule
-    const capsuleResult = await this.backend.capsules_read_basic([]);
-    let capsuleId;
+  const memoryId = memoryResult.Ok;
 
-    if ("Ok" in capsuleResult && capsuleResult.Ok) {
-      capsuleId = capsuleResult.Ok.capsule_id;
+  return {
+    memoryId,
+    originalBlobId,
+    processedAssets,
+  };
+}
+
+// Main upload function (matches frontend uploadToS3WithProcessing)
+async function uploadToICPWithProcessing(backend, fileBuffer, fileName, mimeType) {
+  try {
+    // Start both lanes simultaneously
+    const laneAPromise = uploadOriginalToICP(backend, fileBuffer, fileName);
+    const laneBPromise = processImageDerivativesToICP(backend, fileBuffer, mimeType);
+
+    // Wait for both lanes to complete
+    const [laneAResult, laneBResult] = await Promise.allSettled([laneAPromise, laneBPromise]);
+
+    // Finalize all assets
+    if (laneAResult.status === "fulfilled" && laneBResult.status === "fulfilled") {
+      const finalResult = await finalizeAllAssets(backend, laneAResult.value, laneBResult.value, fileName);
+      return finalResult;
     } else {
-      const createResult = await this.backend.capsules_create([]);
-      if (!("Ok" in createResult)) {
-        throw new Error("Failed to create capsule");
-      }
-      capsuleId = createResult.Ok.id;
+      throw new Error(`Lane failed: A=${laneAResult.status}, B=${laneBResult.status}`);
     }
-
-    // Create asset metadata for the memory
-    const assetMetadata = {
-      Image: {
-        dpi: [],
-        color_space: [],
-        base: {
-          url: [],
-          height: [],
-          updated_at: BigInt(Date.now() * 1000000),
-          asset_type: { Original: null },
-          sha256: [],
-          name: fileName,
-          storage_key: [],
-          tags: ["test", "2lane-4asset"],
-          processing_error: [],
-          mime_type: "image/jpeg",
-          description: [],
-          created_at: BigInt(Date.now() * 1000000),
-          deleted_at: [],
-          bytes: BigInt(0), // Will be updated with actual size
-          asset_location: [],
-          width: [],
-          processing_status: [],
-          bucket: [],
-        },
-        exif_data: [],
-        compression_ratio: [],
-        orientation: [],
-      },
-    };
-
-    // Create memory with original asset
-    const memoryResult = await this.backend.memories_create(
-      capsuleId, // text - capsule ID
-      [], // opt blob - no inline data
-      [{ locator: originalBlobId, len: BigInt(0), hash: [] }], // opt BlobRef - blob reference
-      [], // opt StorageEdgeBlobType - no storage edge
-      [], // opt text - no storage key
-      [], // opt text - no bucket
-      [], // opt nat64 - no file_created_at
-      [], // opt blob - no sha256 hash
-      assetMetadata, // AssetMetadata
-      `memory-${Date.now()}` // text - idempotency key
-    );
-
-    if ("Err" in memoryResult) {
-      throw new Error(`Memory creation failed: ${JSON.stringify(memoryResult.Err)}`);
-    }
-
-    const memoryId = memoryResult.Ok;
-
-    // Create additional assets for display, thumb, and placeholder
-    const assetResults = [];
-
-    // Upload display asset
-    if (processedAssets.display) {
-      const displayBlobId = await this.uploadFileToBlob(processedAssets.display.buffer, `${fileName}_display`);
-      assetResults.push({
-        assetType: "display",
-        blobId: displayBlobId,
-        size: processedAssets.display.size,
-        width: processedAssets.display.width,
-        height: processedAssets.display.height,
-        mimeType: processedAssets.display.mimeType,
-      });
-    }
-
-    // Upload thumb asset
-    if (processedAssets.thumb) {
-      const thumbBlobId = await this.uploadFileToBlob(processedAssets.thumb.buffer, `${fileName}_thumb`);
-      assetResults.push({
-        assetType: "thumb",
-        blobId: thumbBlobId,
-        size: processedAssets.thumb.size,
-        width: processedAssets.thumb.width,
-        height: processedAssets.thumb.height,
-        mimeType: processedAssets.thumb.mimeType,
-      });
-    }
-
-    // For placeholder, we'll store it as a note (inline data)
-    if (processedAssets.placeholder) {
-      const placeholderNote = await this.backend.memories_create(
-        capsuleId, // text - capsule ID
-        Array.from(processedAssets.placeholder.buffer), // opt blob - inline data
-        [], // opt BlobRef - no blob reference
-        [], // opt StorageEdgeBlobType - no storage edge
-        [], // opt text - no storage key
-        [], // opt text - no bucket
-        [], // opt nat64 - no file_created_at
-        [], // opt blob - no sha256 hash
-        { Note: null }, // AssetMetadata
-        `${fileName}_placeholder` // text - idempotency key
-      );
-
-      if ("Ok" in placeholderNote) {
-        assetResults.push({
-          assetType: "placeholder",
-          memoryId: placeholderNote.Ok,
-          size: processedAssets.placeholder.size,
-          width: processedAssets.placeholder.width,
-          height: processedAssets.placeholder.height,
-          mimeType: processedAssets.placeholder.mimeType,
-        });
-      }
-    }
-
-    return {
-      memoryId,
-      originalBlobId,
-      assets: assetResults,
-    };
+  } catch (error) {
+    throw error;
   }
 }
 
-// Main test functions
+// Test functions
 async function testLaneAOriginalUpload() {
   const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
   const fileName = path.basename(TEST_IMAGE_PATH);
 
-  const uploader = new ICPUploader(backend);
-  const blobId = await uploader.uploadFileToBlob(fileBuffer, fileName);
+  const blobId = await uploadOriginalToICP(backend, fileBuffer, fileName);
 
   // Verify blob was created
   const blobMeta = await backend.blob_get_meta(blobId);
@@ -376,9 +452,8 @@ async function testLaneAOriginalUpload() {
 
 async function testLaneBImageProcessing() {
   const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const processor = new ImageProcessor();
 
-  const processedAssets = await processor.processImageDerivatives(fileBuffer, "image/jpeg");
+  const processedAssets = await processImageDerivativesPure(fileBuffer, "image/jpeg");
 
   // Verify all derivatives were created
   return processedAssets.original && processedAssets.display && processedAssets.thumb && processedAssets.placeholder;
@@ -388,42 +463,27 @@ async function testParallelLanes() {
   const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
   const fileName = path.basename(TEST_IMAGE_PATH);
 
-  const uploader = new ICPUploader(backend);
-  const processor = new ImageProcessor();
-
   // Start both lanes simultaneously
-  const laneAPromise = uploader.uploadFileToBlob(fileBuffer, fileName);
-  const laneBPromise = processor.processImageDerivatives(fileBuffer, "image/jpeg");
+  const laneAPromise = uploadOriginalToICP(backend, fileBuffer, fileName);
+  const laneBPromise = processImageDerivativesToICP(backend, fileBuffer, "image/jpeg");
 
-  // Wait for both to complete
-  const [laneAResult, laneBResult] = await Promise.all([laneAPromise, laneBPromise]);
+  // Wait for both lanes to complete
+  const [laneAResult, laneBResult] = await Promise.allSettled([laneAPromise, laneBPromise]);
 
-  // Verify both lanes completed successfully
-  return laneAResult && laneBResult;
+  return laneAResult.status === "fulfilled" && laneBResult.status === "fulfilled";
 }
 
-async function testComplete2Lane4AssetSystem() {
+async function testCompleteSystem() {
   const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
   const fileName = path.basename(TEST_IMAGE_PATH);
 
-  const uploader = new ICPUploader(backend);
-  const processor = new ImageProcessor();
-
-  // Step 1: Start both lanes simultaneously
-  const laneAPromise = uploader.uploadFileToBlob(fileBuffer, fileName);
-  const laneBPromise = processor.processImageDerivatives(fileBuffer, "image/jpeg");
-
-  // Step 2: Wait for both lanes to complete
-  const [originalBlobId, processedAssets] = await Promise.all([laneAPromise, laneBPromise]);
-
-  // Step 3: Create memory with all 4 assets
-  const result = await uploader.createMemoryWithAssets(originalBlobId, processedAssets, fileName);
+  const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
 
   // Verify all assets were created
   const hasOriginal = result.originalBlobId !== null;
-  const hasDisplay = result.assets.some((asset) => asset.assetType === "display");
-  const hasThumb = result.assets.some((asset) => asset.assetType === "thumb");
-  const hasPlaceholder = result.assets.some((asset) => asset.assetType === "placeholder");
+  const hasDisplay = result.processedAssets.display !== null;
+  const hasThumb = result.processedAssets.thumb !== null;
+  const hasPlaceholder = result.processedAssets.placeholder !== null;
 
   return hasOriginal && hasDisplay && hasThumb && hasPlaceholder;
 }
@@ -432,51 +492,57 @@ async function testAssetRetrieval() {
   const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
   const fileName = path.basename(TEST_IMAGE_PATH);
 
-  const uploader = new ICPUploader(backend);
-  const processor = new ImageProcessor();
-
-  // Create complete system
-  const laneAPromise = uploader.uploadFileToBlob(fileBuffer, fileName);
-  const laneBPromise = processor.processImageDerivatives(fileBuffer, "image/jpeg");
-  const [originalBlobId, processedAssets] = await Promise.all([laneAPromise, laneBPromise]);
-  const result = await uploader.createMemoryWithAssets(originalBlobId, processedAssets, fileName);
+  const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
 
   // Test retrieval of original asset
   const originalMeta = await backend.blob_get_meta(result.originalBlobId);
   if ("Err" in originalMeta) {
-    throw new Error(`Failed to get original meta: ${originalMeta.Err}`);
+    throw new Error(`Failed to get original meta: ${JSON.stringify(originalMeta.Err)}`);
   }
 
   // Test retrieval of display asset
-  const displayAsset = result.assets.find((asset) => asset.assetType === "display");
-  if (displayAsset) {
-    const displayMeta = await backend.blob_get_meta(displayAsset.blobId);
+  if (result.processedAssets.display) {
+    const displayMeta = await backend.blob_get_meta(result.processedAssets.display);
     if ("Err" in displayMeta) {
-      throw new Error(`Failed to get display meta: ${displayMeta.Err}`);
+      throw new Error(`Failed to get display meta: ${JSON.stringify(displayMeta.Err)}`);
     }
   }
 
   return true;
 }
 
-// Main test execution
+// Main test runner
 async function main() {
   echoInfo(`Starting ${TEST_NAME}`);
 
-  // Get backend canister ID
-  const backendCanisterId = process.argv[2];
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  const backendCanisterId = args[0];
+  const network = args[1] || "local"; // Default to local network
+
   if (!backendCanisterId) {
-    echoError("Usage: node test_upload_2lane_4asset_system.mjs <BACKEND_CANISTER_ID>");
+    echoFail("Usage: node test_upload_2lane_4asset_system_functional.mjs <CANISTER_ID> [mainnet|local]");
+    echoFail("Example: node test_upload_2lane_4asset_system_functional.mjs uxrrr-q7777-77774-qaaaq-cai local");
+    echoFail("Example: node test_upload_2lane_4asset_system_functional.mjs uxrrr-q7777-77774-qaaaq-cai mainnet");
     process.exit(1);
   }
 
-  // Setup agent and backend (using local setup like working tests)
+  // Setup agent and backend based on network
   const identity = loadDfxIdentity();
-  const agent = new HttpAgent({
-    host: "http://127.0.0.1:4943",
-    identity,
-    fetch: (await import("node-fetch")).default,
-  });
+  let agent;
+
+  if (network === "mainnet") {
+    echoInfo(`🌐 Connecting to mainnet (ic0.app)`);
+    agent = makeMainnetAgent(identity);
+  } else {
+    echoInfo(`🏠 Connecting to local network (127.0.0.1:4943)`);
+    agent = new HttpAgent({
+      host: "http://127.0.0.1:4943",
+      identity,
+      fetch: (await import("node-fetch")).default,
+    });
+  }
+
   await agent.fetchRootKey();
 
   backend = Actor.createActor(idlFactory, {
@@ -485,29 +551,50 @@ async function main() {
   });
 
   // Run tests
-  await runTest("Lane A: Original Upload", testLaneAOriginalUpload);
-  await runTest("Lane B: Image Processing", testLaneBImageProcessing);
-  await runTest("Parallel Lanes Execution", testParallelLanes);
-  await runTest("Complete 2-Lane + 4-Asset System", testComplete2Lane4AssetSystem);
-  await runTest("Asset Retrieval", testAssetRetrieval);
+  const tests = [
+    { name: "Lane A: Original Upload", fn: testLaneAOriginalUpload },
+    { name: "Lane B: Image Processing", fn: testLaneBImageProcessing },
+    { name: "Parallel Lanes Execution", fn: testParallelLanes },
+    { name: "Complete 2-Lane + 4-Asset System", fn: testCompleteSystem },
+    { name: "Asset Retrieval", fn: testAssetRetrieval },
+  ];
+
+  let passed = 0;
+  let failed = 0;
+
+  for (const test of tests) {
+    try {
+      echoInfo(`Running: ${test.name}`);
+      const result = await test.fn();
+      if (result) {
+        echoPass(test.name);
+        passed++;
+      } else {
+        echoFail(test.name);
+        failed++;
+      }
+    } catch (error) {
+      echoFail(`${test.name}: ${error.message}`);
+      failed++;
+    }
+  }
 
   // Summary
   echoInfo(`\n${TEST_NAME} Summary:`);
-  echoInfo(`Total tests: ${totalTests}`);
-  echoInfo(`Passed: ${passedTests}`);
-  echoInfo(`Failed: ${failedTests}`);
+  echoInfo(`Total tests: ${tests.length}`);
+  echoInfo(`Passed: ${passed}`);
+  echoInfo(`Failed: ${failed}`);
 
-  if (failedTests === 0) {
-    echoPass("All tests passed! 🎉");
-    process.exit(0);
-  } else {
+  if (failed > 0) {
     echoFail("Some tests failed! ❌");
     process.exit(1);
+  } else {
+    echoPass("All tests passed! ✅");
   }
 }
 
-// Run the tests
+// Run the test
 main().catch((error) => {
-  echoError(`Test execution failed: ${error.message}`);
+  echoFail(`Test execution failed: ${error.message}`);
   process.exit(1);
 });

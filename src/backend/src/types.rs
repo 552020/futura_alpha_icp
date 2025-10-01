@@ -15,6 +15,24 @@ pub type CapsuleId = String;
 pub type MemoryId = String;
 
 // ============================================================================
+// CANDID RESULT TYPES
+// ============================================================================
+
+/// Result type for uploads_begin function (SessionId or Error)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum Result_13 {
+    Ok(u64),
+    Err(Error),
+}
+
+/// Result type for verify_nonce function (Principal or Error)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum Result_14 {
+    Ok(Principal),
+    Err(Error),
+}
+
+// ============================================================================
 // STORAGE EDGE TYPES
 // ============================================================================
 
@@ -316,7 +334,9 @@ pub struct User {
 
 // Capsule types for user-owned data architecture
 // Core person reference - can be a live principal or opaque identifier
-#[derive(CandidType, Deserialize, Serialize, Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+#[derive(
+    CandidType, Deserialize, Serialize, Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord,
+)]
 pub enum PersonRef {
     Principal(Principal), // live II user
     Opaque(String),       // non-principal subject (e.g., deceased), UUID-like

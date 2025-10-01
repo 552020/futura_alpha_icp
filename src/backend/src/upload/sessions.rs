@@ -169,6 +169,69 @@ impl SessionStore {
                 .count()
         })
     }
+
+    /// Clear all sessions (development/debugging only)
+    pub fn clear_all_sessions(&self) {
+        STABLE_UPLOAD_SESSIONS.with(|sessions| {
+            let _ = sessions.borrow_mut().clear_new();
+        });
+        STABLE_CHUNK_DATA.with(|chunks| {
+            let _ = chunks.borrow_mut().clear_new();
+        });
+    }
+
+    /// Get total session count for monitoring
+    pub fn total_session_count(&self) -> usize {
+        STABLE_UPLOAD_SESSIONS.with(|sessions| sessions.borrow().len().try_into().unwrap_or(0))
+    }
+
+    /// Get session count by status for monitoring
+    pub fn session_count_by_status(&self) -> (usize, usize) {
+        STABLE_UPLOAD_SESSIONS.with(|sessions| {
+            let mut pending_count = 0;
+            let mut committed_count = 0;
+
+            for (_, session) in sessions.borrow().iter() {
+                match session.status {
+                    crate::upload::types::SessionStatus::Pending => pending_count += 1,
+                    crate::upload::types::SessionStatus::Committed { .. } => committed_count += 1,
+                }
+            }
+
+            (pending_count, committed_count)
+        })
+    }
+
+    /// Clean up expired sessions (older than specified milliseconds)
+    pub fn cleanup_expired_sessions(&self, expiry_ms: u64) {
+        let now = ic_cdk::api::time();
+        let mut expired_sessions = Vec::new();
+
+        // Find expired sessions
+        STABLE_UPLOAD_SESSIONS.with(|sessions| {
+            for (session_id, session) in sessions.borrow().iter() {
+                if now - session.created_at > expiry_ms {
+                    expired_sessions.push(session_id);
+                }
+            }
+        });
+
+        // Remove expired sessions
+        for session_id in expired_sessions {
+            self.cleanup(&crate::upload::types::SessionId(session_id));
+        }
+    }
+
+    /// List all sessions for debugging
+    pub fn list_all_sessions(&self) -> Vec<(u64, SessionMeta)> {
+        STABLE_UPLOAD_SESSIONS.with(|sessions| {
+            sessions
+                .borrow()
+                .iter()
+                .map(|(id, session)| (id, session.clone()))
+                .collect()
+        })
+    }
 }
 
 pub struct ChunkIterator {
@@ -196,5 +259,140 @@ impl Iterator for ChunkIterator {
 impl ExactSizeIterator for ChunkIterator {
     fn len(&self) -> usize {
         (self.chunk_count - self.current_idx) as usize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{AssetMetadata, AssetMetadataBase, AssetType, ImageAssetMetadata};
+    use crate::upload::types::SessionStatus;
+    use candid::Principal;
+
+    fn create_test_session_meta_with_status(status: SessionStatus) -> SessionMeta {
+        let caller = Principal::anonymous();
+        SessionMeta {
+            capsule_id: "test-capsule".to_string(),
+            provisional_memory_id: "test-memory".to_string(),
+            caller,
+            chunk_count: 3,
+            expected_len: Some(300),
+            expected_hash: Some([0u8; 32]),
+            status,
+            created_at: 1234567890,
+            asset_metadata: AssetMetadata::Image(ImageAssetMetadata {
+                base: AssetMetadataBase {
+                    name: "test.txt".to_string(),
+                    description: Some("Test file".to_string()),
+                    tags: vec!["test".to_string()],
+                    asset_type: AssetType::Original,
+                    bytes: 300,
+                    mime_type: "text/plain".to_string(),
+                    sha256: Some([0u8; 32]),
+                    width: None,
+                    height: None,
+                    url: None,
+                    storage_key: None,
+                    bucket: None,
+                    processing_status: None,
+                    processing_error: None,
+                    created_at: 1234567890,
+                    updated_at: 1234567890,
+                    deleted_at: None,
+                    asset_location: None,
+                },
+                color_space: None,
+                exif_data: None,
+                compression_ratio: None,
+                dpi: None,
+                orientation: None,
+            }),
+            idem: "test-idem".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_clear_all_sessions() {
+        let store = SessionStore::new();
+
+        // Create some test sessions
+        let session1 = SessionId::new();
+        let session2 = SessionId::new();
+        let meta1 = create_test_session_meta_with_status(SessionStatus::Pending);
+        let meta2 = create_test_session_meta_with_status(SessionStatus::Committed { blob_id: 123 });
+
+        // Add sessions
+        store.create(session1.clone(), meta1).unwrap();
+        store.create(session2.clone(), meta2).unwrap();
+
+        // Verify sessions exist
+        assert!(store.get(&session1).unwrap().is_some());
+        assert!(store.get(&session2).unwrap().is_some());
+        assert_eq!(store.total_session_count(), 2);
+
+        // Clear all sessions
+        store.clear_all_sessions();
+
+        // Verify sessions are gone
+        assert_eq!(store.total_session_count(), 0);
+        assert!(store.get(&session1).unwrap().is_none());
+        assert!(store.get(&session2).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_total_session_count() {
+        let store = SessionStore::new();
+
+        // Initially no sessions
+        assert_eq!(store.total_session_count(), 0);
+
+        // Add some sessions
+        let session1 = SessionId::new();
+        let session2 = SessionId::new();
+        let meta1 = create_test_session_meta_with_status(SessionStatus::Pending);
+        let meta2 = create_test_session_meta_with_status(SessionStatus::Committed { blob_id: 123 });
+
+        store.create(session1, meta1).unwrap();
+        assert_eq!(store.total_session_count(), 1);
+
+        store.create(session2, meta2).unwrap();
+        assert_eq!(store.total_session_count(), 2);
+    }
+
+    #[test]
+    fn test_session_count_by_status() {
+        let store = SessionStore::new();
+
+        // Initially no sessions
+        let (pending, committed) = store.session_count_by_status();
+        assert_eq!(pending, 0);
+        assert_eq!(committed, 0);
+
+        // Add pending session
+        let session1 = SessionId::new();
+        let meta1 = create_test_session_meta_with_status(SessionStatus::Pending);
+        store.create(session1, meta1).unwrap();
+
+        let (pending, committed) = store.session_count_by_status();
+        assert_eq!(pending, 1);
+        assert_eq!(committed, 0);
+
+        // Add committed session
+        let session2 = SessionId::new();
+        let meta2 = create_test_session_meta_with_status(SessionStatus::Committed { blob_id: 123 });
+        store.create(session2, meta2).unwrap();
+
+        let (pending, committed) = store.session_count_by_status();
+        assert_eq!(pending, 1);
+        assert_eq!(committed, 1);
+
+        // Add another pending session
+        let session3 = SessionId::new();
+        let meta3 = create_test_session_meta_with_status(SessionStatus::Pending);
+        store.create(session3, meta3).unwrap();
+
+        let (pending, committed) = store.session_count_by_status();
+        assert_eq!(pending, 2);
+        assert_eq!(committed, 1);
     }
 }

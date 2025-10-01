@@ -4,7 +4,7 @@ use candid::Principal;
 // Internal imports
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
-use crate::types::Error;
+use crate::types::{Error, Result_13, Result_14};
 
 // Import modules
 mod admin;
@@ -53,11 +53,11 @@ fn register_with_nonce(nonce: String) -> std::result::Result<(), Error> {
 }
 
 #[ic_cdk::query]
-fn verify_nonce(nonce: String) -> std::result::Result<Principal, Error> {
+fn verify_nonce(nonce: String) -> Result_14 {
     // Verify and return the principal who proved this nonce
     match auth::get_nonce_proof(nonce) {
-        Some(principal) => Ok(principal),
-        None => Err(types::Error::NotFound),
+        Some(principal) => Result_14::Ok(principal),
+        None => Result_14::Err(types::Error::NotFound),
     }
 }
 
@@ -448,11 +448,14 @@ fn uploads_begin(
     asset_metadata: types::AssetMetadata,
     expected_chunks: u32,
     idem: String,
-) -> std::result::Result<upload::types::SessionId, Error> {
-    with_capsule_store_mut(|store| {
+) -> Result_13 {
+    match with_capsule_store_mut(|store| {
         let mut upload_service = upload::service::UploadService::new();
         upload_service.begin_upload(store, capsule_id, asset_metadata, expected_chunks, idem)
-    })
+    }) {
+        Ok(session_id) => Result_13::Ok(session_id.0),
+        Err(error) => Result_13::Err(error),
+    }
 }
 
 /// Upload a chunk for an active session
@@ -527,6 +530,75 @@ async fn uploads_abort(session_id: u64) -> std::result::Result<(), Error> {
             Ok(()) => Ok(()),
             Err(err) => Err(err),
         }
+    })
+}
+
+// ============================================================================
+// SESSION MANAGEMENT ENDPOINTS (Development/Debug)
+// ============================================================================
+
+/// Clear all upload sessions (development/debugging only)
+#[ic_cdk::update]
+fn sessions_clear_all() -> std::result::Result<String, Error> {
+    memory::with_capsule_store_mut(|_store| {
+        let mut upload_service = upload::service::UploadService::new();
+        upload_service.sessions.clear_all_sessions();
+        Ok("All sessions cleared".to_string())
+    })
+}
+
+/// Get session statistics for monitoring
+#[ic_cdk::query]
+fn sessions_stats() -> std::result::Result<String, Error> {
+    memory::with_capsule_store_mut(|_store| {
+        let mut upload_service = upload::service::UploadService::new();
+        let total = upload_service.sessions.total_session_count();
+        let (pending, committed) = upload_service.sessions.session_count_by_status();
+
+        let stats = format!(
+            "Total sessions: {}, Pending: {}, Committed: {}",
+            total, pending, committed
+        );
+        Ok(stats)
+    })
+}
+
+/// List all sessions for debugging
+#[ic_cdk::query]
+fn sessions_list() -> std::result::Result<String, Error> {
+    memory::with_capsule_store_mut(|_store| {
+        let mut upload_service = upload::service::UploadService::new();
+        let sessions = upload_service.sessions.list_all_sessions();
+
+        let mut result = String::new();
+        result.push_str(&format!("Found {} sessions:\n", sessions.len()));
+
+        for (id, session) in sessions {
+            let status = match session.status {
+                upload::types::SessionStatus::Pending => "Pending",
+                upload::types::SessionStatus::Committed { .. } => "Committed",
+            };
+
+            result.push_str(&format!(
+                "Session {}: caller={}, capsule={}, status={}, created={}\n",
+                id, session.caller, session.capsule_id, status, session.created_at
+            ));
+        }
+
+        Ok(result)
+    })
+}
+
+/// Clean up expired sessions
+#[ic_cdk::update]
+fn sessions_cleanup_expired() -> std::result::Result<String, Error> {
+    memory::with_capsule_store_mut(|_store| {
+        let mut upload_service = upload::service::UploadService::new();
+        const SESSION_EXPIRY_MS: u64 = 30 * 60 * 1000; // 30 minutes
+        upload_service
+            .sessions
+            .cleanup_expired_sessions(SESSION_EXPIRY_MS);
+        Ok("Expired sessions cleaned up".to_string())
     })
 }
 

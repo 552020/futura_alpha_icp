@@ -430,6 +430,14 @@ service : {
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   register_with_nonce : (text) -> (Result);
   remove_admin : (principal) -> (Result);
+  // Clean up expired sessions
+  sessions_cleanup_expired : () -> (Result_6);
+  // Clear all upload sessions (development/debugging only)
+  sessions_clear_all : () -> (Result_6);
+  // List all sessions for debugging
+  sessions_list : () -> (Result_6) query;
+  // Get session statistics for monitoring
+  sessions_stats : () -> (Result_6) query;
   set_migration_enabled : (bool) -> (Result);
   set_personal_canister_creation_enabled : (bool) -> (Result);
   update_gallery_storage_location : (text, GalleryStorageLocation) -> (Result);
