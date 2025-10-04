@@ -1063,5 +1063,144 @@ fn _probe_inline_len(content: Option<Vec<u8>>) -> (u64, Vec<u8>) {
     }
 }
 
+// ============================================================================
+// BULK MEMORY OPERATIONS API
+// ============================================================================
+
+/// Bulk delete multiple memories in a single operation
+#[ic_cdk::update]
+fn memories_delete_bulk(
+    capsule_id: String,
+    memory_ids: Vec<String>,
+) -> Result<crate::memories::types::BulkDeleteResult, Error> {
+    use crate::memories::core::memories_delete_bulk_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    memories_delete_bulk_core(&env, &mut store, capsule_id, memory_ids)
+}
+
+/// Delete ALL memories in a capsule (high-risk operation)
+#[ic_cdk::update]
+fn memories_delete_all(
+    capsule_id: String,
+) -> Result<crate::memories::types::BulkDeleteResult, Error> {
+    use crate::memories::core::memories_delete_all_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    memories_delete_all_core(&env, &mut store, capsule_id)
+}
+
+/// Clean up all assets from a memory while preserving the memory record
+#[ic_cdk::update]
+fn memories_cleanup_assets_all(
+    memory_id: String,
+) -> Result<crate::memories::types::AssetCleanupResult, Error> {
+    use crate::memories::core::memories_cleanup_assets_all_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    memories_cleanup_assets_all_core(&env, &mut store, memory_id)
+}
+
+/// Bulk cleanup assets from multiple memories
+#[ic_cdk::update]
+fn memories_cleanup_assets_bulk(
+    memory_ids: Vec<String>,
+) -> Result<crate::memories::types::BulkAssetCleanupResult, Error> {
+    use crate::memories::core::memories_cleanup_assets_bulk_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    memories_cleanup_assets_bulk_core(&env, &mut store, memory_ids)
+}
+
+// ============================================================================
+// ASSET OPERATIONS API
+// ============================================================================
+
+/// Remove a specific asset from a memory by asset reference
+#[ic_cdk::update]
+fn asset_remove(
+    memory_id: String,
+    asset_ref: String,
+) -> Result<crate::memories::types::AssetRemovalResult, Error> {
+    use crate::memories::core::asset_remove_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    asset_remove_core(&env, &mut store, memory_id, asset_ref)
+}
+
+/// Remove specific inline asset by index
+#[ic_cdk::update]
+fn asset_remove_inline(
+    memory_id: String,
+    asset_index: u32,
+) -> Result<crate::memories::types::AssetRemovalResult, Error> {
+    use crate::memories::core::asset_remove_inline_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    asset_remove_inline_core(&env, &mut store, memory_id, asset_index)
+}
+
+/// Remove specific ICP blob asset by blob reference
+#[ic_cdk::update]
+fn asset_remove_internal(
+    memory_id: String,
+    blob_ref: String,
+) -> Result<crate::memories::types::AssetRemovalResult, Error> {
+    use crate::memories::core::asset_remove_internal_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    asset_remove_internal_core(&env, &mut store, memory_id, blob_ref)
+}
+
+/// Remove specific external storage asset by storage key
+#[ic_cdk::update]
+fn asset_remove_external(
+    memory_id: String,
+    storage_key: String,
+) -> Result<crate::memories::types::AssetRemovalResult, Error> {
+    use crate::memories::core::asset_remove_external_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    asset_remove_external_core(&env, &mut store, memory_id, storage_key)
+}
+
+/// List all assets in a memory
+#[ic_cdk::query]
+fn memories_list_assets(
+    memory_id: String,
+) -> Result<crate::memories::types::MemoryAssetsList, Error> {
+    use crate::memories::core::memories_list_assets_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    memories_list_assets_core(&env, &mut store, memory_id)
+}
+
 // Export the interface for the smart contract.
 ic_cdk::export_candid!();

@@ -1,8 +1,7 @@
-use candid::{CandidType, Deserialize, Principal};
+use candid::{CandidType, Deserialize};
 use ic_stable_structures::Storable;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::collections::HashMap;
 
 // Import types from the main types module
 use crate::types::{PersonRef, StorageEdgeBlobType, StorageEdgeDatabaseType};
@@ -376,4 +375,51 @@ impl AssetMetadata {
             AssetMetadata::Note(note) => &note.base,
         }
     }
+}
+
+// ============================================================================
+// BULK OPERATION RESULT TYPES
+// ============================================================================
+
+/// Result type for bulk memory deletion operations
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct BulkDeleteResult {
+    pub deleted_count: u32,
+    pub failed_count: u32,
+    pub message: String,
+}
+
+/// Result type for asset cleanup operations
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct AssetCleanupResult {
+    pub memory_id: String,
+    pub assets_cleaned: u32,
+    pub message: String,
+}
+
+/// Result type for bulk asset cleanup operations
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct BulkAssetCleanupResult {
+    pub cleaned_count: u32,
+    pub failed_count: u32,
+    pub total_assets_cleaned: u32,
+    pub message: String,
+}
+
+/// Result type for individual asset removal operations
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct AssetRemovalResult {
+    pub memory_id: String,
+    pub asset_removed: bool,
+    pub message: String,
+}
+
+/// Result type for listing memory assets
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct MemoryAssetsList {
+    pub memory_id: String,
+    pub inline_assets: Vec<String>, // Asset references for inline assets
+    pub internal_assets: Vec<String>, // Blob references for ICP assets
+    pub external_assets: Vec<String>, // Storage keys for external assets
+    pub total_count: u32,
 }
