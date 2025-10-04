@@ -401,7 +401,9 @@ mod tests {
         let chunk_size = 10;
         let mut chunk_index = 0;
         for chunk in test_data.chunks(chunk_size) {
-            let page_key = (blob_id.0, chunk_index);
+            let mut pmid_hash = [0u8; 32];
+            pmid_hash[0..8].copy_from_slice(&blob_id.0.to_be_bytes());
+            let page_key = (pmid_hash, chunk_index);
             STABLE_BLOB_STORE.with(|store| {
                 store.borrow_mut().insert(page_key, chunk.to_vec());
             });
@@ -415,6 +417,7 @@ mod tests {
             size: test_data.len() as u64,
             checksum,
             created_at: 1234567890,
+            pmid_hash: [0u8; 32], // Test hash
         };
 
         STABLE_BLOB_META.with(|store| {
@@ -495,7 +498,9 @@ mod tests {
         let chunk_size = 1024 * 1024; // 1MB chunks
         let mut chunk_index = 0;
         for chunk in large_data.chunks(chunk_size) {
-            let page_key = (blob_id.0, chunk_index);
+            let mut pmid_hash = [0u8; 32];
+            pmid_hash[0..8].copy_from_slice(&blob_id.0.to_be_bytes());
+            let page_key = (pmid_hash, chunk_index);
             STABLE_BLOB_STORE.with(|store| {
                 store.borrow_mut().insert(page_key, chunk.to_vec());
             });
@@ -509,6 +514,7 @@ mod tests {
             size: large_data.len() as u64,
             checksum,
             created_at: 1234567890,
+            pmid_hash: [0u8; 32], // Test hash
         };
 
         STABLE_BLOB_META.with(|store| {
