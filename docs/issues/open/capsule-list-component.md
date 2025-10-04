@@ -121,6 +121,7 @@ interface CapsuleListProps {
 ## Post-MVP Features
 
 **Advanced features** (sorting, filtering, search, bulk operations) are documented in:
+
 - `docs/issues/open/capsule-list-advanced-features.md`
 
 ## Discussion Points
