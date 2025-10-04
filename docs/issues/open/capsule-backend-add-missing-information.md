@@ -144,3 +144,4 @@ interface Capsule {
 - **Automatic renewal** - Auto-renew expired capsules
 - **Storage optimization** - Compress old memories to save space
 - **Canister migration** - Move capsules between independent and shared canisters
+

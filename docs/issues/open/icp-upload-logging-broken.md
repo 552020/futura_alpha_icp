@@ -51,3 +51,4 @@ single-file-processor.ts → uploadToICPWithProcessing() → uploadFileToICPWith
 ## Priority
 
 High - blocks development and debugging of ICP upload functionality.
+

@@ -150,3 +150,4 @@ Enhance the existing `CapsuleList` component with advanced features for better u
 - **Backend filtering** may be needed for large datasets
 - **Search indexing** may be needed for fast search
 - **Bulk operation APIs** may be needed for bulk actions
+
