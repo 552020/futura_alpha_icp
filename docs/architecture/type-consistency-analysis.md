@@ -329,105 +329,29 @@ pub struct Memory {
 
 ### **💡 Proposed Solution: Asset IDs**
 
-#### **Option 1: Add Asset IDs to Current Design**
+#### **Critical Decision Required:**
 
-```rust
-pub struct MemoryAssetInline {
-    pub id: String,           // ✅ Unique identifier
-    pub bytes: Vec<u8>,       // Asset data
-    pub metadata: AssetMetadata,
-}
+The current index-only design is too fragile for production. Asset IDs are needed for:
 
-pub struct MemoryAssetBlobInternal {
-    pub id: String,           // ✅ Unique identifier
-    pub blob_ref: BlobRef,    // Asset reference
-    pub metadata: AssetMetadata,
-}
-```
+- External references to specific assets
+- Asset sharing between memories
+- Stable asset identity across array modifications
 
-#### **Option 2: Hybrid Approach (Both ID and Index)**
+#### **Implementation Options:**
 
-```rust
-// Support both access methods
-fn asset_remove_by_id(memory_id: String, asset_id: String)      // ✅ Safe
-fn asset_remove_by_index(memory_id: String, asset_index: u32)    // ✅ Convenient
-fn get_asset_id_by_index(memory_id: String, asset_index: u32) -> String  // ✅ Conversion
-```
+1. **Add Asset IDs**: Add unique IDs to all asset types
+2. **Hybrid Approach**: Support both ID and index-based access
+3. **Feature Flags**: Make asset IDs optional/configurable
 
-### **🔧 Implementation Considerations:**
+#### **Key Considerations:**
 
-#### **Computational Cost Analysis:**
-
-1. **ID Generation**:
-
-   - **Cost**: Minimal - UUID generation is fast
-   - **Storage**: ~36 bytes per asset (UUID string)
-   - **Memory**: Negligible overhead
-
-2. **ID Lookup**:
-
-   - **Cost**: O(n) linear search through assets
-   - **Optimization**: Could add HashMap for O(1) lookup if needed
-   - **Alternative**: Keep index-based access for performance-critical paths
-
-3. **Storage Overhead**:
-   - **Per Asset**: ~36 bytes (UUID string)
-   - **For 1000 assets**: ~36KB additional storage
-   - **For 10,000 assets**: ~360KB additional storage
-
-#### **Shutdown/Disable Strategy:**
-
-```rust
-// Feature flag approach
-pub struct MemoryAssetInline {
-    pub id: Option<String>,   // ✅ Optional - can be disabled
-    pub bytes: Vec<u8>,
-    pub metadata: AssetMetadata,
-}
-
-// Runtime configuration
-pub struct AssetConfig {
-    pub enable_asset_ids: bool,  // ✅ Can be disabled
-    pub id_generation_strategy: IdGenerationStrategy,
-}
-
-// Graceful degradation
-fn asset_remove_by_id(memory_id: String, asset_id: String) {
-    if config.enable_asset_ids {
-        // Use ID-based removal
-    } else {
-        // Fall back to index-based removal
-    }
-}
-```
-
-#### **Migration Strategy:**
-
-1. **Phase 1**: Add optional ID field to existing assets
-2. **Phase 2**: Generate IDs for existing assets (background process)
-3. **Phase 3**: Make IDs required for new assets
-4. **Phase 4**: Deprecate index-only APIs
-
-#### **Performance Impact:**
-
-- **Asset Creation**: +1 UUID generation (~1μs)
-- **Asset Lookup**: +1 linear search (O(n))
-- **Memory Usage**: +36 bytes per asset
-- **API Complexity**: +1 parameter type (AssetId vs u32)
-
-### **📋 Decision Required from Tech Lead:**
-
-#### **Critical Questions:**
-
-1. **Risk Assessment**: Is the current index-only design acceptable for production?
-2. **Asset References**: Do we need external references to specific assets?
-3. **Performance vs Safety**: Is the computational cost acceptable for the safety benefits?
-4. **Migration Strategy**: How do we handle existing assets without IDs?
-5. **Feature Flags**: Should asset IDs be optional/configurable?
+- **Computational Cost**: Minimal (~1μs per asset, 36 bytes storage)
+- **Migration Strategy**: Gradual rollout with backward compatibility
+- **Performance Impact**: Negligible overhead for significant safety benefits
 
 #### **Recommendation:**
 
-**Add asset IDs immediately** - the current design is too fragile for a production system. The computational cost is minimal compared to the safety benefits.
+**Add asset IDs immediately** - the current design is too fragile for a production system.
 
 #### **API Parameter Inconsistencies:**
 
@@ -446,79 +370,15 @@ fn memories_create(...)  // ✅ No ID parameter needed
 
 #### **Recommendation: Keep Specific Parameter Names (Even with Typed IDs)**
 
-```rust
-// ✅ RECOMMENDED: Specific parameter names with typed IDs
-fn capsules_read(capsule_id: CapsuleId) -> Result<Capsule, Error>
-fn memories_read(memory_id: MemoryId) -> Result<Memory, Error>
-fn galleries_read(gallery_id: GalleryId) -> Result<Gallery, Error>
+**Decision Point**: Keep specific parameter names even with typed IDs.
 
-// ✅ Mixed parameter calls remain clear
-fn memories_create(capsule_id: CapsuleId, memory_id: MemoryId) -> Result<MemoryId, Error>
-fn asset_remove_by_id(memory_id: MemoryId, asset_id: AssetId) -> Result<(), Error>
-```
+**Rationale**:
 
-#### **Why Specific Names Are Better (Even with Typed IDs):**
+- Mixed parameter calls remain clear
+- API is self-documenting
+- Backward compatibility
 
-1. **Mixed Parameter Clarity:**
-
-   ```rust
-   // ✅ Clear which parameter is which
-   fn memories_create(capsule_id: CapsuleId, memory_id: MemoryId)
-
-   // ❌ Confusing with generic names
-   fn memories_create(capsule_id: CapsuleId, id: MemoryId)  // Which is which?
-   ```
-
-2. **API Documentation:**
-
-   ```rust
-   // ✅ Self-documenting API
-   fn memories_read(memory_id: MemoryId)  // Obviously needs a memory ID
-
-   // ❌ Less clear
-   fn memories_read(id: MemoryId)  // What kind of ID?
-   ```
-
-3. **Consistency with Current API:**
-
-   ```rust
-   // ✅ Maintains current API patterns
-   fn capsules_read(capsule_id: String)  // Current
-   fn capsules_read(capsule_id: CapsuleId)  // Proposed (just typed)
-
-   // ❌ Breaking change
-   fn capsules_read(id: CapsuleId)  // Different parameter name
-   ```
-
-4. **IDE Support:**
-
-   ```rust
-   // ✅ IDE shows clear parameter names
-   memories_read(memory_id: MemoryId)
-
-   // ❌ Less helpful
-   memories_read(id: MemoryId)
-   ```
-
-#### **Implementation Strategy:**
-
-```rust
-// Phase 1: Add typed IDs while keeping parameter names
-fn capsules_read(capsule_id: CapsuleId) -> Result<Capsule, Error>
-fn memories_read(memory_id: MemoryId) -> Result<Memory, Error>
-fn galleries_read(gallery_id: GalleryId) -> Result<Gallery, Error>
-
-// Phase 2: Update all API functions consistently
-fn capsules_create(owners: Vec<PersonRef>) -> Result<CapsuleId, Error>
-fn memories_create(capsule_id: CapsuleId, ...) -> Result<MemoryId, Error>
-fn galleries_create(capsule_id: CapsuleId, ...) -> Result<GalleryId, Error>
-
-// Phase 3: Asset operations with typed IDs
-fn asset_remove_by_id(memory_id: MemoryId, asset_id: AssetId) -> Result<(), Error>
-fn asset_remove_by_index(memory_id: MemoryId, asset_index: u32) -> Result<(), Error>
-```
-
-#### **Benefits of This Approach:**
+**Key Benefits**:
 
 - ✅ **Type Safety**: Typed IDs prevent parameter mixups
 - ✅ **API Clarity**: Parameter names are self-documenting
@@ -544,33 +404,20 @@ MemoryHeader.id      // ❌ Generic
 
 #### **Recommendation: Foreign Key vs Self ID Distinction**
 
+**Solution**: Semantic distinction:
+
+- **`id`**: Object's own identifier
+- **`{entity}_id`**: Foreign key referencing another entity
+
+**Examples**:
+
 ```rust
-// ✅ RECOMMENDED: Semantic distinction between self IDs and foreign keys
 pub struct Capsule {
-    pub id: String,  // ✅ Self ID - this IS the capsule
-    // ...
+    pub id: String,  // ✅ Self ID
 }
 
 pub struct CapsuleInfo {
-    pub capsule_id: String,  // ✅ Foreign key - references a capsule
-    pub memory_count: u32,
-    pub gallery_count: u32,
-}
-
-pub struct CapsuleHeader {
-    pub id: String,  // ✅ Self ID - this IS the capsule header
-    pub name: String,
-    pub created_at: u64,
-}
-
-pub struct Memory {
-    pub id: String,  // ✅ Self ID - this IS the memory
-    // ...
-}
-
-pub struct MemoryHeader {
-    pub id: String,  // ✅ Self ID - this IS the memory header
-    // ...
+    pub capsule_id: String,  // ✅ Foreign key
 }
 ```
 
@@ -581,135 +428,21 @@ pub struct MemoryHeader {
 pub struct Gallery {
     pub id: String,  // ✅ Self ID
     pub memories: Vec<String>,  // ❌ These are memory IDs - should be memory_ids?
-    // But Vec<memory_id> would be very verbose...
 }
 ```
 
 #### **Gallery Solution Options:**
 
-**Option 1: Explicit Foreign Key Names**
+1. **Explicit Foreign Key Names**: `memory_ids: Vec<String>`
+2. **Structured References**: `memory_references: Vec<MemoryReference>`
+3. **Keep Current**: Accept the inconsistency
 
-```rust
-pub struct Gallery {
-    pub id: String,  // ✅ Self ID
-    pub memory_ids: Vec<String>,  // ✅ Explicit foreign key names
-}
-```
-
-**Option 2: Structured References**
-
-```rust
-pub struct Gallery {
-    pub id: String,  // ✅ Self ID
-    pub memory_references: Vec<MemoryReference>,  // ✅ Structured references
-}
-
-pub struct MemoryReference {
-    pub memory_id: String,  // ✅ Foreign key
-    pub added_at: u64,      // Gallery-specific metadata
-    pub display_order: u32,
-}
-```
-
-**Option 3: Keep Current (Accept the Inconsistency)**
-
-```rust
-pub struct Gallery {
-    pub id: String,  // ✅ Self ID
-    pub memories: Vec<String>,  // ❌ Inconsistent but established
-}
-```
-
-#### **Why This Semantic Distinction is Better:**
-
-1. **Clear Semantic Meaning:**
-
-   ```rust
-   // ✅ Self ID - object's own identifier
-   pub struct Capsule { pub id: String }
-
-   // ✅ Foreign key - references another object
-   pub struct CapsuleInfo { pub capsule_id: String }
-   ```
-
-2. **Database Consistency:**
-
-   ```sql
-   -- Matches database foreign key patterns
-   CREATE TABLE capsules (id VARCHAR PRIMARY KEY);
-   CREATE TABLE capsule_info (capsule_id VARCHAR REFERENCES capsules(id));
-   ```
-
-3. **Self-Documenting:**
-
-   ```rust
-   // ✅ Field names indicate relationship type
-   pub struct CapsuleInfo {
-       pub capsule_id: String,  // Obviously references a capsule
-       pub memory_count: u32,   // Count of memories in that capsule
-   }
-   ```
-
-4. **Logical Distinction:**
-   - **`id`**: "This object's own identifier"
-   - **`capsule_id`**: "Reference to a capsule (foreign key)"
-
-#### **Implementation Strategy:**
-
-```rust
-// Phase 1: Add typed IDs to all structs with generic field names
-pub struct Capsule {
-    pub id: CapsuleId,  // ✅ Typed, generic field name
-    // ...
-}
-
-pub struct CapsuleInfo {
-    pub id: CapsuleId,  // ✅ Typed, generic field name
-    pub memory_count: u32,
-    pub gallery_count: u32,
-}
-
-// Phase 2: Update all sub-types consistently
-pub struct CapsuleHeader {
-    pub id: CapsuleId,  // ✅ Typed, generic field name
-    pub name: String,
-    pub created_at: u64,
-}
-
-// Phase 3: Memory types follow same pattern
-pub struct Memory {
-    pub id: MemoryId,  // ✅ Typed, generic field name
-    // ...
-}
-
-pub struct MemoryHeader {
-    pub id: MemoryId,  // ✅ Typed, generic field name
-    // ...
-}
-```
-
-#### **Benefits of This Approach:**
+#### **Key Benefits**:
 
 - ✅ **Type Safety**: Typed IDs prevent field mixups
 - ✅ **Consistency**: All structs use same field naming pattern
-- ✅ **Less Verbose**: Shorter field names
-- ✅ **API Clarity**: API parameters can be specific while struct fields are generic
-- ✅ **Uniform Access**: Same field name across all sub-types
-
-#### **The Key Insight:**
-
-**API parameters and struct fields serve different purposes:**
-
-- **API parameters**: Need clarity for mixed parameter calls → use specific names
-- **Struct fields**: Need consistency across types → use generic names with typed IDs
-
-#### **Summary of Exact Issues:**
-
-1. **Struct fields**: Mix of `id` vs `{entity}_id`
-2. **API parameters**: Always use `{entity}_id` format
-3. **Header types**: Use generic `id` field
-4. **Info types**: Use specific `{entity}_id` field
-5. **Asset references**: Use `asset_index` instead of `asset_id`
+- ✅ **Self-Documenting**: Field names indicate relationship type
+- ✅ **Database Consistency**: Matches foreign key patterns
 
 ### **🎯 Recommended Solution: Typed IDs**
 
@@ -736,17 +469,6 @@ pub struct CapsuleId(String);
 pub struct MemoryId(String);
 pub struct GalleryId(String);
 pub struct AssetId(String);
-
-// Usage in main entities
-pub struct Capsule {
-    pub id: CapsuleId,  // ✅ Clear this is a capsule ID
-    // ...
-}
-
-pub struct Memory {
-    pub id: MemoryId,  // ✅ Clear this is a memory ID
-    // ...
-}
 ```
 
 #### **Benefits of Typed IDs:**
@@ -755,21 +477,6 @@ pub struct Memory {
 - ✅ **Self-Documenting**: Code intent is clear
 - ✅ **API Clarity**: Function signatures are unambiguous
 - ✅ **Refactoring Safety**: Changes caught at compile time
-
-#### **Example Usage:**
-
-```rust
-// API functions become self-documenting
-fn capsules_read(capsule_id: CapsuleId) -> Result<Capsule, Error>
-fn memories_read(memory_id: MemoryId) -> Result<Memory, Error>
-fn galleries_read(gallery_id: GalleryId) -> Result<Gallery, Error>
-
-// Type safety prevents bugs
-fn process_memory(capsule_id: CapsuleId, memory_id: MemoryId) {
-    // ✅ Can't accidentally pass wrong ID type
-    // ❌ process_memory(memory_id, capsule_id) // Compile error!
-}
-```
 
 ### **🤔 Decision Point: Sub-Type Field Naming**
 
@@ -974,13 +681,261 @@ pub struct MemoryHeader {
 // Asset subtypes - MISSING
 ```
 
-#### **Inconsistencies in Header/Info Types:**
+#### **🤔 The Core Question: Do We Need Both Info and Header Types?**
+
+**Current Inconsistencies:**
 
 1. **Naming**: `id` vs `capsule_id` vs `memory_id`
 2. **Structure**: Different field sets for similar purposes
 3. **Missing types**: No GalleryHeader or AssetHeader
 4. **Field consistency**: Some have `created_at`, others don't
 5. **Access control**: Some have access info, others don't
+
+#### **📊 Pro/Con Analysis: Keep Both Info and Header Types**
+
+##### **✅ Arguments FOR Keeping Both Types:**
+
+**1. Different Use Cases:**
+
+- **Info Types**: Detailed views, user-specific information, permissions
+- **Header Types**: List views, lightweight operations, basic metadata
+
+**2. Performance Optimization:**
+
+- **Info Types**: More computation (counts, permissions, relationships)
+- **Header Types**: Lightweight, minimal computation
+- **Data Transfer**: Headers are smaller for list operations
+
+**3. API Granularity:**
+
+- **Info Endpoints**: `/capsules/info/{id}` - detailed view
+- **Header Endpoints**: `/capsules/header/{id}` - list view
+- **Different Clients**: Mobile vs desktop, different data needs
+
+**4. Security Considerations:**
+
+- **Info Types**: Include permission checks (`is_owner`, `is_controller`)
+- **Header Types**: Basic metadata only, no sensitive permissions
+- **Access Control**: Different security requirements
+
+##### **❌ Arguments AGAINST Keeping Both Types:**
+
+**1. Type Proliferation:**
+
+- **More Types**: CapsuleInfo, CapsuleHeader, MemoryInfo, MemoryHeader, etc.
+- **API Complexity**: More endpoints to maintain
+- **Documentation**: More types to document and explain
+
+**2. Inconsistency Risk:**
+
+- **Naming Inconsistencies**: `id` vs `capsule_id` patterns
+- **Field Inconsistencies**: Different field sets for similar purposes
+- **Maintenance Burden**: Two types to keep in sync
+
+**3. Developer Confusion:**
+
+- **Which Type to Use**: When to use Info vs Header?
+- **API Choice**: Multiple endpoints for similar data
+- **Learning Curve**: More types to understand
+
+**4. Maintenance Overhead:**
+
+- **Code Duplication**: Similar logic in both types
+- **Testing**: More types to test
+- **Updates**: Changes need to be applied to both types
+
+#### **🎯 Alternative Approaches:**
+
+##### **Option 1: Consolidate into Single Type**
+
+```rust
+// Single lightweight type for all use cases
+pub struct CapsuleSummary {
+    pub id: String,
+    pub subject: PersonRef,
+    pub created_at: u64,
+    pub updated_at: u64,
+    // Optional computed fields
+    pub memory_count: Option<u64>,
+    pub is_owner: Option<bool>,
+}
+```
+
+**Pros**: Simpler, consistent, less types
+**Cons**: Less optimized, always includes optional fields
+
+##### **Option 2: Standardize Both Types**
+
+```rust
+// Consistent naming and structure
+pub struct CapsuleInfo {
+    pub id: String,  // ✅ Consistent naming
+    pub subject: PersonRef,
+    pub is_owner: bool,
+    pub memory_count: u64,
+    // ... computed fields
+}
+
+pub struct CapsuleHeader {
+    pub id: String,  // ✅ Consistent naming
+    pub subject: PersonRef,
+    pub memory_count: u64,
+    // ... basic fields only
+}
+```
+
+**Pros**: Consistent, optimized for different use cases
+**Cons**: Still two types to maintain
+
+##### **Option 3: Choose One Pattern**
+
+```rust
+// Either all Info or all Header pattern
+pub struct CapsuleInfo { /* detailed */ }
+pub struct MemoryInfo { /* detailed */ }
+pub struct GalleryInfo { /* detailed */ }
+// No Header types
+```
+
+**Pros**: Consistent pattern, single approach
+**Cons**: Less optimized for different use cases
+
+#### **📋 Missing Types Analysis:**
+
+**Should we add missing types?**
+
+**GalleryHeader:**
+
+```rust
+pub struct GalleryHeader {
+    pub id: String,
+    pub name: String,
+    pub memory_count: u64,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub access: GalleryAccess,
+}
+```
+
+**MemoryInfo:**
+
+```rust
+pub struct MemoryInfo {
+    pub id: String,
+    pub name: String,
+    pub memory_type: MemoryType,
+    pub size: u64,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub access: MemoryAccess,
+    pub asset_count: u64,
+    pub is_owner: bool,
+}
+```
+
+**AssetHeader:**
+
+```rust
+pub struct AssetHeader {
+    pub id: String,
+    pub asset_type: AssetType,
+    pub size: u64,
+    pub created_at: u64,
+    pub storage_type: StorageType,
+}
+```
+
+#### **🎯 Recommendation:**
+
+**Standardize Both Types** - They serve different use cases:
+
+1. **Keep Info Types**: For detailed views with permissions and counts
+2. **Keep Header Types**: For list views with basic metadata
+3. **Add Missing Types**: GalleryHeader, MemoryInfo, AssetHeader
+4. **Standardize Naming**: Consistent `id` vs `{entity}_id` patterns
+5. **Consistent Structure**: Same field patterns across all types
+
+**Key Benefits**:
+
+- ✅ **Performance**: Optimized for different use cases
+- ✅ **Consistency**: All entities follow same patterns
+- ✅ **Completeness**: All entities have both Info and Header types
+- ✅ **API Clarity**: Clear distinction between detailed and list views
+
+#### **📋 Naming Convention Options for Tech Lead Decision:**
+
+**Option 1: "View" Pattern (Industry Standard)**
+
+```rust
+pub struct CapsuleView { /* ... */ }
+pub struct MemoryView { /* ... */ }
+pub struct GalleryView { /* ... */ }
+```
+
+- ✅ **Industry Standard**: Used by GitHub, Stripe, AWS APIs
+- ✅ **Clear Intent**: Represents a view of the data
+- ✅ **Flexible**: Can be different views (list, detail, etc.)
+- ✅ **Future-Proof**: Can evolve without breaking changes
+
+**Option 2: "Info" Pattern (Current)**
+
+```rust
+pub struct CapsuleInfo { /* ... */ }
+pub struct MemoryInfo { /* ... */ }
+pub struct GalleryInfo { /* ... */ }
+```
+
+- ✅ **Current**: Already in codebase
+- ✅ **Clear**: Information about the entity
+- ✅ **Simple**: Easy to understand
+- ❌ **Might imply**: Always detailed
+
+**Option 3: "Header" Pattern (Current)**
+
+```rust
+pub struct CapsuleHeader { /* ... */ }
+pub struct MemoryHeader { /* ... */ }
+pub struct GalleryHeader { /* ... */ }
+```
+
+- ✅ **Clear**: Implies lightweight, list-oriented
+- ✅ **Current**: Already in codebase
+- ❌ **Less Common**: Not widely used in APIs
+- ❌ **Might imply**: Always lightweight
+
+**Option 4: "Details" Pattern**
+
+```rust
+pub struct CapsuleDetails { /* ... */ }
+pub struct MemoryDetails { /* ... */ }
+pub struct GalleryDetails { /* ... */ }
+```
+
+- ✅ **Clear**: Detailed information
+- ✅ **Common**: Used in many APIs
+- ❌ **Might imply**: Always detailed (not flexible)
+
+**Option 5: Consolidate to Single Type**
+
+```rust
+// Single type per entity with optional computed fields
+pub struct CapsuleSummary {
+    pub id: String,
+    pub subject: PersonRef,
+    pub created_at: u64,
+    pub updated_at: u64,
+    // Optional computed fields
+    pub memory_count: Option<u64>,
+    pub is_owner: Option<bool>,
+}
+```
+
+- ✅ **Simplest**: One type per entity
+- ✅ **Flexible**: Include computed fields only when needed
+- ✅ **Consistent**: Same pattern for all entities
+- ✅ **Less Maintenance**: One type to keep in sync
+
+**Decision Required**: Which naming convention should we adopt for the subtype pattern?
 
 ### **🤔 Entity Reference Type Proliferation Problem**
 
@@ -1101,6 +1056,171 @@ pub struct GalleryMemoryEntry {
 - **Memory**: No resource tracking
 - **Gallery**: No resource tracking
 - **Assets**: No resource tracking
+
+#### **🤔 Resource Tracking Architecture Decision: Separate Cycles from Storage?**
+
+**Current Approach**: Combined tracking in single `ResourceTracking` struct
+
+```rust
+pub struct ResourceTracking {
+    pub allocated_storage_bytes: u64,    // Storage quota
+    pub used_storage_bytes: u64,        // Storage usage
+    pub allocated_cycles: u64,          // Cycle quota
+    pub consumed_cycles: u64,           // Cycle usage
+    pub storage_tier: StorageTier,      // Storage tier
+    pub cycle_billing_enabled: bool,    // Cycle billing flag
+}
+```
+
+**Alternative Approach**: Separate tracking structs
+
+```rust
+pub struct StorageTracking {
+    pub allocated_bytes: u64,
+    pub used_bytes: u64,
+    pub tier: StorageTier,
+    pub last_accessed_at: u64,
+}
+
+pub struct CycleTracking {
+    pub allocated_cycles: u64,
+    pub consumed_cycles: u64,
+    pub billing_enabled: bool,
+    pub consumption_rate: f64,
+}
+```
+
+**Arguments FOR Separation:**
+
+- ✅ **Different Resource Types**: Storage is persistent, cycles are consumed
+- ✅ **Different Ownership Models**:
+  - **Storage**: Prepaid ownership (buy 100 years, you own it)
+  - **Cycles**: Consumable resource (use it up, need to recharge)
+- ✅ **Different Quota Enforcement**: Storage limits are hard, cycle limits are soft
+- ✅ **Different Analytics**: Storage trends vs cycle consumption patterns
+- ✅ **Independent Scaling**: Storage and compute can scale independently
+
+**Arguments AGAINST Separation:**
+
+- ❌ **Complexity**: Two tracking systems to maintain
+- ❌ **API Complexity**: More endpoints and types
+- ❌ **Current Working**: Single struct is simpler
+- ❌ **Over-Engineering**: May be unnecessary complexity
+
+**Key Questions:**
+
+1. **Ownership Model**:
+   - **Self-capsules**: Prepaid ownership (buy 100 years, you own it)
+   - **Shared capsules**: Traditional billing (monthly subscriptions)
+2. **Quota Enforcement**: Are storage and cycle limits independent?
+3. **User Experience**: Do users need separate storage vs cycle dashboards?
+4. **Analytics**: Do we need separate storage vs cycle analytics?
+
+**Self-Capsule vs Shared-Capsule Distinction:**
+
+- **Self-Capsules**: "Buy once, own forever" - prepaid ownership model
+- **Shared-Capsules**: Traditional billing - monthly subscriptions, usage-based pricing
+- **Resource Tracking**: Same technical tracking, different business models
+
+**Recommendation**: **Separate them** - Storage and cycles are fundamentally different resource types with different ownership models (prepaid vs consumable) and enforcement needs.
+
+---
+
+## **🎯 TECH LEAD DECISION: MVP-FOCUSED APPROACH**
+
+### **✅ What's Solid (Keep)**
+
+- **Problem framing is right:** naming drift, asset-index fragility, and header/info drift are the real pain points
+- **Asset IDs:** 100% agree. Index-only is brittle. Give every asset a stable `asset_id` (UUID). Keep index purely for **ordering**
+- **API param names:** Prefer **specific names** (`capsule_id`, `memory_id`, `asset_id`) in function signatures. It's self-documenting and avoids mixed-ID confusion
+- **Gallery references:** Add a wrapper (e.g., `GalleryMemoryEntry`) so we can carry `added_at/added_by/order` alongside the reference
+
+### **⏸️ What to Trim for MVP**
+
+- **Do not unify Access/Lifecycle/Resource into shared mega-structs** right now. Capsules can stay rich; Memories/Galleries keep the lighter access model. We can converge later if needed
+- **Typed-ID newtypes everywhere:** great idea, but optional for MVP. Start with **string UUIDs + naming convention**; introduce `CapsuleId`/`MemoryId` newtypes later when churn stabilizes
+
+### **🔧 Concrete Decisions (Tech Lead's Call)**
+
+#### **1. IDs & Naming**
+
+- **In structs:** **self id is `id`**. Foreign keys use `{entity}_id`
+- **In APIs:** **parameters use specific names** (`capsule_id`, `memory_id`, `gallery_id`, `asset_id`)
+- **In "*Info/*Header" types:** field is **`id`** (same as entity), not `capsule_id`. The type already disambiguates
+
+#### **2. Headers vs Info**
+
+- **Keep both**, but **standardize**:
+  - `*Header`: lightweight list item; no computed permissions; always has `id`, `created_at`, `updated_at`, minimal summary fields
+  - `*Info`: per-user, computed data (counts/flags like `is_owner`, `is_controller`)
+- **Add the missing ones:** `GalleryHeader`, `MemoryInfo`, `AssetHeader`
+
+#### **3. Assets**
+
+- **Introduce `asset_id: string` on all asset variants**
+- **Keep arrays; index = order only**. Reordering changes index, not identity
+- \*\*Add APIs that accept either `asset_id` (preferred) or `(memory_id, index)` for backward compat; deprecate index-path later
+
+#### **4. Galleries**
+
+- **Replace `Vec<String>` with:**
+
+```rust
+pub struct GalleryMemoryEntry {
+    pub memory_id: String,
+    pub added_at: u64,
+    pub added_by: PersonRef,
+    pub display_order: u32,
+    pub notes: Option<String>,
+}
+
+pub struct Gallery {
+    pub id: String,
+    pub capsule_id: String,
+    pub entries: Vec<GalleryMemoryEntry>,
+    // access, metadata…
+}
+```
+
+#### **5. Resource Tracking**
+
+- **Keep simple at capsule-level for MVP**. Defer "separate storage vs cycles" until we actually need distinct policies/UX
+
+### **📋 Minimal Migration Plan**
+
+#### **Phase A (No Breaking)**
+
+- Add `asset_id` to assets; populate for existing items
+- Add `GalleryMemoryEntry` and map existing `memory_ids` to entries (default `display_order = i`)
+- Standardize API param names (server can accept both new/old; warn on old)
+
+#### **Phase B**
+
+- Add missing `*Header/*Info` types; adjust list/detail endpoints to return the right flavor
+- Deprecate index-based asset mutation endpoints
+
+### **🛡️ Guardrails/Checklist**
+
+- **Lint schema/IDL:** forbid introducing `{entity}_id` for self ids in structs; require it for foreign keys
+- **Docs:** one page with three tables—
+  1. **Entity structs** (self ids & FKs)
+  2. **Header vs Info fields** per entity
+  3. **ID usage rules** (structs vs API params)
+- **Tests:** reordering assets must preserve `asset_id`s; gallery entries keep `added_at/added_by` on reorder
+
+### **❓ Answering Open Questions**
+
+- **Typed IDs vs explicit names?** Start with **explicit names**; add typed IDs later (nice-to-have)
+- **Sub-type field naming?** Use **`id`** (generic) in sub-types; the **type** disambiguates. Keep API params specific
+- **Entity-ref proliferation?** Use **`GalleryMemoryEntry`** (specific wrapper) rather than a generic `EntityRef<T>`; simpler and clearer
+
+### **🚀 TL;DR Action Items**
+
+- ✅ **Add `asset_id`** (keep index for order)
+- ✅ **Standardize:** structs use `id` for self, `{entity}_id` for FKs; APIs use specific param names
+- ✅ **Keep `Header` (light) and `Info` (computed)** for all entities; add missing ones
+- ✅ **Replace gallery `Vec<String>` with `Vec<GalleryMemoryEntry>`**
+- ⏸️ **Defer mega unification** (Access/Lifecycle/Resource) and typed newtypes until after MVP
 
 #### **5. Content Organization Inconsistency**
 
@@ -1398,3 +1518,9 @@ pub struct Asset {
 **Priority**: 🔥 **High** - Architectural consistency  
 **Estimated Effort**: 4-6 weeks  
 **Dependencies**: Tech lead review and prioritization
+
+---
+
+## **📋 Recommended Implementation**
+
+**See [Type Consistency Design](type-consistency-design.md) for the complete recommended implementation.**
