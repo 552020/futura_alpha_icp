@@ -304,6 +304,29 @@ export function validateUploadResponse(response, expectedFields = []) {
 // ============================================================================
 
 /**
+ * Echo functions for consistent logging across tests
+ */
+export function echoInfo(message) {
+  console.log(`ℹ️  ${message}`);
+}
+
+export function echoPass(message) {
+  console.log(`✅ ${message}`);
+}
+
+export function echoFail(message) {
+  console.log(`❌ ${message}`);
+}
+
+export function echoError(message) {
+  console.error(`💥 ${message}`);
+}
+
+export function echoWarning(message) {
+  console.log(`⚠️  ${message}`);
+}
+
+/**
  * Format file size for logging
  * Adapted from frontend size formatting
  */
