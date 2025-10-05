@@ -12,7 +12,7 @@ pub fn memories_update_core<E: Env, S: Store>(
     store: &mut S,
     memory_id: MemoryId,
     updates: MemoryUpdateData,
-) -> std::result::Result<(), Error> {
+) -> std::result::Result<crate::types::Memory, Error> {
     // Capture timestamp once for consistency
     let now = env.now();
 
@@ -50,13 +50,12 @@ pub fn memories_update_core<E: Env, S: Store>(
                         "Post-update readback failed: memory was not updated".to_string(),
                     ));
                 }
+                return Ok(updated_memory);
             } else {
                 return Err(Error::Internal(
                     "Post-update readback failed: memory was not found".to_string(),
                 ));
             }
-
-            return Ok(());
         }
     }
 

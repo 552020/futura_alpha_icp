@@ -12,7 +12,7 @@ pub enum PaginationOrder {
 }
 
 /// Pagination result containing items and optional cursor for next page
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, candid::CandidType, candid::Deserialize, serde::Serialize)]
 pub struct Page<T> {
     /// The items for this page
     pub items: Vec<T>,
