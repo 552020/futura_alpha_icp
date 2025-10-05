@@ -2,6 +2,7 @@ use crate::canister_factory::types::*;
 use crate::types;
 use candid::Principal;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Begin a new import session for chunked data transfer
 /// This function creates a new import session and returns a session ID
@@ -555,6 +556,11 @@ fn create_memory_from_assembled_data(
         } else {
             // Create new inline asset if none exists
             memory.inline_assets.push(types::MemoryAssetInline {
+                asset_id: {
+                    use uuid::Uuid;
+                    let seed = format!("import-{}-{}", memory_id, ic_cdk::api::time());
+                    Uuid::new_v5(&Uuid::NAMESPACE_OID, seed.as_bytes()).to_string()
+                },
                 bytes: data,
                 metadata: types::AssetMetadata::Document(types::DocumentAssetMetadata {
                     base: types::AssetMetadataBase {
@@ -610,6 +616,11 @@ fn create_memory_from_assembled_data(
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
             },
             inline_assets: vec![types::MemoryAssetInline {
+                asset_id: {
+                    use uuid::Uuid;
+                    let seed = format!("import-{}-{}", memory_id, ic_cdk::api::time());
+                    Uuid::new_v5(&Uuid::NAMESPACE_OID, seed.as_bytes()).to_string()
+                },
                 bytes: data,
                 metadata: types::AssetMetadata::Document(types::DocumentAssetMetadata {
                     base: types::AssetMetadataBase {

@@ -294,6 +294,7 @@ mod tests {
             },
             inline_assets: vec![],
             blob_internal_assets: vec![types::MemoryAssetBlobInternal {
+                asset_id: format!("test_asset_{}", id),
                 blob_ref: types::BlobRef {
                     locator: format!("memory_{}", id),
                     hash: None,

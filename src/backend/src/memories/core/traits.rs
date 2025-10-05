@@ -25,6 +25,12 @@ pub trait Store {
         capsule: &CapsuleId,
         id: &MemoryId,
     ) -> std::result::Result<(), Error>;
+    fn update_memory(
+        &mut self,
+        capsule: &CapsuleId,
+        id: &MemoryId,
+        memory: Memory,
+    ) -> std::result::Result<(), Error>;
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId>;
     fn get_capsule_for_acl(&self, capsule_id: &CapsuleId) -> Option<CapsuleAccess>;
 }

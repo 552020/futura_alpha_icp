@@ -273,14 +273,14 @@ fn memories_create(
     external_hash: Option<Vec<u8>>,
     asset_metadata: types::AssetMetadata,
     idem: String,
-) -> std::result::Result<types::MemoryId, Error> {
+) -> types::Result_20 {
     use crate::memories::core::memories_create_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    memories_create_core(
+    match memories_create_core(
         &env,
         &mut store,
         capsule_id,
@@ -293,7 +293,10 @@ fn memories_create(
         external_hash,
         asset_metadata,
         idem,
-    )
+    ) {
+        Ok(memory_id) => types::Result_20::Ok(memory_id),
+        Err(error) => types::Result_20::Err(error),
+    }
 }
 
 #[ic_cdk::query]
@@ -304,33 +307,15 @@ fn memories_read(memory_id: String) -> std::result::Result<types::Memory, Error>
     let env = CanisterEnv;
     let store = StoreAdapter;
 
-    // Get the full memory but strip blob data for performance
-    let memory = memories_read_core(&env, &store, memory_id)?;
-
-    // Create a new memory with empty blob data but preserved metadata
-    let mut stripped_memory = memory.clone();
-    for asset in &mut stripped_memory.inline_assets {
-        asset.bytes.clear(); // Remove blob data, keep metadata
-    }
-    // blob_internal_assets and blob_external_assets keep their references (no blob data to clear)
-
-    Ok(stripped_memory)
-}
-
-#[ic_cdk::query]
-fn memories_read_with_assets(memory_id: String) -> std::result::Result<types::Memory, Error> {
-    use crate::memories::core::memories_read_core;
-    use crate::memories::{CanisterEnv, StoreAdapter};
-
-    let env = CanisterEnv;
-    let store = StoreAdapter;
-
-    // Return full memory with all blob data (original behavior)
+    // Get the full memory with all content
     memories_read_core(&env, &store, memory_id)
 }
 
 #[ic_cdk::query]
-fn memories_read_asset(memory_id: String, asset_index: u32) -> std::result::Result<Vec<u8>, Error> {
+fn memories_read_asset(
+    memory_id: String,
+    asset_index: u32,
+) -> std::result::Result<types::MemoryAssetData, Error> {
     use crate::memories::core::memories_read_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
@@ -345,28 +330,37 @@ fn memories_read_asset(memory_id: String, asset_index: u32) -> std::result::Resu
 
     // Check inline assets first
     if asset_index < memory.inline_assets.len() {
-        return Ok(memory.inline_assets[asset_index].bytes.clone());
+        let asset = &memory.inline_assets[asset_index];
+        return Ok(types::MemoryAssetData::Inline {
+            bytes: asset.bytes.clone(),
+            content_type: asset.metadata.get_base().mime_type.clone(),
+            size: asset.bytes.len() as u64,
+            sha256: asset.metadata.get_base().sha256.map(|h| h.to_vec()),
+        });
     }
 
     // Check blob internal assets
     let inline_count = memory.inline_assets.len();
     if asset_index < inline_count + memory.blob_internal_assets.len() {
-        let _blob_index = asset_index - inline_count;
-        // For blob internal assets, we need to fetch from blob store
-        // This would require implementing blob retrieval logic
-        return Err(Error::NotImplemented(
-            "Blob internal asset retrieval not yet implemented".to_string(),
-        ));
+        let blob_index = asset_index - inline_count;
+        let asset = &memory.blob_internal_assets[blob_index];
+        return Ok(types::MemoryAssetData::InternalBlob {
+            blob_id: asset.blob_ref.locator.clone(),
+            size: asset.blob_ref.len,
+            sha256: asset.blob_ref.hash.map(|h| h.to_vec()),
+        });
     }
 
     // Check blob external assets
     let blob_internal_count = memory.blob_internal_assets.len();
     if asset_index < inline_count + blob_internal_count + memory.blob_external_assets.len() {
-        let _external_index = asset_index - inline_count - blob_internal_count;
-        // For external assets, we would need to fetch from external storage
-        return Err(Error::NotImplemented(
-            "External asset retrieval not yet implemented".to_string(),
-        ));
+        let external_index = asset_index - inline_count - blob_internal_count;
+        let asset = &memory.blob_external_assets[external_index];
+        return Ok(types::MemoryAssetData::ExternalUrl {
+            url: asset.url.clone().unwrap_or_default(),
+            size: Some(asset.metadata.get_base().bytes),
+            sha256: asset.metadata.get_base().sha256.map(|h| h.to_vec()),
+        });
     }
 
     Err(Error::InvalidArgument(format!(
@@ -379,52 +373,75 @@ fn memories_read_asset(memory_id: String, asset_index: u32) -> std::result::Resu
 fn memories_update(
     memory_id: String,
     updates: types::MemoryUpdateData,
-) -> types::MemoryOperationResponse {
+) -> std::result::Result<types::Memory, Error> {
     use crate::memories::core::memories_update_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    match memories_update_core(&env, &mut store, memory_id, updates) {
-        Ok(()) => types::MemoryOperationResponse {
-            memory_id: None,
-            message: "Memory updated successfully".to_string(),
-            success: true,
-        },
-        Err(e) => types::MemoryOperationResponse {
-            memory_id: None,
-            message: format!("Failed to update memory: {:?}", e),
-            success: false,
-        },
-    }
+    memories_update_core(&env, &mut store, memory_id, updates)
 }
 
 #[ic_cdk::update]
-fn memories_delete(memory_id: String) -> types::MemoryOperationResponse {
+fn memories_delete(memory_id: String) -> std::result::Result<(), Error> {
     use crate::memories::core::memories_delete_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    match memories_delete_core(&env, &mut store, memory_id) {
-        Ok(()) => types::MemoryOperationResponse {
-            memory_id: None,
-            message: "Memory deleted successfully".to_string(),
-            success: true,
-        },
-        Err(e) => types::MemoryOperationResponse {
-            memory_id: None,
-            message: format!("Failed to delete memory: {:?}", e),
-            success: false,
-        },
-    }
+    memories_delete_core(&env, &mut store, memory_id)
 }
 
 #[ic_cdk::query]
-fn memories_list(capsule_id: String) -> types::MemoryListResponse {
-    crate::memories::list(capsule_id)
+fn memories_list(
+    capsule_id: String,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> std::result::Result<crate::capsule_store::types::Page<types::MemoryHeader>, Error> {
+    use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
+    use crate::memory::with_capsule_store;
+    use crate::types::PersonRef;
+
+    let caller = PersonRef::from_caller();
+    let limit = limit.unwrap_or(50).min(100); // Default 50, max 100
+
+    with_capsule_store(|store| {
+        store
+            .get(&capsule_id)
+            .and_then(|capsule| {
+                // Check if caller has read access
+                if capsule.has_read_access(&caller) {
+                    // Get memories with pagination
+                    let memories: Vec<types::MemoryHeader> = capsule
+                        .memories
+                        .values()
+                        .map(|memory| memory.to_header())
+                        .collect();
+
+                    // Simple pagination implementation
+                    let start_idx = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
+
+                    let end_idx = (start_idx + limit as usize).min(memories.len());
+                    let page_items = memories[start_idx..end_idx].to_vec();
+
+                    let next_cursor = if end_idx < memories.len() {
+                        Some(end_idx.to_string())
+                    } else {
+                        None
+                    };
+
+                    Some(crate::capsule_store::types::Page {
+                        items: page_items,
+                        next_cursor,
+                    })
+                } else {
+                    None
+                }
+            })
+            .ok_or(Error::NotFound)
+    })
 }
 
 // === Presence ===
@@ -1114,14 +1131,32 @@ fn memories_cleanup_assets_all(
 #[ic_cdk::update]
 fn memories_cleanup_assets_bulk(
     memory_ids: Vec<String>,
-) -> Result<crate::memories::types::BulkAssetCleanupResult, Error> {
+) -> Result<types::BulkResult<String>, Error> {
     use crate::memories::core::memories_cleanup_assets_bulk_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    memories_cleanup_assets_bulk_core(&env, &mut store, memory_ids)
+    match memories_cleanup_assets_bulk_core(&env, &mut store, memory_ids.clone()) {
+        Ok(_result) => {
+            // Convert BulkAssetCleanupResult to BulkResult<String>
+            // Since the core function doesn't provide per-item tracking yet,
+            // we'll simulate the results based on the aggregate counts
+            let mut ok = Vec::new();
+            let failed = Vec::new();
+
+            // For now, we'll treat all input memory_ids as successful
+            // since the core function doesn't provide per-item failure tracking
+            // TODO: Update core function to provide per-item results
+            for memory_id in memory_ids {
+                ok.push(memory_id);
+            }
+
+            Ok(types::BulkResult { ok, failed })
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // ============================================================================
@@ -1186,6 +1221,33 @@ fn asset_remove_external(
     let mut store = StoreAdapter;
 
     asset_remove_external_core(&env, &mut store, memory_id, storage_key)
+}
+
+/// Remove a specific asset from a memory by asset_id
+#[ic_cdk::update]
+fn asset_remove_by_id(
+    memory_id: String,
+    asset_id: String,
+) -> Result<crate::memories::types::AssetRemovalResult, Error> {
+    use crate::memories::core::asset_remove_by_id_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    asset_remove_by_id_core(&env, &mut store, memory_id, asset_id)
+}
+
+/// Get a specific asset from a memory by asset_id
+#[ic_cdk::query]
+fn asset_get_by_id(memory_id: String, asset_id: String) -> Result<types::MemoryAssetData, Error> {
+    use crate::memories::core::asset_get_by_id_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let store = StoreAdapter;
+
+    asset_get_by_id_core(&env, &store, memory_id, asset_id)
 }
 
 /// List all assets in a memory

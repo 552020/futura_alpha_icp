@@ -231,6 +231,7 @@ pub struct BlobMeta {
 /// Inline asset (stored directly in memory)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetInline {
+    pub asset_id: String, // Unique identifier for this asset
     pub bytes: Vec<u8>,
     pub metadata: AssetMetadata,
 }
@@ -238,6 +239,7 @@ pub struct MemoryAssetInline {
 /// Blob asset (reference to ICP blob store)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetBlobInternal {
+    pub asset_id: String, // Unique identifier for this asset
     pub blob_ref: BlobRef,
     pub metadata: AssetMetadata,
 }
@@ -245,6 +247,7 @@ pub struct MemoryAssetBlobInternal {
 /// External blob asset (reference to external storage)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetBlobExternal {
+    pub asset_id: String,              // Unique identifier for this asset
     pub location: StorageEdgeBlobType, // Where the asset is stored externally
     pub storage_key: String,           // Key/ID in external storage system
     pub url: Option<String>,           // Public URL (if available)

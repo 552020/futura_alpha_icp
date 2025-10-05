@@ -81,6 +81,27 @@ impl crate::memories::core::Store for StoreAdapter {
         })
     }
 
+    fn update_memory(
+        &mut self,
+        capsule: &CapsuleId,
+        id: &MemoryId,
+        memory: Memory,
+    ) -> std::result::Result<(), Error> {
+        with_capsule_store_mut(|store| {
+            match store.update_with(capsule, |capsule_data| {
+                if capsule_data.memories.contains_key(id) {
+                    capsule_data.memories.insert(id.clone(), memory);
+                    Ok(())
+                } else {
+                    Err(Error::NotFound)
+                }
+            }) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(Error::Internal(format!("Failed to update memory: {:?}", e))),
+            }
+        })
+    }
+
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId> {
         with_capsule_store(|store| {
             let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
@@ -253,6 +274,7 @@ impl Memory {
             }, // Default to private access
             inline_assets: vec![],
             blob_internal_assets: vec![crate::types::MemoryAssetBlobInternal {
+                asset_id: format!("blob_{}_{}", blob_id, now),
                 blob_ref: crate::types::BlobRef {
                     locator: format!("blob_{blob_id}"),
                     hash: Some(checksum),

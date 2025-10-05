@@ -15,8 +15,6 @@ pub use crate::upload::types::*;
 
 /// Type alias for capsule identifiers (used throughout the codebase)
 pub type CapsuleId = String;
-
-/// Type alias for memory identifiers
 pub type MemoryId = String;
 
 // ============================================================================
@@ -43,6 +41,63 @@ pub enum Result_6 {
     Ok(String),
     Err(Error),
 }
+
+/// Result type for memories_create function (MemoryId or Error)
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum Result_20 {
+    Ok(String), // MemoryId
+    Err(Error),
+}
+
+/// Discriminated union for structured asset data
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum MemoryAssetData {
+    Inline {
+        bytes: Vec<u8>,
+        content_type: String,
+        size: u64,
+        sha256: Option<Vec<u8>>,
+    },
+    InternalBlob {
+        blob_id: String,
+        size: u64,
+        sha256: Option<Vec<u8>>,
+    },
+    ExternalUrl {
+        url: String,
+        size: Option<u64>,
+        sha256: Option<Vec<u8>>,
+    },
+}
+
+/// Standardized bulk operation result with per-item failure tracking
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct BulkResult<TId> {
+    pub ok: Vec<TId>,
+    pub failed: Vec<BulkFailure<TId>>,
+}
+
+/// Individual failure in bulk operation
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct BulkFailure<TId> {
+    pub id: TId,
+    pub err: Error,
+}
+
+// ============================================================================
+// ID HYGIENE - FUTURE NEWTYPE WRAPPERS (PHASE 5 DEFERRED)
+// ============================================================================
+
+// NOTE: Phase 5 (ID Hygiene) is deferred due to extensive codebase changes required.
+// The newtype wrappers would require updating all function signatures and trait implementations.
+// For now, we keep the existing type aliases for backward compatibility.
+//
+// Future implementation would include:
+// - MemoryId(String) newtype wrapper
+// - CapsuleId(String) newtype wrapper
+// - AssetId(String) newtype wrapper
+// - Proper trait implementations (Display, Ord, etc.)
+// - Conversion helpers between Rust and DID types
 
 // UploadFinishResult moved to upload/types.rs
 
@@ -463,6 +518,7 @@ pub struct BlobMeta {
 // Inline asset (stored directly in memory)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetInline {
+    pub asset_id: String, // Unique identifier for this asset
     pub bytes: Vec<u8>,
     pub metadata: AssetMetadata,
 }
@@ -470,6 +526,7 @@ pub struct MemoryAssetInline {
 // Blob asset (reference to ICP blob store)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetBlobInternal {
+    pub asset_id: String, // Unique identifier for this asset
     pub blob_ref: BlobRef,
     pub metadata: AssetMetadata,
 }
@@ -477,6 +534,7 @@ pub struct MemoryAssetBlobInternal {
 // External blob asset (reference to external storage)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct MemoryAssetBlobExternal {
+    pub asset_id: String,              // Unique identifier for this asset
     pub location: StorageEdgeBlobType, // Where the asset is stored externally
     pub storage_key: String,           // Key/ID in external storage system
     pub url: Option<String>,           // Public URL (if available)

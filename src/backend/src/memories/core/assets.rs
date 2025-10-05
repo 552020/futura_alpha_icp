@@ -375,3 +375,126 @@ pub fn memories_list_assets_core<E: Env, S: Store>(
 
     Err(Error::NotFound)
 }
+
+/// Core asset removal by asset_id function - pure business logic
+pub fn asset_remove_by_id_core<E: Env, S: Store>(
+    env: &E,
+    store: &mut S,
+    memory_id: String,
+    asset_id: String,
+) -> std::result::Result<crate::memories::types::AssetRemovalResult, Error> {
+    // Find the memory across all accessible capsules
+    let accessible_capsules = store.get_accessible_capsules(&env.caller());
+
+    for capsule_id in accessible_capsules {
+        if let Some(mut memory) = store.get_memory(&capsule_id, &memory_id) {
+            // Try to find and remove from inline assets
+            if let Some(index) = memory
+                .inline_assets
+                .iter()
+                .position(|asset| asset.asset_id == asset_id)
+            {
+                memory.inline_assets.remove(index);
+                store.update_memory(&capsule_id, &memory_id, memory);
+                return Ok(crate::memories::types::AssetRemovalResult {
+                    memory_id: memory_id.clone(),
+                    asset_removed: true,
+                    message: format!("Removed inline asset with ID: {}", asset_id),
+                });
+            }
+
+            // Try to find and remove from blob internal assets
+            if let Some(index) = memory
+                .blob_internal_assets
+                .iter()
+                .position(|asset| asset.asset_id == asset_id)
+            {
+                let asset = memory.blob_internal_assets.remove(index);
+                // Clean up the blob from storage
+                cleanup_internal_blob_asset(&asset.blob_ref)?;
+                store.update_memory(&capsule_id, &memory_id, memory);
+                return Ok(crate::memories::types::AssetRemovalResult {
+                    memory_id: memory_id.clone(),
+                    asset_removed: true,
+                    message: format!("Removed internal blob asset with ID: {}", asset_id),
+                });
+            }
+
+            // Try to find and remove from blob external assets
+            if let Some(index) = memory
+                .blob_external_assets
+                .iter()
+                .position(|asset| asset.asset_id == asset_id)
+            {
+                let asset = memory.blob_external_assets.remove(index);
+                // Clean up the external asset
+                cleanup_external_blob_asset(&asset)?;
+                store.update_memory(&capsule_id, &memory_id, memory);
+                return Ok(crate::memories::types::AssetRemovalResult {
+                    memory_id: memory_id.clone(),
+                    asset_removed: true,
+                    message: format!("Removed external asset with ID: {}", asset_id),
+                });
+            }
+        }
+    }
+
+    Err(Error::NotFound)
+}
+
+/// Core asset retrieval by asset_id function - pure business logic
+pub fn asset_get_by_id_core<E: Env, S: Store>(
+    env: &E,
+    store: &S,
+    memory_id: String,
+    asset_id: String,
+) -> std::result::Result<crate::types::MemoryAssetData, Error> {
+    // Find the memory across all accessible capsules
+    let accessible_capsules = store.get_accessible_capsules(&env.caller());
+
+    for capsule_id in accessible_capsules {
+        if let Some(memory) = store.get_memory(&capsule_id, &memory_id) {
+            // Try to find in inline assets
+            if let Some(asset) = memory
+                .inline_assets
+                .iter()
+                .find(|asset| asset.asset_id == asset_id)
+            {
+                return Ok(crate::types::MemoryAssetData::Inline {
+                    bytes: asset.bytes.clone(),
+                    content_type: asset.metadata.get_base().mime_type.clone(),
+                    size: asset.bytes.len() as u64,
+                    sha256: asset.metadata.get_base().sha256.map(|h| h.to_vec()),
+                });
+            }
+
+            // Try to find in blob internal assets
+            if let Some(asset) = memory
+                .blob_internal_assets
+                .iter()
+                .find(|asset| asset.asset_id == asset_id)
+            {
+                return Ok(crate::types::MemoryAssetData::InternalBlob {
+                    blob_id: asset.blob_ref.locator.clone(),
+                    size: asset.blob_ref.len,
+                    sha256: asset.blob_ref.hash.map(|h| h.to_vec()),
+                });
+            }
+
+            // Try to find in blob external assets
+            if let Some(asset) = memory
+                .blob_external_assets
+                .iter()
+                .find(|asset| asset.asset_id == asset_id)
+            {
+                return Ok(crate::types::MemoryAssetData::ExternalUrl {
+                    url: asset.url.clone().unwrap_or_default(),
+                    size: Some(asset.metadata.get_base().bytes),
+                    sha256: asset.metadata.get_base().sha256.map(|h| h.to_vec()),
+                });
+            }
+        }
+    }
+
+    Err(Error::NotFound)
+}
