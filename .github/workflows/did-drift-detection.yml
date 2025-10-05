@@ -1,0 +1,56 @@
+name: DID Drift Detection
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/backend/**'
+      - 'src/backend/backend.did'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/backend/**'
+      - 'src/backend/backend.did'
+
+jobs:
+  check-did-drift:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Setup Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          
+      - name: Install dfx
+        run: |
+          sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+          echo "$HOME/bin" >> $GITHUB_PATH
+          
+      - name: Install required tools
+        run: |
+          cargo install generate-did
+          cargo install candid-extractor --locked
+          
+      - name: Start local replica
+        run: |
+          dfx start --background --clean
+          sleep 10
+          
+      - name: Check for DID drift
+        run: |
+          ./scripts/check-did-drift.sh
+          
+      - name: Cleanup
+        if: always()
+        run: |
+          dfx stop || true
