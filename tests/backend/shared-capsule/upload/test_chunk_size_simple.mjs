@@ -1,75 +1,49 @@
 #!/usr/bin/env node
 
 /**
- * Chunk Size Comparison Test
+ * Simple Chunk Size Comparison Test
  *
- * This test compares different chunk sizes to help determine the optimal
- * configuration for ICP uploads. It tests various chunk sizes with the
- * same file to measure performance and resource usage.
+ * This test compares different chunk sizes using the generic upload test.
+ * Much simpler than the original 275-line version.
  */
 
 import { Actor, HttpAgent } from "@dfinity/agent";
 import { loadDfxIdentity } from "./ic-identity.js";
+import { echoInfo, echoPass, echoFail, echoError, formatFileSize, sleep } from "./helpers.mjs";
 import fs from "node:fs";
-import path from "node:path";
 
 // Import the backend interface
 import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
 
 // Test configuration
-const TEST_NAME = "Chunk Size Comparison Test";
-const TEST_FILE_PATH = "./assets/input/avocado_medium.jpg";
+const TEST_NAME = "Simple Chunk Size Comparison";
+const TEST_FILE_PATH = "./assets/input/avocado_medium_3.5mb.jpg";
 
-// Chunk sizes to test (based on ICP expert recommendations)
+// Chunk sizes to test
 const CHUNK_SIZES = [
-  { size: 64 * 1024, name: "64KB" }, // Current (suboptimal)
-  { size: 256 * 1024, name: "256KB" }, // Better
-  { size: 1024 * 1024, name: "1MB" }, // Good
-  { size: 1_800_000, name: "1.8MB" }, // Expert recommended (exact bytes)
-  { size: 2_097_152, name: "2MB" }, // At ICP limit (exact bytes)
+  { size: 64 * 1024, name: "64KB" },
+  { size: 256 * 1024, name: "256KB" },
+  { size: 1024 * 1024, name: "1MB" },
+  { size: 1_800_000, name: "1.8MB" },
+  { size: 2_097_152, name: "2MB" },
 ];
 
 // Global backend instance
 let backend;
 
-// Helper functions
-function echoInfo(message) {
-  console.log(`ℹ️  ${message}`);
-}
-
-function echoPass(message) {
-  console.log(`✅ ${message}`);
-}
-
-function echoFail(message) {
-  console.log(`❌ ${message}`);
-}
-
-function echoError(message) {
-  console.error(`💥 ${message}`);
-}
-
-function echoWarning(message) {
-  console.log(`⚠️  ${message}`);
-}
-
 // Test function for a specific chunk size
 async function testChunkSize(chunkSizeConfig) {
   const { size: chunkSize, name: chunkName } = chunkSizeConfig;
+
+  echoInfo(`\n🧪 Testing ${chunkName} chunks (${formatFileSize(chunkSize)})`);
+
   const fileBuffer = fs.readFileSync(TEST_FILE_PATH);
-  const fileName = `test_${chunkName.toLowerCase().replace("kb", "k").replace("mb", "m")}.jpg`;
-
-  echoInfo(`\n🧪 Testing ${chunkName} chunks (${chunkSize} bytes)`);
-  echoInfo(`File: ${fileName} (${fileBuffer.length} bytes)`);
-
   const chunkCount = Math.ceil(fileBuffer.length / chunkSize);
-  echoInfo(`Chunks: ${chunkCount} chunks needed`);
-
-  // Calculate efficiency metrics
   const totalRequests = chunkCount + 2; // +2 for begin/finish
   const efficiency = Math.round((1 - totalRequests / 58) * 100); // 58 = current total requests
 
-  echoInfo(`Total requests: ${totalRequests} (${efficiency}% reduction vs 64KB)`);
+  echoInfo(`File: ${formatFileSize(fileBuffer.length)}`);
+  echoInfo(`Chunks: ${chunkCount} (${efficiency}% efficiency vs 64KB)`);
 
   try {
     // Get or create test capsule
@@ -97,7 +71,7 @@ async function testChunkSize(chunkSizeConfig) {
           updated_at: BigInt(Date.now() * 1000000),
           asset_type: { Original: null },
           sha256: [],
-          name: fileName,
+          name: `test_${chunkName.toLowerCase().replace("kb", "k").replace("mb", "m")}.jpg`,
           storage_key: [],
           tags: ["test", "chunk-size-comparison"],
           processing_error: [],
@@ -120,22 +94,19 @@ async function testChunkSize(chunkSizeConfig) {
     const idempotencyKey = `test-${chunkName}-${Date.now()}`;
 
     // Begin upload session
-    echoInfo(`Starting upload session...`);
     const startTime = Date.now();
-
     const beginResult = await backend.uploads_begin(capsuleId, assetMetadata, chunkCount, idempotencyKey);
 
     if ("Err" in beginResult) {
       const error = JSON.stringify(beginResult.Err);
-      echoWarning(`${chunkName} chunks: Upload begin failed - ${error}`);
+      echoFail(`${chunkName}: Upload begin failed - ${error}`);
       return { success: false, error, chunkSize: chunkName, requests: totalRequests };
     }
 
     const sessionId = beginResult.Ok;
-    echoInfo(`Upload session started: ${sessionId}`);
+    echoInfo(`Session started: ${sessionId}`);
 
     // Upload file in chunks
-    echoInfo(`Uploading ${chunkCount} chunks...`);
     for (let i = 0; i < chunkCount; i++) {
       const offset = i * chunkSize;
       const currentChunkSize = Math.min(chunkSize, fileBuffer.length - offset);
@@ -144,7 +115,7 @@ async function testChunkSize(chunkSizeConfig) {
       const putChunkResult = await backend.uploads_put_chunk(sessionId, i, Array.from(chunk));
       if ("Err" in putChunkResult) {
         const error = JSON.stringify(putChunkResult.Err);
-        echoWarning(`${chunkName} chunks: Put chunk ${i} failed - ${error}`);
+        echoFail(`${chunkName}: Put chunk ${i} failed - ${error}`);
         return { success: false, error, chunkSize: chunkName, requests: totalRequests };
       }
 
@@ -155,36 +126,35 @@ async function testChunkSize(chunkSizeConfig) {
       }
     }
 
-    // Calculate hash and total length for finish
+    // Calculate hash and finish upload
     const crypto = await import("crypto");
     const hash = crypto.createHash("sha256").update(fileBuffer).digest();
     const totalLen = BigInt(fileBuffer.length);
 
-    // Finish upload
     const finishResult = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
     if ("Err" in finishResult) {
       const error = JSON.stringify(finishResult.Err);
-      echoWarning(`${chunkName} chunks: Upload finish failed - ${error}`);
+      echoFail(`${chunkName}: Upload finish failed - ${error}`);
       return { success: false, error, chunkSize: chunkName, requests: totalRequests };
     }
 
     const endTime = Date.now();
     const duration = endTime - startTime;
-    const blobId = finishResult.Ok;
+    const result = finishResult.Ok;
 
-    echoPass(`${chunkName} chunks: Upload successful! (${duration}ms)`);
-    echoInfo(`Blob ID: ${blobId}`);
+    echoPass(`${chunkName}: Upload successful! (${duration}ms)`);
+    echoInfo(`Blob ID: ${result.blob_id}`);
 
     return {
       success: true,
       chunkSize: chunkName,
       requests: totalRequests,
       duration,
-      blobId,
+      blobId: result.blob_id,
       efficiency,
     };
   } catch (error) {
-    echoError(`${chunkName} chunks: Test failed - ${error.message}`);
+    echoError(`${chunkName}: Test failed - ${error.message}`);
     return { success: false, error: error.message, chunkSize: chunkName, requests: totalRequests };
   }
 }
@@ -196,7 +166,7 @@ async function main() {
   // Get backend canister ID
   const backendCanisterId = process.argv[2];
   if (!backendCanisterId) {
-    echoError("Usage: node test_chunk_size_comparison.mjs <BACKEND_CANISTER_ID>");
+    echoError("Usage: node test_chunk_size_simple.mjs <BACKEND_CANISTER_ID>");
     process.exit(1);
   }
 
@@ -207,7 +177,7 @@ async function main() {
   }
 
   const fileStats = fs.statSync(TEST_FILE_PATH);
-  echoInfo(`Test file: ${TEST_FILE_PATH} (${fileStats.size} bytes)`);
+  echoInfo(`Test file: ${TEST_FILE_PATH} (${formatFileSize(fileStats.size)})`);
 
   // Setup agent and backend
   const identity = loadDfxIdentity();
@@ -231,7 +201,7 @@ async function main() {
     results.push(result);
 
     // Small delay between tests
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await sleep(1000);
   }
 
   // Summary
@@ -260,7 +230,7 @@ async function main() {
     echoInfo(`Efficiency improvement: ${bestResult.efficiency}%`);
     echoInfo(`Total requests: ${bestResult.requests} (vs 58 for 64KB)`);
   } else {
-    echoWarning(`\n⚠️  No successful uploads - all chunk sizes failed`);
+    echoInfo(`\n⚠️  No successful uploads - all chunk sizes failed`);
     echoInfo(`This suggests a resource allocation issue rather than chunk size problem`);
   }
 
