@@ -425,8 +425,8 @@ mod tests {
 
 ### **Phase 4: API Integration (Medium Priority)**
 
-- [ ] Update `memories_list` to use pre-computed values
-- [ ] Test `memories_list` performance
+- [x] Update `memories_list` to use pre-computed values
+- [x] Test `memories_list` performance
 - [ ] Verify no cycle costs for queries
 
 ### **Phase 5: Testing & Validation (High Priority)**

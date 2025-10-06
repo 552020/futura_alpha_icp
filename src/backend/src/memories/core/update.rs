@@ -74,7 +74,7 @@ mod tests {
     fn test_memory_update_dashboard_fields_logic() {
         // Test that the dashboard field recomputation logic is correct
         // by creating a memory and manually calling update_dashboard_fields
-        
+
         let mut memory = Memory {
             id: "test_memory".to_string(),
             metadata: MemoryMetadata {
@@ -95,7 +95,7 @@ mod tests {
                 memory_notes: None,
                 created_by: None,
                 database_storage_edges: vec![],
-                
+
                 // Dashboard fields - initially set to defaults
                 is_public: false,
                 shared_count: 0,
@@ -132,5 +132,72 @@ mod tests {
         assert!(memory.metadata.is_public); // Should be true for Public access
         assert_eq!(memory.metadata.sharing_status, "public");
         assert_eq!(memory.metadata.shared_count, 0); // Public has no specific recipients
+    }
+    
+    #[test]
+    fn test_memories_list_uses_precomputed_dashboard_fields() {
+        // Test that memories_list returns pre-computed dashboard fields
+        // This test verifies that the to_header() method uses pre-computed values
+        
+        let memory = Memory {
+            id: "test_memory".to_string(),
+            metadata: MemoryMetadata {
+                title: Some("Test Memory".to_string()),
+                description: Some("Test Description".to_string()),
+                memory_type: MemoryType::Document,
+                content_type: "text/plain".to_string(),
+                created_at: 1234567890,
+                updated_at: 1234567890,
+                uploaded_at: 1234567890,
+                date_of_memory: Some(1234567890),
+                file_created_at: Some(1234567890),
+                deleted_at: None,
+                tags: vec!["test".to_string()],
+                parent_folder_id: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
+                database_storage_edges: vec![],
+                
+                // Dashboard fields - pre-computed values
+                is_public: true,
+                shared_count: 5,
+                sharing_status: "shared".to_string(),
+                total_size: 2048,
+                asset_count: 3,
+                thumbnail_url: Some("icp://memory/test_memory/thumbnail".to_string()),
+                primary_asset_url: Some("icp://memory/test_memory/primary".to_string()),
+                has_thumbnails: true,
+                has_previews: false,
+            },
+            access: MemoryAccess::Public {
+                owner_secure_code: "test_code".to_string(),
+            },
+            inline_assets: vec![],
+            blob_internal_assets: vec![],
+            blob_external_assets: vec![],
+        };
+
+        // Call to_header() method
+        let header = memory.to_header();
+        
+        // Verify that pre-computed dashboard fields are used
+        assert_eq!(header.is_public, true);
+        assert_eq!(header.shared_count, 5);
+        assert_eq!(header.sharing_status, "shared");
+        assert_eq!(header.asset_count, 3);
+        assert_eq!(header.thumbnail_url, Some("icp://memory/test_memory/thumbnail".to_string()));
+        assert_eq!(header.primary_asset_url, Some("icp://memory/test_memory/primary".to_string()));
+        assert_eq!(header.has_thumbnails, true);
+        assert_eq!(header.has_previews, false);
+        
+        // Verify that size uses pre-computed value
+        assert_eq!(header.size, 2048);
+        
+        // Verify other fields are correctly mapped
+        assert_eq!(header.title, Some("Test Memory".to_string()));
+        assert_eq!(header.description, Some("Test Description".to_string()));
+        assert_eq!(header.tags, vec!["test".to_string()]);
     }
 }
