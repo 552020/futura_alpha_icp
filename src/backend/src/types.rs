@@ -23,28 +23,28 @@ pub type MemoryId = String;
 
 /// Result type for uploads_begin function (SessionId or Error)
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum Result_13 {
+pub enum Result13 {
     Ok(u64),
     Err(Error),
 }
 
 /// Result type for verify_nonce function (Principal or Error)
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum Result_14 {
+pub enum Result14 {
     Ok(Principal),
     Err(Error),
 }
 
 /// Result type for uploads_finish function (text or Error)
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum Result_6 {
+pub enum Result6 {
     Ok(String),
     Err(Error),
 }
 
 /// Result type for memories_create function (MemoryId or Error)
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum Result_20 {
+pub enum Result20 {
     Ok(String), // MemoryId
     Err(Error),
 }

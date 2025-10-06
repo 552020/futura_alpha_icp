@@ -8,7 +8,8 @@ use std::collections::BTreeMap;
 // Internal imports
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
-use crate::types::{Error, Result_13, Result_14, Result_15, UploadFinishResult};
+use crate::types::{Error, Result13, Result14};
+use crate::upload::types::{Result15, UploadFinishResult};
 
 // Rolling hash storage for upload verification
 thread_local! {
@@ -64,11 +65,11 @@ fn register_with_nonce(nonce: String) -> std::result::Result<(), Error> {
 }
 
 #[ic_cdk::query]
-fn verify_nonce(nonce: String) -> Result_14 {
+fn verify_nonce(nonce: String) -> Result14 {
     // Verify and return the principal who proved this nonce
     match auth::get_nonce_proof(nonce) {
-        Some(principal) => Result_14::Ok(principal),
-        None => Result_14::Err(types::Error::NotFound),
+        Some(principal) => Result14::Ok(principal),
+        None => Result14::Err(types::Error::NotFound),
     }
 }
 
@@ -274,7 +275,7 @@ fn memories_create(
     external_hash: Option<Vec<u8>>,
     asset_metadata: types::AssetMetadata,
     idem: String,
-) -> types::Result_20 {
+) -> types::Result20 {
     use crate::memories::core::memories_create_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
@@ -295,8 +296,8 @@ fn memories_create(
         asset_metadata,
         idem,
     ) {
-        Ok(memory_id) => types::Result_20::Ok(memory_id),
-        Err(error) => types::Result_20::Err(error),
+        Ok(memory_id) => types::Result20::Ok(memory_id),
+        Err(error) => types::Result20::Err(error),
     }
 }
 
@@ -306,7 +307,7 @@ fn memories_create_with_internal_blobs(
     memory_metadata: crate::memories::types::MemoryMetadata,
     internal_blob_assets: Vec<crate::memories::types::InternalBlobAssetInput>,
     idem: String,
-) -> types::Result_20 {
+) -> types::Result20 {
     use crate::memories::core::create::memories_create_with_internal_blobs_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
@@ -321,8 +322,8 @@ fn memories_create_with_internal_blobs(
         internal_blob_assets,
         idem,
     ) {
-        Ok(memory_id) => types::Result_20::Ok(memory_id),
-        Err(error) => types::Result_20::Err(error),
+        Ok(memory_id) => types::Result20::Ok(memory_id),
+        Err(error) => types::Result20::Err(error),
     }
 }
 
@@ -497,7 +498,7 @@ fn upload_config() -> types::UploadConfig {
 
 /// Begin chunked upload for large files
 #[ic_cdk::update]
-fn uploads_begin(capsule_id: types::CapsuleId, expected_chunks: u32, idem: String) -> Result_13 {
+fn uploads_begin(capsule_id: types::CapsuleId, expected_chunks: u32, idem: String) -> Result13 {
     match with_capsule_store_mut(|store| {
         upload::service::begin_upload(store, capsule_id, expected_chunks, idem)
     }) {
@@ -508,9 +509,9 @@ fn uploads_begin(capsule_id: types::CapsuleId, expected_chunks: u32, idem: Strin
                 m.borrow_mut().insert(sid, Sha256::new());
             });
             ic_cdk::println!("UPLOAD_HASH_INIT sid={}", sid);
-            Result_13::Ok(sid)
+            Result13::Ok(sid)
         }
-        Err(error) => Result_13::Err(error),
+        Err(error) => Result13::Err(error),
     }
 }
 
@@ -558,7 +559,7 @@ async fn uploads_put_chunk(
 
 /// Commit chunks to create final memory
 #[ic_cdk::update]
-async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u64) -> Result_15 {
+async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u64) -> Result15 {
     ic_cdk::println!("FINISH_START sid={} expected_len={}", session_id, total_len);
 
     // Verify rolling hash FIRST (before any other operations)
@@ -572,7 +573,7 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
         Ok(hash) => hash,
         Err(e) => {
             ic_cdk::println!("FINISH_ERROR sid={} err=hash_not_found", session_id);
-            return Result_15::Err(e);
+            return Result15::Err(e);
         }
     };
 
@@ -584,7 +585,7 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
             &computed_hash[..8],
             &expected_sha256[..8]
         );
-        return Result_15::Err(Error::InvalidArgument(format!(
+        return Result15::Err(Error::InvalidArgument(format!(
             "checksum_mismatch: computed={}, expected={}",
             hex::encode(&computed_hash),
             hex::encode(&expected_sha256)
@@ -602,7 +603,7 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
                 session_id,
                 expected_sha256.len()
             );
-            return Result_15::Err(types::Error::InvalidArgument(format!(
+            return Result15::Err(types::Error::InvalidArgument(format!(
                 "invalid_hash_length: expected 32 bytes, got {}",
                 expected_sha256.len()
             )));
@@ -632,11 +633,11 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
                 };
 
                 ic_cdk::println!("FINISH_OK sid={}", session_id.0);
-                Result_15::Ok(result)
+                Result15::Ok(result)
             }
             Err(err) => {
                 ic_cdk::println!("FINISH_ERROR sid={} err={:?}", session_id.0, err);
-                Result_15::Err(err)
+                Result15::Err(err)
             }
         }
     })
@@ -776,31 +777,31 @@ fn blob_get_meta(locator: String) -> std::result::Result<types::BlobMeta, Error>
 
 /// Delete blob by ID (unified endpoint for all blob types)
 #[ic_cdk::update]
-fn blob_delete(blob_id: String) -> types::Result_6 {
+fn blob_delete(blob_id: String) -> types::Result6 {
     // Determine blob type and handle accordingly
     if blob_id.starts_with("blob_") {
         // Internal blob (ICP blob store)
         match upload::blob_store::blob_delete(blob_id) {
-            Ok(()) => types::Result_6::Ok("Internal blob deleted successfully".to_string()),
-            Err(error) => types::Result_6::Err(error),
+            Ok(()) => types::Result6::Ok("Internal blob deleted successfully".to_string()),
+            Err(error) => types::Result6::Err(error),
         }
     } else if blob_id.starts_with("inline_") {
         // Inline asset (stored in memory)
         // For inline assets, we can't delete the blob directly since it's part of the memory
         // This would require deleting the entire memory or the specific asset
-        types::Result_6::Err(Error::InvalidArgument(
+        types::Result6::Err(Error::InvalidArgument(
             "Inline assets cannot be deleted directly. Delete the memory or use asset removal endpoints.".to_string(),
         ))
     } else if blob_id.starts_with("external_") {
         // External blob (S3, IPFS, etc.)
         // External blobs are managed by external systems
-        types::Result_6::Err(Error::InvalidArgument(
+        types::Result6::Err(Error::InvalidArgument(
             "External blobs cannot be deleted via this endpoint. Use external storage management."
                 .to_string(),
         ))
     } else {
         // Unknown blob type
-        types::Result_6::Err(Error::InvalidArgument(format!(
+        types::Result6::Err(Error::InvalidArgument(format!(
             "Unknown blob type for ID: {}",
             blob_id
         )))

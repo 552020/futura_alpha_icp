@@ -237,7 +237,7 @@ impl Storable for BlobMeta {
 
 /// Result type for uploads_finish function (UploadFinishResult or Error)
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum Result_15 {
+pub enum Result15 {
     Ok(UploadFinishResult),
     Err(crate::types::Error),
 }
