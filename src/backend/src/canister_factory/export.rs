@@ -479,8 +479,8 @@ mod tests {
     use super::*;
     use crate::types::{
         AssetMetadata, AssetMetadataBase, AssetType, BlobRef, Connection, ConnectionStatus,
-        DocumentAssetMetadata, Memory, MemoryAccess, MemoryAssetBlobInternal, MemoryMetadata,
-        MemoryType, OwnerState, PersonRef, StorageEdgeDatabaseType,
+        DocumentAssetMetadata, HostingPreferences, Memory, MemoryAccess, MemoryAssetBlobInternal,
+        MemoryMetadata, MemoryType, OwnerState, PersonRef, StorageEdgeDatabaseType,
     };
     use candid::Principal;
     use std::collections::HashMap;
@@ -525,6 +525,7 @@ mod tests {
             owners: owner_map,
             controllers: HashMap::new(),
             connections: connection_map,
+            has_advanced_settings: false, // Default to simple settings
             connection_groups: HashMap::new(),
             memories: memory_map,
             galleries: HashMap::new(),
@@ -532,6 +533,7 @@ mod tests {
             updated_at: 1000000000,
             bound_to_neon: false, // Default to not bound to Neon
             inline_bytes_used: 0,
+            hosting_preferences: HostingPreferences::default(),
         }
     }
 

@@ -233,7 +233,7 @@ pub async fn verify_handoff_readiness(
 mod tests {
     use super::*;
 
-    use crate::types;
+    use crate::types::{self, HostingPreferences};
     use candid::Principal;
 
     // Test helper functions
@@ -257,6 +257,7 @@ mod tests {
             owners,
             controllers: std::collections::HashMap::new(),
             connections: std::collections::HashMap::new(),
+            has_advanced_settings: false, // Default to simple settings
             connection_groups: std::collections::HashMap::new(),
             memories: std::collections::HashMap::new(),
             galleries: std::collections::HashMap::new(),
@@ -264,6 +265,7 @@ mod tests {
             updated_at: 1000000000,
             bound_to_neon: false, // Default to not bound to Neon
             inline_bytes_used: 0,
+            hosting_preferences: HostingPreferences::default(),
         }
     }
 

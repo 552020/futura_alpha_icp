@@ -160,6 +160,20 @@ fn capsules_bind_neon(
     capsule::resources_bind_neon(resource_type, resource_id, bind)
 }
 
+#[ic_cdk::query]
+fn get_user_settings() -> std::result::Result<types::UserSettingsResponse, Error> {
+    // Delegate to capsule module (thin facade)
+    capsule::get_user_settings()
+}
+
+#[ic_cdk::update]
+fn update_user_settings(
+    updates: types::UserSettingsUpdateData,
+) -> std::result::Result<types::UserSettingsResponse, Error> {
+    // Delegate to capsule module (thin facade)
+    capsule::update_user_settings(updates)
+}
+
 // ============================================================================
 // GALLERY MANAGEMENT (7 functions)
 // ============================================================================

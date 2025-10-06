@@ -211,8 +211,7 @@ mod tests {
     fn create_test_capsule(id: CapsuleId) -> Capsule {
         // Helper function to create a test capsule
         // This would normally be done with proper constructors
-        use crate::types::OwnerState;
-        use crate::types::{Capsule, PersonRef};
+        use crate::types::{Capsule, HostingPreferences, OwnerState, PersonRef};
         use std::collections::HashMap;
 
         let subject = PersonRef::Principal(Principal::from_text("aaaaa-aa").unwrap());
@@ -234,10 +233,12 @@ mod tests {
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
+            has_advanced_settings: false, // Default to simple settings
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
             inline_bytes_used: 0,
+            hosting_preferences: HostingPreferences::default(),
         }
     }
 }

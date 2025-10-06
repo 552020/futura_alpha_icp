@@ -110,6 +110,7 @@ The senior needs to:
 - `src/backend/src/memories_core.rs` - Updated trait definitions and imports
 
 **Verification**:
+
 - ✅ `cargo check` passes with no errors
 - ✅ Candid export works correctly
 - ✅ All function signatures are consistent

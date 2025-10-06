@@ -6,11 +6,12 @@ This document provides complete technical documentation for the ICP Capsule API,
 
 **Status**: ✅ IMPLEMENTED  
 **Implementation Date**: October 6, 2025  
-**Key Commits**: 
+**Key Commits**:
+
 - `4d9580e` - Complete upload service refactoring with multiple asset support
 - `56e48b1` - Add bulk memory API tests and reorganize test structure
 - `fe711b0` - Refactor memories core module and add bulk memory APIs
-**Location**: `src/backend/src/lib.rs` and `src/backend/src/capsule.rs`
+  **Location**: `src/backend/src/lib.rs` and `src/backend/src/capsule.rs`
 
 ## Table of Contents
 

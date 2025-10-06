@@ -308,6 +308,55 @@ pub struct OwnerState {
     pub last_activity_at: u64, // Track owner activity
 }
 
+// Hosting preference enums - mirrors Web2 structure
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum FrontendHosting {
+    Vercel,
+    Icp,
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum BackendHosting {
+    Vercel,
+    Icp,
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum DatabaseHosting {
+    Neon,
+    Icp,
+}
+
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub enum BlobHosting {
+    S3,
+    VercelBlob,
+    Icp,
+    Arweave,
+    Ipfs,
+    Neon,
+}
+
+// Hosting preferences for capsule - mirrors Web2 user_hosting_preferences
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct HostingPreferences {
+    pub frontend_hosting: FrontendHosting,
+    pub backend_hosting: BackendHosting,
+    pub database_hosting: DatabaseHosting,
+    pub blob_hosting: BlobHosting,
+}
+
+impl Default for HostingPreferences {
+    fn default() -> Self {
+        Self {
+            frontend_hosting: FrontendHosting::Icp,
+            backend_hosting: BackendHosting::Icp,
+            database_hosting: DatabaseHosting::Icp,
+            blob_hosting: BlobHosting::Icp,
+        }
+    }
+}
+
 // Main capsule structure
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct Capsule {
@@ -321,8 +370,10 @@ pub struct Capsule {
     pub galleries: HashMap<String, Gallery>,                 // galleries (collections of memories)
     pub created_at: u64,
     pub updated_at: u64,
-    pub bound_to_neon: bool,    // Neon database binding status
-    pub inline_bytes_used: u64, // Track inline storage consumption
+    pub bound_to_neon: bool,         // Neon database binding status
+    pub inline_bytes_used: u64,      // Track inline storage consumption
+    pub has_advanced_settings: bool, // Controls whether user sees advanced settings panels
+    pub hosting_preferences: HostingPreferences, // User's preferred hosting providers
 }
 
 // CapsuleRegistrationResult - REMOVED: unused
@@ -365,6 +416,19 @@ pub struct CapsuleUpdateData {
     pub bound_to_neon: Option<bool>, // Update binding status
                                      // Note: Most capsule fields (id, subject, owners, etc.) are immutable
                                      // Only binding status and timestamps can be updated
+}
+
+/// User settings data for updating capsule settings
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct UserSettingsUpdateData {
+    pub has_advanced_settings: Option<bool>,
+}
+
+/// User settings response for reading capsule settings
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+pub struct UserSettingsResponse {
+    pub has_advanced_settings: bool,
+    pub hosting_preferences: HostingPreferences,
 }
 
 // MemoryHeader moved to memories/types.rs

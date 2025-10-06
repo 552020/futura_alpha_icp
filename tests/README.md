@@ -523,6 +523,7 @@ Our comprehensive test suite follows a testing pyramid approach with multiple le
 8. **dfx Color Panic Fixes** - Reliable mainnet testing with proper environment variables
 9. **Cycle Cost Monitoring** - Track expensive mainnet operations
 10. **Test Utility Consolidation** - Centralized utilities in `test_utils.sh`
+11. **DFX Color Crash Resolution** - DFX 0.29.0 resolved the `ColorOutOfRange` crash that was blocking test execution
 
 ### **🚀 Current Status**
 

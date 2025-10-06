@@ -55,6 +55,8 @@ type AudioAssetMetadata = record {
   bit_depth : opt nat8;
   bitrate : opt nat64;
 };
+type BackendHosting = variant { Icp; Vercel };
+type BlobHosting = variant { S3; Icp; VercelBlob; Ipfs; Neon; Arweave };
 type BlobMeta = record { size : nat64; chunk_count : nat32 };
 type BlobRef = record { len : nat64; locator : text; hash : opt blob };
 type BulkDeleteResult = record {
@@ -73,6 +75,7 @@ type CanisterSizeStats = record {
 type Capsule = record {
   id : text;
   updated_at : nat64;
+  has_advanced_settings : bool;
   controllers : vec record { PersonRef; ControllerState };
   subject : PersonRef;
   owners : vec record { PersonRef; OwnerState };
@@ -83,6 +86,7 @@ type Capsule = record {
   memories : vec record { text; Memory };
   bound_to_neon : bool;
   galleries : vec record { text; Gallery };
+  hosting_preferences : HostingPreferences;
 };
 type CapsuleHeader = record {
   id : text;
@@ -138,6 +142,7 @@ type CreationStatusResponse = record {
   canister_id : opt principal;
   message : opt text;
 };
+type DatabaseHosting = variant { Icp; Neon };
 type DetailedCreationStatus = record {
   status : CreationStatus;
   progress_message : text;
@@ -212,6 +217,12 @@ type GalleryUpdateData = record {
   memory_entries : opt vec GalleryMemoryEntry;
   description : opt text;
 };
+type HostingPreferences = record {
+  backend_hosting : BackendHosting;
+  database_hosting : DatabaseHosting;
+  blob_hosting : BlobHosting;
+  frontend_hosting : BackendHosting;
+};
 type ImageAssetMetadata = record {
   dpi : opt nat32;
   color_space : opt text;
@@ -256,7 +267,7 @@ type MemoryAssetBlobExternal = record {
   metadata : AssetMetadata;
   storage_key : text;
   asset_id : text;
-  location : StorageEdgeBlobType;
+  location : BlobHosting;
 };
 type MemoryAssetBlobInternal = record {
   metadata : AssetMetadata;
@@ -302,7 +313,7 @@ type MemoryMetadata = record {
   tags : vec text;
   content_type : text;
   people_in_memory : opt vec text;
-  database_storage_edges : vec StorageEdgeDatabaseType;
+  database_storage_edges : vec DatabaseHosting;
   description : opt text;
   created_at : nat64;
   created_by : opt text;
@@ -346,21 +357,26 @@ type PersonalCanisterCreationStats = record {
 };
 type ResourceType = variant { Memory; Capsule; Gallery };
 type Result = variant { Ok; Err : Error };
+type Result13 = variant { Ok : nat64; Err : Error };
+type Result14 = variant { Ok : principal; Err : Error };
+type Result15 = variant { Ok : UploadFinishResult; Err : Error };
+type Result6 = variant { Ok : text; Err : Error };
 type Result_1 = variant { Ok : MemoryAssetData; Err : Error };
 type Result_10 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
 type Result_11 = variant { Ok : opt DetailedCreationStatus; Err : Error };
-type Result_12 = variant { Ok : AssetCleanupResult; Err : Error };
-type Result_13 = variant { Ok : nat64; Err : Error };
-type Result_14 = variant { Ok : principal; Err : Error };
-type Result_15 = variant { Ok : UploadFinishResult; Err : Error };
-type Result_16 = variant { Ok : MemoryAssetsList; Err : Error };
-type Result_17 = variant { Ok : vec MemoryPresenceResult; Err : Error };
-type Result_18 = variant { Ok : Memory; Err : Error };
+type Result_12 = variant { Ok : UserSettingsResponse; Err : Error };
+type Result_13 = variant { Ok : AssetCleanupResult; Err : Error };
+type Result_14 = variant { Ok : BulkResult; Err : Error };
+type Result_15 = variant { Ok : BulkDeleteResult; Err : Error };
+type Result_16 = variant { Ok : Page; Err : Error };
+type Result_17 = variant { Ok : MemoryAssetsList; Err : Error };
+type Result_18 = variant { Ok : vec MemoryPresenceResult; Err : Error };
+type Result_19 = variant { Ok : Memory; Err : Error };
 type Result_2 = variant { Ok : AssetRemovalResult; Err : Error };
 type Result_3 = variant { Ok : BlobMeta; Err : Error };
 type Result_4 = variant { Ok : blob; Err : Error };
 type Result_5 = variant { Ok : Capsule; Err : Error };
-type Result_6 = variant { Ok : text; Err : Error };
+type Result_6 = variant { Ok : CapsuleInfo; Err : Error };
 type Result_7 = variant { Ok : bool; Err : Error };
 type Result_8 = variant { Ok : Gallery; Err : Error };
 type Result_9 = variant {
@@ -368,8 +384,6 @@ type Result_9 = variant {
   Err : Error;
 };
 type StorageBackend = variant { S3; Icp; VercelBlob; Ipfs; Arweave };
-type StorageEdgeBlobType = variant { S3; Icp; VercelBlob; Ipfs; Neon; Arweave };
-type StorageEdgeDatabaseType = variant { Icp; Neon };
 type UploadConfig = record {
   inline_max : nat32;
   chunk_size : nat32;
@@ -386,6 +400,11 @@ type UploadFinishResult = record {
   expires_at : opt nat64;
   uploaded_at : nat64;
 };
+type UserSettingsResponse = record {
+  has_advanced_settings : bool;
+  hosting_preferences : HostingPreferences;
+};
+type UserSettingsUpdateData = record { has_advanced_settings : opt bool };
 type VideoAssetMetadata = record {
   duration : opt nat64;
   base : AssetMetadataBase;
@@ -411,7 +430,7 @@ service : {
   // Remove specific ICP blob asset by blob reference
   asset_remove_internal : (text, text) -> (Result_2);
   // Delete blob by ID (unified endpoint for all blob types)
-  blob_delete : (text) -> (Result_6);
+  blob_delete : (text) -> (Result6);
   // Get blob metadata including total chunk count
   blob_get_meta : (text) -> (Result_3) query;
   // Read blob data by locator (for asset retrieval)
@@ -439,7 +458,7 @@ service : {
   debug_blob_read_canary : (text, nat32) -> (opt nat32) query;
   debug_blob_write_canary : (text, nat32, nat32) -> ();
   // Debug endpoint to finish upload with hex hash (dev only)
-  debug_finish_hex : (nat64, text, nat64) -> (Result_6);
+  debug_finish_hex : (nat64, text, nat64) -> (Result6);
   // Debug endpoint to upload chunk with base64 data (dev only)
   debug_put_chunk_b64 : (nat64, nat32, text) -> (Result);
   // Debug endpoint to compute SHA256 hash of provided bytes
@@ -467,6 +486,7 @@ service : {
   get_personal_canister_id : (principal) -> (opt principal) query;
   get_user_creation_status : (principal) -> (Result_11) query;
   get_user_migration_status : (principal) -> (Result_11) query;
+  get_user_settings : () -> (Result_12) query;
   greet : (text) -> (text) query;
   is_migration_enabled : () -> (Result_7) query;
   is_personal_canister_creation_enabled : () -> (Result_7) query;
@@ -475,64 +495,65 @@ service : {
   list_all_migration_states : () -> (Result_9) query;
   list_superadmins : () -> (vec principal) query;
   // Clean up all assets from a memory while preserving the memory record
-  memories_cleanup_assets_all : (text) -> (Result_12);
+  memories_cleanup_assets_all : (text) -> (Result_13);
   // Bulk cleanup assets from multiple memories
-  memories_cleanup_assets_bulk : (vec text) -> (Result_13);
+  memories_cleanup_assets_bulk : (vec text) -> (Result_14);
   memories_create : (
       text,
       opt blob,
       opt BlobRef,
-      opt StorageEdgeBlobType,
+      opt BlobHosting,
       opt text,
       opt text,
       opt nat64,
       opt blob,
       AssetMetadata,
       text,
-    ) -> (Result_6);
+    ) -> (Result6);
   memories_create_with_internal_blobs : (
       text,
       MemoryMetadata,
       vec InternalBlobAssetInput,
       text,
-    ) -> (Result_6);
+    ) -> (Result6);
   memories_delete : (text, bool) -> (Result);
   // Delete ALL memories in a capsule (high-risk operation)
-  memories_delete_all : (text, bool) -> (Result_14);
+  memories_delete_all : (text, bool) -> (Result_15);
   // Bulk delete multiple memories in a single operation
-  memories_delete_bulk : (text, vec text, bool) -> (Result_14);
-  memories_list : (text, opt text, opt nat32) -> (Result_15) query;
+  memories_delete_bulk : (text, vec text, bool) -> (Result_15);
+  memories_list : (text, opt text, opt nat32) -> (Result_16) query;
   // List all assets in a memory
-  memories_list_assets : (text) -> (Result_16) query;
+  memories_list_assets : (text) -> (Result_17) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (Result_17) query;
-  memories_read : (text) -> (Result_18) query;
+  memories_ping : (vec text) -> (Result_18) query;
+  memories_read : (text) -> (Result_19) query;
   memories_read_asset : (text, nat32) -> (Result_1) query;
-  memories_update : (text, MemoryUpdateData) -> (Result_18);
+  memories_update : (text, MemoryUpdateData) -> (Result_19);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   register_with_nonce : (text) -> (Result);
   remove_admin : (principal) -> (Result);
   // Clean up expired sessions
-  sessions_cleanup_expired : () -> (Result_6);
+  sessions_cleanup_expired : () -> (Result6);
   // Clear all upload sessions (development/debugging only)
-  sessions_clear_all : () -> (Result_6);
+  sessions_clear_all : () -> (Result6);
   // List all sessions for debugging
-  sessions_list : () -> (Result_6) query;
+  sessions_list : () -> (Result6) query;
   // Get session statistics for monitoring
-  sessions_stats : () -> (Result_6) query;
+  sessions_stats : () -> (Result6) query;
   set_migration_enabled : (bool) -> (Result);
   set_personal_canister_creation_enabled : (bool) -> (Result);
   update_gallery_storage_location : (text, GalleryStorageLocation) -> (Result);
+  update_user_settings : (UserSettingsUpdateData) -> (Result_12);
   // Get upload configuration for TypeScript client discoverability
   upload_config : () -> (UploadConfig) query;
   // Abort upload session and cleanup
   uploads_abort : (nat64) -> (Result);
   // Begin chunked upload for large files
-  uploads_begin : (text, nat32, text) -> (Result_13);
+  uploads_begin : (text, nat32, text) -> (Result13);
   // Commit chunks to create final memory
-  uploads_finish : (nat64, blob, nat64) -> (Result_15);
+  uploads_finish : (nat64, blob, nat64) -> (Result15);
   // Upload a chunk for an active session
   uploads_put_chunk : (nat64, nat32, blob) -> (Result);
-  verify_nonce : (text) -> (Result_14) query;
+  verify_nonce : (text) -> (Result14) query;
   whoami : () -> (principal) query;
 }

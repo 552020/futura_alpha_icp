@@ -143,7 +143,7 @@ pub fn validate_and_prepare_config(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Capsule, OwnerState, PersonRef};
+    use crate::types::{Capsule, HostingPreferences, OwnerState, PersonRef};
     use std::collections::HashMap;
 
     // Helper function to create a test principal
@@ -170,6 +170,7 @@ mod tests {
             owners: owner_map,
             controllers: HashMap::new(),
             connections: HashMap::new(),
+            has_advanced_settings: false, // Default to simple settings
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
@@ -177,6 +178,7 @@ mod tests {
             updated_at: 1000000000,
             bound_to_neon: false,
             inline_bytes_used: 0,
+            hosting_preferences: HostingPreferences::default(),
         }
     }
 

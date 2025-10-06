@@ -4,7 +4,7 @@
 //! through the Store enum, ensuring runtime polymorphism works as expected.
 
 use super::{CapsuleId, CapsuleStore, Order, Store};
-use crate::types::{Capsule, OwnerState, PersonRef};
+use crate::types::{Capsule, HostingPreferences, OwnerState, PersonRef};
 use candid::Principal;
 use std::collections::HashMap;
 
@@ -276,7 +276,7 @@ fn create_test_capsule_with_principal(
     id: String,
     subject_principal: Principal,
 ) -> crate::types::Capsule {
-    use crate::types::{Capsule, OwnerState, PersonRef};
+    use crate::types::{Capsule, HostingPreferences, OwnerState, PersonRef};
     use std::collections::HashMap;
 
     let subject = PersonRef::Principal(subject_principal);
@@ -300,10 +300,12 @@ fn create_test_capsule_with_principal(
         connection_groups: HashMap::new(),
         memories: HashMap::new(),
         galleries: HashMap::new(),
+        has_advanced_settings: false, // Default to simple settings
         created_at: 1234567890,
         updated_at: 1234567890,
         bound_to_neon: false,
         inline_bytes_used: 0,
+        hosting_preferences: HostingPreferences::default(),
     }
 }
 
@@ -327,9 +329,11 @@ fn create_test_capsule(id: CapsuleId) -> Capsule {
         connection_groups: HashMap::new(),
         memories: HashMap::new(),
         galleries: HashMap::new(),
+        has_advanced_settings: false, // Default to simple settings
         created_at: 1234567890,
         updated_at: 1234567890,
         bound_to_neon: false,
         inline_bytes_used: 0,
+        hosting_preferences: HostingPreferences::default(),
     }
 }

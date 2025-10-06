@@ -44,8 +44,10 @@ impl Capsule {
             galleries: HashMap::new(),
             created_at: now,
             updated_at: now,
-            bound_to_neon: false, // Initially not bound to Neon
-            inline_bytes_used: 0, // Start with zero inline consumption
+            bound_to_neon: false,        // Initially not bound to Neon
+            inline_bytes_used: 0,        // Start with zero inline consumption
+            has_advanced_settings: true, // Default to advanced settings for Web3 users
+            hosting_preferences: HostingPreferences::default(), // Default to ICP hosting
         }
     }
 
@@ -571,4 +573,77 @@ pub fn update_capsule_activity(
         })
     })
     .map_err(|_| crate::types::Error::Internal("Failed to update capsule activity".to_string()))
+}
+
+// ============================================================================
+// USER SETTINGS MANAGEMENT (2 functions)
+// ============================================================================
+
+/// Get user settings for the caller's capsule
+pub fn get_user_settings() -> std::result::Result<crate::types::UserSettingsResponse, Error> {
+    let caller = PersonRef::from_caller();
+
+    // Find the caller's capsule
+    let capsule =
+        with_capsule_store(|store| store.find_by_subject(&caller).ok_or(Error::NotFound))?;
+
+    // Check if caller has read access
+    if !capsule.has_read_access(&caller) {
+        return Err(Error::Unauthorized);
+    }
+
+    // Return settings
+    Ok(crate::types::UserSettingsResponse {
+        has_advanced_settings: capsule.has_advanced_settings,
+        hosting_preferences: capsule.hosting_preferences.clone(),
+    })
+}
+
+/// Update user settings for the caller's capsule
+pub fn update_user_settings(
+    updates: crate::types::UserSettingsUpdateData,
+) -> std::result::Result<crate::types::UserSettingsResponse, Error> {
+    let caller = PersonRef::from_caller();
+
+    // Find the caller's capsule
+    let capsule_id = with_capsule_store(|store| {
+        store
+            .find_by_subject(&caller)
+            .map(|capsule| capsule.id.clone())
+            .ok_or(Error::NotFound)
+    })?;
+
+    // Update the capsule settings
+    with_capsule_store_mut(|store| {
+        store.update_with(&capsule_id, |capsule| {
+            // Check if caller has write access
+            if !capsule.has_write_access(&caller) {
+                return Err(Error::Unauthorized);
+            }
+
+            // Update settings if provided
+            if let Some(has_advanced_settings) = updates.has_advanced_settings {
+                capsule.has_advanced_settings = has_advanced_settings;
+            }
+
+            // Update timestamp
+            capsule.updated_at = time();
+
+            // Update owner activity
+            if let Some(owner_state) = capsule.owners.get_mut(&caller) {
+                owner_state.last_activity_at = time();
+            }
+
+            Ok(())
+        })
+    })?;
+
+    // Return the updated settings
+    let updated_capsule =
+        with_capsule_store(|store| store.get(&capsule_id).ok_or(Error::NotFound))?;
+
+    Ok(crate::types::UserSettingsResponse {
+        has_advanced_settings: updated_capsule.has_advanced_settings,
+        hosting_preferences: updated_capsule.hosting_preferences.clone(),
+    })
 }

@@ -343,7 +343,6 @@ mod tests {
         "test-capsule-123".to_string()
     }
 
-
     fn create_test_session_meta(
         caller: Principal,
         chunk_count: u32,

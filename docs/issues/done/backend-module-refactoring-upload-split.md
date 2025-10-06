@@ -212,5 +212,3 @@ Splitting the `upload/` module into `blob/` and `assets/` modules will:
 4. **Simplify maintenance** with clear separation of concerns
 
 This refactoring is essential for implementing the new bulk memory APIs and maintaining a clean, scalable architecture.
-
-

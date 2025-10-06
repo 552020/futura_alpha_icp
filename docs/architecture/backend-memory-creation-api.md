@@ -6,12 +6,13 @@ This document describes the implemented memory creation API endpoints in the ICP
 
 **Status**: ✅ IMPLEMENTED  
 **Implementation Date**: October 6, 2025  
-**Key Commits**: 
+**Key Commits**:
+
 - `4d9580e` - Complete upload service refactoring with multiple asset support
-- `5606b60` - Memory creation architecture documentation  
+- `5606b60` - Memory creation architecture documentation
 - `5f9f4a6` - Enhance memories_create API with unified asset support
-**Architecture**: Hybrid approach with unified + specialized endpoints  
-**Location**: `src/backend/src/lib.rs` and `src/backend/src/memories/core/create.rs`
+  **Architecture**: Hybrid approach with unified + specialized endpoints  
+  **Location**: `src/backend/src/lib.rs` and `src/backend/src/memories/core/create.rs`
 
 ## Architecture Overview
 

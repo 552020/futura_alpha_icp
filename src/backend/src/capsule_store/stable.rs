@@ -519,8 +519,7 @@ impl Storable for Capsule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::OwnerState;
-    use crate::types::PersonRef;
+    use crate::types::{HostingPreferences, OwnerState, PersonRef};
 
     // Note: These tests run off-chain using DefaultMemoryImpl
     // Integration tests with actual IC environment would be separate
@@ -572,10 +571,12 @@ mod tests {
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
+            has_advanced_settings: false, // Default to simple settings
             created_at: 1234567890,
             updated_at: 1234567890,
             bound_to_neon: false,
             inline_bytes_used: 0,
+            hosting_preferences: HostingPreferences::default(),
         }
     }
 

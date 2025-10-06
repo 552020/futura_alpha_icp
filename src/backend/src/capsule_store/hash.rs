@@ -449,6 +449,7 @@ mod tests {
             owners: HashMap::new(), // Clear owners for simplicity
             controllers: HashMap::new(),
             connections: HashMap::new(),
+            has_advanced_settings: false, // Default to simple settings
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
@@ -513,6 +514,7 @@ mod tests {
             owners: owners2,
             controllers: HashMap::new(),
             connections: HashMap::new(),
+            has_advanced_settings: false, // Default to simple settings
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
@@ -557,6 +559,7 @@ mod tests {
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
+            has_advanced_settings: false, // Default to simple settings
             created_at: 1234567890,
             updated_at: 1234567890,
             // bound_to_neon removed - now tracked in database_storage_edges
