@@ -408,7 +408,7 @@ mod tests {
 - [ ] Extend `MemoryMetadata` with dashboard fields
 - [ ] Add dashboard field computation functions
 - [ ] Update `MemoryHeader` to include dashboard fields
-- [ ] Update Candid type definitions
+- [ ] Regenerate Candid types (auto-generated after Rust changes)
 
 ### **Phase 2: Memory Creation Flow (High Priority)**
 
