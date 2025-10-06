@@ -7,7 +7,5 @@ pub mod adapter;
 pub mod compat;
 
 // Re-export the main functions for easy access
-pub use types::{SessionId, SessionSpec, SessionMeta, SessionStatus, ByteSink, Clock};
-pub use service::SessionService;
-pub use adapter::{SessionAdapter, ChunkIterator};
+pub use types::{SessionId, ByteSink};
 pub use compat::{SessionCompat, UploadSessionMeta};

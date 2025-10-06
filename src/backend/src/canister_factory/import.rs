@@ -2,7 +2,6 @@ use crate::canister_factory::types::*;
 use crate::types;
 use candid::Principal;
 use std::collections::HashMap;
-use uuid::Uuid;
 
 /// Begin a new import session for chunked data transfer
 /// This function creates a new import session and returns a session ID

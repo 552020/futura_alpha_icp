@@ -16,14 +16,11 @@ pub mod update;
 // Re-export the public surface (clean API)
 pub use assets::{
     asset_get_by_id_core, asset_remove_by_id_core, asset_remove_core, asset_remove_external_core,
-    asset_remove_inline_core, asset_remove_internal_core, cleanup_arweave_blob_asset,
-    cleanup_external_blob_asset, cleanup_internal_blob_asset, cleanup_ipfs_blob_asset,
-    cleanup_neon_blob_asset, cleanup_s3_blob_asset,
-    cleanup_vercel_blob_asset, memories_cleanup_assets_all_core, memories_cleanup_assets_bulk_core,
-    memories_list_assets_core,
+    asset_remove_inline_core, asset_remove_internal_core, memories_cleanup_assets_all_core,
+    memories_cleanup_assets_bulk_core, memories_list_assets_core,
 };
 pub use create::memories_create_core;
-pub use delete::{memories_delete_all_core, memories_delete_bulk_core, memories_delete_core, cleanup_memory_assets};
+pub use delete::{memories_delete_all_core, memories_delete_bulk_core, memories_delete_core};
 pub use read::memories_read_core;
 pub use traits::{Env, Store};
 pub use update::memories_update_core;

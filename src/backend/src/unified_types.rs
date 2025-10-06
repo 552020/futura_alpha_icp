@@ -87,8 +87,9 @@ pub enum StorageEdgeBlobType {
 // RESULT TYPES
 // ============================================================================
 
-/// Use standard Rust Result<T, Error> - no custom enum needed
-/// The tech lead's Candid spec will map to std::result::Result<T, Error>
+// Use standard Rust Result<T, Error> - no custom enum needed
+// The tech lead's Candid spec will map to std::result::Result<T, Error>
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -100,8 +101,6 @@ pub enum StorageEdgeBlobType {
 // ============================================================================
 // STORABLE IMPLEMENTATIONS
 // ============================================================================
-use ic_stable_structures::Storable;
-use std::borrow::Cow;
 
 // Storable implementations moved to upload/types.rs
 // - impl Storable for UploadSession

@@ -1,8 +1,7 @@
 use crate::memory::{MEM_BLOBS, MEM_BLOB_COUNTER, MEM_BLOB_META, MM};
-use crate::session::{ByteSink, SessionAdapter};
+use crate::session::ByteSink;
 use crate::types::Error;
 use crate::upload::types::{BlobId, BlobMeta};
-use hex;
 use ic_stable_structures::memory_manager::VirtualMemory;
 use ic_stable_structures::DefaultMemoryImpl;
 use ic_stable_structures::{StableBTreeMap, StableCell};
@@ -216,6 +215,7 @@ impl BlobStore {
     // Removed unused method: head
 
     /// Get total number of blobs (for monitoring)
+    #[allow(dead_code)]
     pub fn blob_count(&self) -> u64 {
         STABLE_BLOB_META.with(|metas| metas.borrow().len())
     }

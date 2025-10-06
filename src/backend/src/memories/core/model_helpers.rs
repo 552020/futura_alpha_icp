@@ -8,7 +8,6 @@ use crate::types::{
     MemoryAssetBlobInternal, MemoryAssetInline, MemoryMetadata, MemoryType, PersonRef,
     StorageEdgeBlobType,
 };
-use ic_cdk::api::time;
 use uuid::Uuid;
 
 /// Generate a UUID for asset IDs using tech lead's recommended pattern
