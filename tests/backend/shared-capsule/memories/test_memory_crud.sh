@@ -4,6 +4,13 @@
 # Tests memories_delete and memories_list endpoints (update tests consolidated in test_memories_update.sh)
 # Focus: Workflow integration, consistency, and cross-operation testing
 
+# Fix DFX color output issues (same as working upload tests)
+export NO_COLOR=1
+export DFX_COLOR=0
+export CLICOLOR=0
+export TERM=xterm-256color
+export DFX_WARNING=-mainnet_plaintext_identity
+
 # Load test configuration and utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../test_utils.sh"
@@ -151,10 +158,10 @@ test_list_empty_memories() {
         return 1
     fi
     
-    local result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     
-    # Should return a successful response with memories array (empty or populated)
-    if echo "$result" | grep -q "success = true" && echo "$result" | grep -q "memories = vec"; then
+    # Should return a successful response with Page structure (Ok variant with items array)
+    if echo "$result" | grep -q "variant {" && echo "$result" | grep -q "Ok =" && echo "$result" | grep -q "items"; then
         echo_success "Memory list query successful"
         return 0
     else
@@ -176,10 +183,10 @@ test_list_memories_after_upload() {
     fi
     
     # List memories
-    local result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     
-    # Should return success and contain our uploaded memories
-    if echo "$result" | grep -q "success = true" && echo "$result" | grep -q "memories = vec"; then
+    # Should return success and contain our uploaded memories (Page structure)
+    if echo "$result" | grep -q "variant {" && echo "$result" | grep -q "Ok =" && echo "$result" | grep -q "items"; then
         # Check if our memory IDs are in the result
         if echo "$result" | grep -q "$memory_id1" && echo "$result" | grep -q "$memory_id2"; then
             echo_success "Memory list contains uploaded memories"
@@ -206,12 +213,13 @@ test_list_memories_structure() {
     fi
     
     # List memories and check structure
-    local result=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call backend memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     
-    # Check for expected structure fields
-    if echo "$result" | grep -q "success = true" && \
-       echo "$result" | grep -q "memories = vec" && \
-       echo "$result" | grep -q "message = "; then
+    # Check for expected structure fields (Page structure with MemoryHeader items)
+    if echo "$result" | grep -q "variant {" && \
+       echo "$result" | grep -q "Ok =" && \
+       echo "$result" | grep -q "next_cursor" && \
+       echo "$result" | grep -q "items"; then
         echo_success "Memory list has correct response structure"
         return 0
     else
@@ -232,7 +240,7 @@ test_list_memories_consistency() {
     fi
     
     # List memories before deletion
-    local list_before=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local list_before=$(dfx canister call backend memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     local count_before=$(echo "$list_before" | grep -o "record {" | wc -l)
     
     # Delete the memory
@@ -244,7 +252,7 @@ test_list_memories_consistency() {
     fi
     
     # List memories after deletion
-    local list_after=$(dfx canister call backend memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local list_after=$(dfx canister call backend memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     local count_after=$(echo "$list_after" | grep -o "record {" | wc -l)
     
     # Count should be reduced (or at least the specific memory should be gone)

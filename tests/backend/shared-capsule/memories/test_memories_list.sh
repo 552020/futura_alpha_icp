@@ -5,6 +5,13 @@
 
 set -e
 
+# Fix DFX color output issues (same as working upload tests)
+export NO_COLOR=1
+export DFX_COLOR=0
+export CLICOLOR=0
+export TERM=xterm-256color
+export DFX_WARNING=-mainnet_plaintext_identity
+
 # Source test utilities
 source "$(dirname "$0")/../../test_utils.sh"
 
@@ -30,9 +37,10 @@ test_memories_list_valid_capsule() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing with capsule ID: $capsule_id"
     
     # Call memories_list with the capsule ID
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    # Check for Ok variant (success) and Page structure
+    if [[ $result == *"variant {"* ]] && [[ $result == *"Ok ="* ]] && [[ $result == *"next_cursor"* ]] && [[ $result == *"items"* ]]; then
         echo_success "✅ memories_list with valid capsule ID succeeded"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         return 0
@@ -47,10 +55,11 @@ test_memories_list_valid_capsule() {
 test_memories_list_invalid_capsule() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing memories_list with invalid capsule ID..."
     
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"invalid_capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"invalid_capsule_id\", null, null)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* && $result == *"memories = vec {}"* ]]; then
-        echo_success "✅ memories_list with invalid capsule ID returned empty result (expected)"
+    # Check for Err variant { NotFound } (expected for invalid capsule)
+    if [[ $result == *"variant {"* ]] && [[ $result == *"Err ="* ]] && [[ $result == *"NotFound"* ]]; then
+        echo_success "✅ memories_list with invalid capsule ID returned NotFound error (expected)"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         return 0
     else
@@ -64,10 +73,11 @@ test_memories_list_invalid_capsule() {
 test_memories_list_empty_string() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing memories_list with empty string..."
     
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"\", null, null)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* && $result == *"memories = vec {}"* ]]; then
-        echo_success "✅ memories_list with empty string returned empty result (expected)"
+    # Check for Err variant { NotFound } (expected for empty capsule ID)
+    if [[ $result == *"variant {"* ]] && [[ $result == *"Err ="* ]] && [[ $result == *"NotFound"* ]]; then
+        echo_success "✅ memories_list with empty string returned NotFound error (expected)"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         return 0
     else
@@ -107,9 +117,9 @@ test_memories_list_with_controlled_memories() {
     echo_success "✅ Created 3 test memories: $memory1_id, $memory2_id, $memory3_id"
     
     # Call memories_list with the capsule ID
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    if [[ $result == *"variant {"* ]] && [[ $result == *"Ok ="* ]] && [[ $result == *"items"* ]]; then
         echo_success "✅ memories_list with controlled memories succeeded"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         
@@ -194,17 +204,73 @@ test_memories_list_response_structure() {
         return 0
     fi
     
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
     
-    # Check for required fields in response
-    if [[ $result == *"success = true"* ]] && \
-       [[ $result == *"memories = vec"* ]] && \
-       [[ $result == *"message = \"Memories retrieved successfully\""* ]]; then
+    # Check for required fields in response (Page structure with MemoryHeader items)
+    if [[ $result == *"variant {"* ]] && \
+       [[ $result == *"Ok ="* ]] && \
+       [[ $result == *"next_cursor"* ]] && \
+       [[ $result == *"items"* ]]; then
         echo_success "✅ memories_list response structure is correct"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         return 0
     else
         echo_error "❌ memories_list response structure is incorrect"
+        [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
+        return 1
+    fi
+}
+
+# Test 7: Test memories_list with dashboard fields validation
+test_memories_list_dashboard_fields() {
+    [[ "$DEBUG" == "true" ]] && echo_debug "Testing memories_list dashboard fields validation..."
+    
+    # Get a valid capsule ID using utility function
+    local capsule_id=$(get_test_capsule_id)
+    if [[ -z "$capsule_id" ]]; then
+        echo_error "❌ Failed to get capsule ID for dashboard fields test"
+        return 1
+    fi
+    
+    # Create a test memory to validate dashboard fields
+    local memory_id=$(create_test_memory "$capsule_id" "dashboard_test_memory" "Test memory for dashboard fields" '"test"; "dashboard"; "fields"' 'blob "VGVzdCBNZW1vcnkgZm9yIGRhc2hib2FyZA=="')
+    if [[ -z "$memory_id" ]]; then
+        echo_error "❌ Failed to create test memory for dashboard fields test"
+        return 1
+    fi
+    
+    echo_success "✅ Created test memory: $memory_id"
+    
+    # Call memories_list with the capsule ID
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
+    
+    if [[ $result == *"variant {"* ]] && [[ $result == *"Ok ="* ]] && [[ $result == *"items"* ]]; then
+        echo_success "✅ memories_list with dashboard fields succeeded"
+        [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
+        
+        # Validate dashboard fields are present in the response
+        if [[ $result == *"title"* ]] && \
+           [[ $result == *"description"* ]] && \
+           [[ $result == *"tags"* ]] && \
+           [[ $result == *"is_public"* ]] && \
+           [[ $result == *"shared_count"* ]] && \
+           [[ $result == *"sharing_status"* ]] && \
+           [[ $result == *"asset_count"* ]] && \
+           [[ $result == *"has_thumbnails"* ]] && \
+           [[ $result == *"has_previews"* ]]; then
+            echo_success "✅ All dashboard fields are present in response"
+            
+            # Clean up test memory
+            dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"$memory_id\")" >/dev/null 2>&1
+            echo_success "✅ Test memory cleaned up"
+            return 0
+        else
+            echo_error "❌ Dashboard fields missing from response"
+            [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
+            return 1
+        fi
+    else
+        echo_error "❌ memories_list with dashboard fields failed"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         return 1
     fi
@@ -242,6 +308,12 @@ main() {
     fi
     
     if run_test "Response structure" test_memories_list_response_structure; then
+        ((tests_passed++))
+    else
+        ((tests_failed++))
+    fi
+    
+    if run_test "Dashboard fields validation" test_memories_list_dashboard_fields; then
         ((tests_passed++))
     else
         ((tests_failed++))
