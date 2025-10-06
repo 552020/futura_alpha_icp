@@ -254,7 +254,7 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
     }
 
     // Store the count before moving the vector
-    let asset_count = blob_internal_assets.len();
+    let _asset_count = blob_internal_assets.len();
 
     // Create the memory with multiple internal blob assets
     let memory = Memory {

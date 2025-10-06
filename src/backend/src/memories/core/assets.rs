@@ -244,13 +244,13 @@ pub fn asset_remove_core<E: Env, S: Store>(
     env: &E,
     store: &mut S,
     memory_id: String,
-    asset_ref: String,
+    _asset_ref: String,
 ) -> std::result::Result<crate::memories::types::AssetRemovalResult, Error> {
     // Find the memory across all accessible capsules
     let accessible_capsules = store.get_accessible_capsules(&env.caller());
 
     for capsule_id in accessible_capsules {
-        if let Some(mut memory) = store.get_memory(&capsule_id, &memory_id) {
+        if let Some(_memory) = store.get_memory(&capsule_id, &memory_id) {
             // This is a simplified implementation
             // In practice, you'd need to find and remove the specific asset
             return Ok(crate::memories::types::AssetRemovalResult {
@@ -269,13 +269,13 @@ pub fn asset_remove_inline_core<E: Env, S: Store>(
     env: &E,
     store: &mut S,
     memory_id: String,
-    asset_index: u32,
+    _asset_index: u32,
 ) -> std::result::Result<crate::memories::types::AssetRemovalResult, Error> {
     // Find the memory across all accessible capsules
     let accessible_capsules = store.get_accessible_capsules(&env.caller());
 
     for capsule_id in accessible_capsules {
-        if let Some(mut memory) = store.get_memory(&capsule_id, &memory_id) {
+        if let Some(_memory) = store.get_memory(&capsule_id, &memory_id) {
             // This is a simplified implementation
             // In practice, you'd need to remove the asset at the specified index
             return Ok(crate::memories::types::AssetRemovalResult {
@@ -294,13 +294,13 @@ pub fn asset_remove_internal_core<E: Env, S: Store>(
     env: &E,
     store: &mut S,
     memory_id: String,
-    blob_ref: String,
+    _blob_ref: String,
 ) -> std::result::Result<crate::memories::types::AssetRemovalResult, Error> {
     // Find the memory across all accessible capsules
     let accessible_capsules = store.get_accessible_capsules(&env.caller());
 
     for capsule_id in accessible_capsules {
-        if let Some(mut memory) = store.get_memory(&capsule_id, &memory_id) {
+        if let Some(_memory) = store.get_memory(&capsule_id, &memory_id) {
             // This is a simplified implementation
             // In practice, you'd need to remove the specific internal asset
             return Ok(crate::memories::types::AssetRemovalResult {
@@ -319,13 +319,13 @@ pub fn asset_remove_external_core<E: Env, S: Store>(
     env: &E,
     store: &mut S,
     memory_id: String,
-    storage_key: String,
+    _storage_key: String,
 ) -> std::result::Result<crate::memories::types::AssetRemovalResult, Error> {
     // Find the memory across all accessible capsules
     let accessible_capsules = store.get_accessible_capsules(&env.caller());
 
     for capsule_id in accessible_capsules {
-        if let Some(mut memory) = store.get_memory(&capsule_id, &memory_id) {
+        if let Some(_memory) = store.get_memory(&capsule_id, &memory_id) {
             // This is a simplified implementation
             // In practice, you'd need to remove the specific external asset
             return Ok(crate::memories::types::AssetRemovalResult {
@@ -403,7 +403,7 @@ pub fn asset_remove_by_id_core<E: Env, S: Store>(
                 .position(|asset| asset.asset_id == asset_id)
             {
                 memory.inline_assets.remove(index);
-                store.update_memory(&capsule_id, &memory_id, memory);
+                let _ = store.update_memory(&capsule_id, &memory_id, memory);
                 return Ok(crate::memories::types::AssetRemovalResult {
                     memory_id: memory_id.clone(),
                     asset_removed: true,
@@ -420,7 +420,7 @@ pub fn asset_remove_by_id_core<E: Env, S: Store>(
                 let asset = memory.blob_internal_assets.remove(index);
                 // Clean up the blob from storage
                 cleanup_internal_blob_asset(&asset.blob_ref)?;
-                store.update_memory(&capsule_id, &memory_id, memory);
+                let _ = store.update_memory(&capsule_id, &memory_id, memory);
                 return Ok(crate::memories::types::AssetRemovalResult {
                     memory_id: memory_id.clone(),
                     asset_removed: true,
@@ -437,7 +437,7 @@ pub fn asset_remove_by_id_core<E: Env, S: Store>(
                 let asset = memory.blob_external_assets.remove(index);
                 // Clean up the external asset
                 cleanup_external_blob_asset(&asset)?;
-                store.update_memory(&capsule_id, &memory_id, memory);
+                let _ = store.update_memory(&capsule_id, &memory_id, memory);
                 return Ok(crate::memories::types::AssetRemovalResult {
                     memory_id: memory_id.clone(),
                     asset_removed: true,

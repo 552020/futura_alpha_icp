@@ -146,9 +146,9 @@ pub fn memories_delete_all_core<E: Env, S: Store>(
     // Get all accessible capsules for the caller
     let accessible_capsules = store.get_accessible_capsules(&caller);
 
-    let mut deleted_count = 0;
-    let mut failed_count = 0;
-    let mut errors: Vec<String> = Vec::new();
+    let deleted_count = 0;
+    let failed_count = 0;
+    let _errors: Vec<String> = Vec::new();
 
     // Find and delete all memories in the capsule
     for accessible_capsule_id in accessible_capsules {
