@@ -116,6 +116,7 @@ pub enum AssetMetadata {
 // ============================================================================
 
 /// Type alias for memory identifiers
+#[allow(dead_code)]
 pub type MemoryId = String;
 
 // ============================================================================

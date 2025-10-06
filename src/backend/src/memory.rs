@@ -20,8 +20,11 @@ pub const MEM_CAPSULES_IDX_SUBJECT: MemoryId = MemoryId::new(1);
 pub const MEM_CAPSULES_IDX_OWNER: MemoryId = MemoryId::new(2);
 
 // Upload workflow
+#[allow(dead_code)]
 pub const MEM_SESSIONS: MemoryId = MemoryId::new(3);
+#[allow(dead_code)]
 pub const MEM_SESSIONS_CHUNKS: MemoryId = MemoryId::new(4);
+#[allow(dead_code)]
 pub const MEM_SESSIONS_COUNTER: MemoryId = MemoryId::new(5);
 
 // Blob storage

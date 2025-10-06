@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// Generic session service (no upload semantics)
 /// Manages session lifecycle and per-chunk book-keeping only
 pub struct SessionService {
+    #[allow(dead_code)]
     next_id: u64,
     sessions: BTreeMap<u64, Session>,
 }
@@ -26,6 +27,7 @@ impl SessionService {
     }
 
     /// Begin a new session
+    #[allow(dead_code)]
     pub fn begin(&mut self, spec: SessionSpec, clock: &dyn Clock) -> SessionId {
         let session_id = SessionId(self.next_id);
         self.next_id += 1;
@@ -74,6 +76,7 @@ impl SessionService {
     }
 
     /// Finish session (just closes session, no business logic)
+    #[allow(dead_code)]
     pub fn finish(&mut self, sid: SessionId, clock: &dyn Clock) -> Result<(), Error> {
         let session = self.sessions.get_mut(&sid.0).ok_or(Error::NotFound)?;
 
@@ -95,12 +98,14 @@ impl SessionService {
     }
 
     /// Abort session
+    #[allow(dead_code)]
     pub fn abort(&mut self, sid: SessionId) -> Result<(), Error> {
         self.sessions.remove(&sid.0).ok_or(Error::NotFound)?;
         Ok(())
     }
 
     /// Clean up expired sessions (TTL tick)
+    #[allow(dead_code)]
     pub fn tick_ttl(&mut self, now_ms: u64, ttl_ms: u64) -> usize {
         let expired: Vec<u64> = self
             .sessions
@@ -117,11 +122,13 @@ impl SessionService {
     }
 
     /// Get session info
+    #[allow(dead_code)]
     pub fn get_session(&self, sid: &SessionId) -> Option<&Session> {
         self.sessions.get(&sid.0)
     }
 
     /// Count active sessions for owner
+    #[allow(dead_code)]
     pub fn count_active_for(&self, owner: &[u8]) -> usize {
         self.sessions
             .values()
@@ -133,6 +140,7 @@ impl SessionService {
     }
 
     /// List all sessions (for debugging)
+    #[allow(dead_code)]
     pub fn list_sessions(&self) -> Vec<(u64, SessionMeta)> {
         self.sessions
             .iter()
@@ -146,6 +154,7 @@ impl SessionService {
     }
 
     /// Session count by status
+    #[allow(dead_code)]
     pub fn session_count_by_status(&self) -> (usize, usize) {
         let (pending, committed) = self.sessions.values().fold((0, 0), |(p, c), session| {
             match session.session_meta.status {

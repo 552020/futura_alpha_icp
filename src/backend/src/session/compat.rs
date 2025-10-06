@@ -1,5 +1,5 @@
 use super::service::SessionService;
-use super::types::{ByteSink, Clock, SessionId, SessionSpec};
+use super::types::{ByteSink, SessionId, SessionSpec};
 use crate::types::{CapsuleId, Error};
 use candid::Principal;
 use std::cell::RefCell;
@@ -13,6 +13,7 @@ pub struct UploadSessionMeta {
     pub capsule_id: CapsuleId,
     pub caller: Principal,
     pub created_at: u64,
+    #[allow(dead_code)]
     pub expected_chunks: u32,
     pub status: crate::session::types::SessionStatus,
     pub chunk_count: u32,
@@ -131,12 +132,14 @@ impl SessionCompat {
     }
 
     /// Finish session (delegates to generic service)
+    #[allow(dead_code)]
     pub fn finish(&self, sid: &SessionId) -> Result<(), Error> {
         let clock = crate::session::adapter::ICClock;
         self.svc.borrow_mut().finish(*sid, &clock)
     }
 
     /// Abort session (delegates to generic service)
+    #[allow(dead_code)]
     pub fn abort(&self, sid: &SessionId) -> Result<(), Error> {
         self.svc.borrow_mut().abort(*sid)
     }
@@ -192,6 +195,7 @@ impl SessionCompat {
     }
 
     /// List all sessions (for debugging)
+    #[allow(dead_code)]
     pub fn list_all_sessions(&self) -> Vec<(u64, crate::session::types::SessionMeta)> {
         self.svc.borrow().list_sessions()
     }
@@ -211,6 +215,7 @@ impl SessionCompat {
     }
 
     /// Session count by status
+    #[allow(dead_code)]
     pub fn session_count_by_status(&self) -> (usize, usize) {
         self.svc.borrow().session_count_by_status()
     }
@@ -240,6 +245,7 @@ mod tests {
             }
         }
 
+        #[allow(dead_code)] // Test utility for debugging chunk writes - may be used in future tests
         fn get_writes(&self) -> Vec<(u64, Vec<u8>)> {
             self.writes.borrow().clone()
         }
