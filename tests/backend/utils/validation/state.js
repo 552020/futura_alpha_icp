@@ -207,3 +207,4 @@ export async function verifySystemState(actor, capsuleId, expectedState) {
 
   return true;
 }
+

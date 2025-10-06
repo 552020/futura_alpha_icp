@@ -28,6 +28,7 @@ pub trait CapsuleAcl {
 ///
 /// This can be implemented by any struct that has the necessary fields
 /// for access control (subject, owners, controllers)
+#[derive(Clone)]
 pub struct CapsuleAccess {
     pub subject: PersonRef,
     pub owners: HashMap<PersonRef, OwnerState>,

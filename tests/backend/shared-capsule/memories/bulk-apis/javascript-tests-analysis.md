@@ -132,3 +132,4 @@ All session tests use update calls like `backend.capsules_create()`, `backend.up
 ❌ **JavaScript tests fail due to certificate verification (expected behavior)**
 ✅ **APIs are production-ready and functional**
 
+

@@ -206,3 +206,4 @@ export function validateSuccessResult(result, expectedField = null) {
 
   return { valid: true };
 }
+

@@ -384,6 +384,28 @@ pub fn blob_get_meta(locator: String) -> std::result::Result<crate::types::BlobM
     }
 }
 
+/// Delete blob by locator (public API function)
+pub fn blob_delete(locator: String) -> std::result::Result<(), Error> {
+    use crate::upload::types::BlobId;
+
+    // Parse locator to extract blob ID
+    let blob_id = if locator.starts_with("blob_") {
+        // For blob_ format, extract the numeric ID
+        let id_str = locator.strip_prefix("blob_").unwrap_or("");
+        let blob_id_num: u64 = id_str.parse().map_err(|_| {
+            crate::types::Error::InvalidArgument("Invalid blob ID in locator".to_string())
+        })?;
+        BlobId(blob_id_num)
+    } else {
+        return Err(crate::types::Error::InvalidArgument(
+            "Unsupported locator format. Expected 'blob_{id}'".to_string(),
+        ));
+    };
+
+    let blob_store = BlobStore::new();
+    blob_store.delete_blob(&blob_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

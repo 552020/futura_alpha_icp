@@ -5,13 +5,16 @@
 
 use super::traits::*;
 use crate::capsule_acl::CapsuleAcl;
-use crate::types::{BlobRef, Error, Memory, MemoryAssetBlobExternal, MemoryId, StorageEdgeBlobType};
+use crate::types::{
+    BlobRef, Error, Memory, MemoryAssetBlobExternal, MemoryId, StorageEdgeBlobType,
+};
 
 /// Core memory deletion function - pure business logic
 pub fn memories_delete_core<E: Env, S: Store>(
     env: &E,
     store: &mut S,
     memory_id: MemoryId,
+    delete_assets: bool,
 ) -> std::result::Result<(), Error> {
     let caller = env.caller();
 
@@ -47,8 +50,10 @@ pub fn memories_delete_core<E: Env, S: Store>(
                 capsule_access.can_delete(&caller)
             );
 
-            // CRITICAL: Clean up assets before deleting the memory
-            cleanup_memory_assets(&memory)?;
+            // CRITICAL: Clean up assets before deleting the memory (if requested)
+            if delete_assets {
+                cleanup_memory_assets(&memory)?;
+            }
 
             // Delete the memory
             store.delete_memory(&capsule_id, &memory_id)?;
@@ -73,6 +78,7 @@ pub fn memories_delete_bulk_core<E: Env, S: Store>(
     store: &mut S,
     capsule_id: String,
     memory_ids: Vec<String>,
+    delete_assets: bool,
 ) -> std::result::Result<crate::memories::types::BulkDeleteResult, Error> {
     let caller = env.caller();
     let mut deleted_count = 0;
@@ -90,7 +96,7 @@ pub fn memories_delete_bulk_core<E: Env, S: Store>(
 
     // Delete each memory
     for memory_id in memory_ids {
-        match memories_delete_core(env, store, memory_id.clone()) {
+        match memories_delete_core(env, store, memory_id.clone(), delete_assets) {
             Ok(_) => {
                 deleted_count += 1;
             }
@@ -104,7 +110,12 @@ pub fn memories_delete_bulk_core<E: Env, S: Store>(
     let message = if errors.is_empty() {
         format!("Successfully deleted {} memories", deleted_count)
     } else {
-        format!("Deleted {} memories, {} failed: {}", deleted_count, failed_count, errors.join(", "))
+        format!(
+            "Deleted {} memories, {} failed: {}",
+            deleted_count,
+            failed_count,
+            errors.join(", ")
+        )
     };
 
     Ok(crate::memories::types::BulkDeleteResult {
@@ -119,6 +130,7 @@ pub fn memories_delete_all_core<E: Env, S: Store>(
     env: &E,
     store: &mut S,
     capsule_id: String,
+    delete_assets: bool,
 ) -> std::result::Result<crate::memories::types::BulkDeleteResult, Error> {
     let caller = env.caller();
 
@@ -133,22 +145,19 @@ pub fn memories_delete_all_core<E: Env, S: Store>(
 
     // Get all accessible capsules for the caller
     let accessible_capsules = store.get_accessible_capsules(&caller);
-    
+
     let mut deleted_count = 0;
     let mut failed_count = 0;
     let mut errors: Vec<String> = Vec::new();
 
     // Find and delete all memories in the capsule
-    for capsule_id in accessible_capsules {
-        if capsule_id == capsule_id {
-            // This is a simplified implementation - in practice, you'd need to
-            // iterate through all memories in the capsule
-            // For now, return a placeholder result
-            return Ok(crate::memories::types::BulkDeleteResult {
-                deleted_count: 0,
-                failed_count: 0,
-                message: "Delete all not fully implemented".to_string(),
-            });
+    for accessible_capsule_id in accessible_capsules {
+        if accessible_capsule_id == capsule_id {
+            // Get all memories in the capsule and delete them
+            let memories = store.get_all_memories(&capsule_id);
+            let memory_ids: Vec<String> = memories.iter().map(|m| m.id.clone()).collect();
+
+            return memories_delete_bulk_core(env, store, capsule_id, memory_ids, delete_assets);
         }
     }
 
@@ -182,6 +191,7 @@ pub fn cleanup_memory_assets(memory: &Memory) -> std::result::Result<(), Error> 
 fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<(), Error> {
     use crate::upload::blob_store::BlobStore;
     use crate::upload::types::BlobId;
+    use crate::util::blob_id::parse_blob_id;
 
     // Parse the blob locator to get the BlobId
     // Format: "canister_id:blob_id" or just "blob_id"
@@ -195,12 +205,18 @@ fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<(), Er
         &blob_ref.locator
     };
 
-    // Convert string to BlobId (assuming it's a numeric ID)
-    let blob_id = blob_id_str
-        .parse::<u64>()
-        .map_err(|_| Error::InvalidArgument(format!("Invalid blob ID: {}", blob_id_str)))?;
+    // Add loud, temporary logging to debug exact blob ID strings
+    ic_cdk::println!(
+        "[cleanup_internal_blob_asset] raw='{}' (len={}) bytes={:?}",
+        blob_id_str,
+        blob_id_str.len(),
+        blob_id_str.as_bytes()
+    );
 
-    let blob_id = BlobId(blob_id);
+    // Use the bulletproof parser
+    let blob_id_num = parse_blob_id(blob_id_str).map_err(|e| Error::InvalidArgument(e))?;
+
+    let blob_id = BlobId(blob_id_num);
 
     // Delete the blob from the store
     let blob_store = BlobStore::new();

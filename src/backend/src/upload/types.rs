@@ -1,4 +1,4 @@
-use crate::types::{AssetMetadata, CapsuleId, MemoryId, MemoryType};
+use crate::types::{CapsuleId, MemoryId, MemoryType};
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Serialize;
@@ -187,7 +187,6 @@ pub struct SessionMeta {
     pub expected_hash: Option<[u8; 32]>,
     pub status: SessionStatus,
     pub created_at: u64,
-    pub asset_metadata: AssetMetadata,
     pub idem: String,
 }
 

@@ -32,6 +32,7 @@ mod types;
 mod unified_types;
 mod upload;
 mod user;
+mod util;
 
 // ============================================================================
 // CORE SYSTEM & UTILITY FUNCTIONS (3 functions)
@@ -299,6 +300,32 @@ fn memories_create(
     }
 }
 
+#[ic_cdk::update]
+fn memories_create_with_internal_blobs(
+    capsule_id: types::CapsuleId,
+    memory_metadata: crate::memories::types::MemoryMetadata,
+    internal_blob_assets: Vec<crate::memories::types::InternalBlobAssetInput>,
+    idem: String,
+) -> types::Result_20 {
+    use crate::memories::core::create::memories_create_with_internal_blobs_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    match memories_create_with_internal_blobs_core(
+        &env,
+        &mut store,
+        capsule_id,
+        memory_metadata,
+        internal_blob_assets,
+        idem,
+    ) {
+        Ok(memory_id) => types::Result_20::Ok(memory_id),
+        Err(error) => types::Result_20::Err(error),
+    }
+}
+
 #[ic_cdk::query]
 fn memories_read(memory_id: String) -> std::result::Result<types::Memory, Error> {
     use crate::memories::core::memories_read_core;
@@ -384,14 +411,14 @@ fn memories_update(
 }
 
 #[ic_cdk::update]
-fn memories_delete(memory_id: String) -> std::result::Result<(), Error> {
+fn memories_delete(memory_id: String, delete_assets: bool) -> std::result::Result<(), Error> {
     use crate::memories::core::memories_delete_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    memories_delete_core(&env, &mut store, memory_id)
+    memories_delete_core(&env, &mut store, memory_id, delete_assets)
 }
 
 #[ic_cdk::query]
@@ -400,7 +427,7 @@ fn memories_list(
     cursor: Option<String>,
     limit: Option<u32>,
 ) -> std::result::Result<crate::capsule_store::types::Page<types::MemoryHeader>, Error> {
-    use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
+    use crate::capsule_store::CapsuleStore;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -470,15 +497,9 @@ fn upload_config() -> types::UploadConfig {
 
 /// Begin chunked upload for large files
 #[ic_cdk::update]
-fn uploads_begin(
-    capsule_id: types::CapsuleId,
-    asset_metadata: types::AssetMetadata,
-    expected_chunks: u32,
-    idem: String,
-) -> Result_13 {
+fn uploads_begin(capsule_id: types::CapsuleId, expected_chunks: u32, idem: String) -> Result_13 {
     match with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new();
-        upload_service.begin_upload(store, capsule_id, asset_metadata, expected_chunks, idem)
+        upload::service::begin_upload(store, capsule_id, expected_chunks, idem)
     }) {
         Ok(session_id) => {
             let sid = session_id.0;
@@ -530,12 +551,8 @@ async fn uploads_put_chunk(
 
     // Then write chunk to storage
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.put_chunk(store, &session_id, chunk_idx, bytes) {
-            Ok(()) => Ok(()),
-            Err(err) => Err(err),
-        }
+        upload::service::put_chunk(store, &session_id, chunk_idx, bytes)
     })
 }
 
@@ -576,7 +593,7 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
 
     ic_cdk::println!("FINISH_HASH_OK sid={} len={}", session_id, total_len);
 
-    // Use real UploadService with actual store integration
+    // Use functional upload service
     let hash: [u8; 32] = match expected_sha256.clone().try_into() {
         Ok(h) => h,
         Err(_) => {
@@ -593,19 +610,17 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
     };
 
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.commit(store, session_id, hash, total_len) {
-            Ok((blob_id, memory_id)) => {
+        match upload::service::commit(store, session_id, hash, total_len) {
+            Ok(blob_id) => {
                 ic_cdk::println!(
-                    "FINISH_INDEX_COMMITTED sid={} blob={} mem={}",
+                    "FINISH_BLOB_COMMITTED sid={} blob={}",
                     session_id.0,
-                    blob_id,
-                    memory_id
+                    blob_id
                 );
 
                 let result = UploadFinishResult {
-                    memory_id: memory_id.clone(),
+                    memory_id: "".to_string(), // No memory created - separate concern
                     blob_id: blob_id.clone(),
                     remote_id: None,
                     size: total_len,
@@ -630,14 +645,10 @@ async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u6
 /// Abort upload session and cleanup
 #[ic_cdk::update]
 async fn uploads_abort(session_id: u64) -> std::result::Result<(), Error> {
-    // Use real UploadService with actual store integration
+    // Use functional upload service
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.abort(store, session_id) {
-            Ok(()) => Ok(()),
-            Err(err) => Err(err),
-        }
+        upload::service::abort(store, session_id)
     })
 }
 
@@ -649,8 +660,7 @@ async fn uploads_abort(session_id: u64) -> std::result::Result<(), Error> {
 #[ic_cdk::update]
 fn sessions_clear_all() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let upload_service = upload::service::UploadService::new();
-        upload_service.clear_all_sessions();
+        upload::service::clear_all_sessions();
         Ok("All sessions cleared".to_string())
     })
 }
@@ -659,9 +669,8 @@ fn sessions_clear_all() -> std::result::Result<String, Error> {
 #[ic_cdk::query]
 fn sessions_stats() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let upload_service = upload::service::UploadService::new();
-        let total = upload_service.total_session_count();
-        let (pending, committed) = upload_service.session_count_by_status();
+        let total = upload::service::total_session_count();
+        let (pending, committed) = upload::service::session_count_by_status();
 
         let stats = format!(
             "Total sessions: {}, Pending: {}, Committed: {}",
@@ -675,8 +684,7 @@ fn sessions_stats() -> std::result::Result<String, Error> {
 #[ic_cdk::query]
 fn sessions_list() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let upload_service = upload::service::UploadService::new();
-        let sessions = upload_service.list_upload_sessions();
+        let sessions = upload::service::list_upload_sessions();
 
         let mut result = String::new();
         result.push_str(&format!("Found {} sessions:\n", sessions.len()));
@@ -701,9 +709,8 @@ fn sessions_list() -> std::result::Result<String, Error> {
 #[ic_cdk::update]
 fn sessions_cleanup_expired() -> std::result::Result<String, Error> {
     memory::with_capsule_store_mut(|_store| {
-        let upload_service = upload::service::UploadService::new();
         const SESSION_EXPIRY_MS: u64 = 30 * 60 * 1000; // 30 minutes
-        upload_service.cleanup_expired_sessions(SESSION_EXPIRY_MS);
+        upload::service::cleanup_expired_sessions(SESSION_EXPIRY_MS);
         Ok("Expired sessions cleaned up".to_string())
     })
 }
@@ -767,6 +774,39 @@ fn blob_get_meta(locator: String) -> std::result::Result<types::BlobMeta, Error>
     upload::blob_store::blob_get_meta(locator)
 }
 
+/// Delete blob by ID (unified endpoint for all blob types)
+#[ic_cdk::update]
+fn blob_delete(blob_id: String) -> types::Result_6 {
+    // Determine blob type and handle accordingly
+    if blob_id.starts_with("blob_") {
+        // Internal blob (ICP blob store)
+        match upload::blob_store::blob_delete(blob_id) {
+            Ok(()) => types::Result_6::Ok("Internal blob deleted successfully".to_string()),
+            Err(error) => types::Result_6::Err(error),
+        }
+    } else if blob_id.starts_with("inline_") {
+        // Inline asset (stored in memory)
+        // For inline assets, we can't delete the blob directly since it's part of the memory
+        // This would require deleting the entire memory or the specific asset
+        types::Result_6::Err(Error::InvalidArgument(
+            "Inline assets cannot be deleted directly. Delete the memory or use asset removal endpoints.".to_string(),
+        ))
+    } else if blob_id.starts_with("external_") {
+        // External blob (S3, IPFS, etc.)
+        // External blobs are managed by external systems
+        types::Result_6::Err(Error::InvalidArgument(
+            "External blobs cannot be deleted via this endpoint. Use external storage management."
+                .to_string(),
+        ))
+    } else {
+        // Unknown blob type
+        types::Result_6::Err(Error::InvalidArgument(format!(
+            "Unknown blob type for ID: {}",
+            blob_id
+        )))
+    }
+}
+
 /// Debug endpoint to upload chunk with base64 data (dev only)
 #[ic_cdk::update]
 async fn debug_put_chunk_b64(
@@ -777,12 +817,8 @@ async fn debug_put_chunk_b64(
     let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
         .map_err(|_| types::Error::InvalidArgument("bad base64".into()))?;
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.put_chunk(store, &session_id, chunk_idx, bytes) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(types::Error::from(e)),
-        }
+        upload::service::put_chunk(store, &session_id, chunk_idx, bytes).map_err(types::Error::from)
     })
 }
 
@@ -792,7 +828,7 @@ async fn debug_finish_hex(
     session_id: u64,
     sha256_hex: String,
     total_len: u64,
-) -> std::result::Result<(String, types::MemoryId), Error> {
+) -> std::result::Result<String, Error> {
     let bytes =
         hex::decode(sha256_hex).map_err(|_| types::Error::InvalidArgument("bad hex".into()))?;
     if bytes.len() != 32 {
@@ -804,12 +840,9 @@ async fn debug_finish_hex(
     hash_array.copy_from_slice(&bytes);
 
     memory::with_capsule_store_mut(|store| {
-        let mut upload_service = upload::service::UploadService::new();
         let session_id = upload::types::SessionId(session_id);
-        match upload_service.commit(store, session_id, hash_array, total_len) {
-            Ok((blob_id, memory_id)) => Ok((blob_id, memory_id)),
-            Err(e) => Err(types::Error::from(e)),
-        }
+        upload::service::commit(store, session_id, hash_array, total_len)
+            .map_err(types::Error::from)
     })
 }
 
@@ -1089,6 +1122,7 @@ fn _probe_inline_len(content: Option<Vec<u8>>) -> (u64, Vec<u8>) {
 fn memories_delete_bulk(
     capsule_id: String,
     memory_ids: Vec<String>,
+    delete_assets: bool,
 ) -> Result<crate::memories::types::BulkDeleteResult, Error> {
     use crate::memories::core::memories_delete_bulk_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
@@ -1096,13 +1130,14 @@ fn memories_delete_bulk(
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    memories_delete_bulk_core(&env, &mut store, capsule_id, memory_ids)
+    memories_delete_bulk_core(&env, &mut store, capsule_id, memory_ids, delete_assets)
 }
 
 /// Delete ALL memories in a capsule (high-risk operation)
 #[ic_cdk::update]
 fn memories_delete_all(
     capsule_id: String,
+    delete_assets: bool,
 ) -> Result<crate::memories::types::BulkDeleteResult, Error> {
     use crate::memories::core::memories_delete_all_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
@@ -1110,7 +1145,7 @@ fn memories_delete_all(
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    memories_delete_all_core(&env, &mut store, capsule_id)
+    memories_delete_all_core(&env, &mut store, capsule_id, delete_assets)
 }
 
 /// Clean up all assets from a memory while preserving the memory record

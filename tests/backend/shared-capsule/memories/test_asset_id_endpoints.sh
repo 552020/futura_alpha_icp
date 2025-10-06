@@ -54,3 +54,4 @@ else
     echo -e "${RED}❌ Asset ID Endpoints Test failed${NC}"
     exit 1
 fi
+

@@ -31,6 +31,7 @@ pub trait Store {
         id: &MemoryId,
         memory: Memory,
     ) -> std::result::Result<(), Error>;
+    fn get_all_memories(&self, capsule: &CapsuleId) -> Vec<Memory>;
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId>;
     fn get_capsule_for_acl(&self, capsule_id: &CapsuleId) -> Option<CapsuleAccess>;
 }

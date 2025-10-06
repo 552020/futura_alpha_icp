@@ -50,3 +50,4 @@ else
     echo -e "${YELLOW}⚠️  Could not generate .did file${NC}"
     exit 0
 fi
+

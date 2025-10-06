@@ -29,6 +29,7 @@ pub fn cleanup_memory_assets(memory: &Memory) -> std::result::Result<(), Error> 
 pub fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<(), Error> {
     use crate::upload::blob_store::BlobStore;
     use crate::upload::types::BlobId;
+    use crate::util::blob_id::parse_blob_id;
 
     // Parse the blob locator to get the BlobId
     // Format: "canister_id:blob_id" or just "blob_id"
@@ -42,12 +43,19 @@ pub fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<()
         &blob_ref.locator
     };
 
-    // Convert string to BlobId (assuming it's a numeric ID)
-    let blob_id = blob_id_str
-        .parse::<u64>()
-        .map_err(|_| Error::InvalidArgument(format!("Invalid blob ID: {}", blob_id_str)))?;
+    // Add loud, temporary logging to debug exact blob ID strings
+    ic_cdk::println!(
+        "[cleanup_internal_blob_asset] raw='{}' (len={}) bytes={:?}", 
+        blob_id_str, 
+        blob_id_str.len(), 
+        blob_id_str.as_bytes()
+    );
 
-    let blob_id = BlobId(blob_id);
+    // Use the bulletproof parser
+    let blob_id_num = parse_blob_id(blob_id_str)
+        .map_err(|e| Error::InvalidArgument(e))?;
+
+    let blob_id = BlobId(blob_id_num);
 
     // Delete the blob from the store
     let blob_store = BlobStore::new();

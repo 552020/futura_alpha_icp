@@ -52,3 +52,4 @@ single-file-processor.ts → uploadToICPWithProcessing() → uploadFileToICPWith
 
 High - blocks development and debugging of ICP upload functionality.
 
+

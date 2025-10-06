@@ -5,6 +5,10 @@
 
 set -e
 
+# Source test utilities (includes DFX color fix)
+SCRIPT_DIR="$(dirname "$0")"
+source "$SCRIPT_DIR/../../test_utils.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'

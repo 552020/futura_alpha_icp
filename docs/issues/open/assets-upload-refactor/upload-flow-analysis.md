@@ -115,3 +115,4 @@ memories_link_blob(memory_id, blob_id) -> ()  // new
 - ❌ **Don't duplicate functionality** - use existing upload infrastructure
 - ❌ **Don't break existing API** without a clear migration path
 - ❌ **Don't over-engineer** - focus on the core separation of concerns
+

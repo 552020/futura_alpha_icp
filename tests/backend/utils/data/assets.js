@@ -217,3 +217,4 @@ export function createTestAsset(assetType, properties = {}) {
     }),
   };
 }
+

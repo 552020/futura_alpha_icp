@@ -170,3 +170,4 @@ export function logJson(data, label = "Data") {
   const jsonStr = JSON.stringify(data, (key, value) => (typeof value === "bigint" ? value.toString() : value), 2);
   logDebug(`${label}: ${jsonStr}`);
 }
+

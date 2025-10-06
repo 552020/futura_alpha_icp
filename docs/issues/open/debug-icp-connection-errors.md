@@ -213,3 +213,4 @@ curl -X POST http://127.0.0.1:4943/api/v2/canister/uxrrr-q7777-77774-qaaaq-cai/q
 3. **Test upload** (should work after environment is running)
 4. **Add environment validation** (prevent future issues)
 
+

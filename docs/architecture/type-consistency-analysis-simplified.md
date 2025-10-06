@@ -193,3 +193,4 @@ pub struct CapsuleInfo {
 ## **📋 Recommended Implementation**
 
 **See [Type Consistency Design](type-consistency-design.md) for the complete recommended implementation.**
+

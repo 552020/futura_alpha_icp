@@ -96,3 +96,4 @@ else
     echo_error "Please check the error messages above and fix the issues."
     exit 1
 fi
+

@@ -13,9 +13,13 @@ use uuid::Uuid;
 
 /// Generate a UUID for asset IDs using tech lead's recommended pattern
 /// Uses v5 UUID (deterministic per unique seed) for ICP safety
-fn generate_asset_id() -> String {
+pub fn generate_asset_id(caller: &PersonRef, timestamp: u64) -> String {
     // v5 UUID (deterministic per unique seed)
-    let seed = format!("{}-{}", ic_cdk::api::msg_caller(), time());
+    let caller_str = match caller {
+        PersonRef::Principal(p) => p.to_text(),
+        PersonRef::Opaque(s) => s.clone(),
+    };
+    let seed = format!("{}-{}", caller_str, timestamp);
     Uuid::new_v5(&Uuid::NAMESPACE_OID, seed.as_bytes()).to_string()
 }
 
@@ -40,7 +44,7 @@ pub fn create_inline_memory(
     caller: &PersonRef,
 ) -> Memory {
     let inline_assets = vec![MemoryAssetInline {
-        asset_id: generate_asset_id(),
+        asset_id: generate_asset_id(caller, now),
         bytes: bytes.clone(),
         metadata: asset_metadata.clone(),
     }];
@@ -91,7 +95,7 @@ pub fn create_blob_memory(
     caller: &PersonRef,
 ) -> Memory {
     let blob_internal_assets = vec![MemoryAssetBlobInternal {
-        asset_id: generate_asset_id(),
+        asset_id: generate_asset_id(caller, now),
         blob_ref,
         metadata: asset_metadata.clone(),
     }];
@@ -146,7 +150,7 @@ pub fn create_external_memory(
     caller: &PersonRef,
 ) -> Memory {
     let blob_external_assets = vec![MemoryAssetBlobExternal {
-        asset_id: generate_asset_id(),
+        asset_id: generate_asset_id(caller, now),
         location,
         storage_key: storage_key.unwrap_or_default(),
         url,

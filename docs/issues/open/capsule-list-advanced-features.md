@@ -151,3 +151,4 @@ Enhance the existing `CapsuleList` component with advanced features for better u
 - **Search indexing** may be needed for fast search
 - **Bulk operation APIs** may be needed for bulk actions
 
+

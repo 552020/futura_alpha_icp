@@ -111,7 +111,7 @@ async function testUpload(filePath) {
 
   // Begin upload session
   echoInfo("Calling uploads_begin...");
-  const beginResult = await backend.uploads_begin(capsuleId, assetMetadata, chunkCount, idempotencyKey);
+  const beginResult = await backend.uploads_begin(capsuleId, chunkCount, idempotencyKey);
 
   if ("Err" in beginResult) {
     throw new Error(`Upload begin failed: ${JSON.stringify(beginResult.Err)}`);
@@ -156,76 +156,122 @@ async function testUpload(filePath) {
   echoInfo(`Storage Location: ${result.storage_location}`);
   echoInfo(`Size: ${result.size} bytes`);
 
-  // Verify the upload by checking if memory exists
-  echoInfo("Verifying upload...");
+  // Verify the pure blob upload (no memory should be created)
+  echoInfo("Verifying pure blob upload...");
 
-  // First check if memory exists in the list
-  const memoriesResult = await backend.memories_list(capsuleId, [], []);
+  // Check that no memory was created (memory_id should be empty)
+  if (result.memory_id === "") {
+    echoPass("Memory ID is empty - no memory created (correct for pure blob upload)");
+  } else {
+    echoFail(`Memory ID should be empty but got: ${result.memory_id}`);
+    throw new Error("Pure blob upload should not create memory");
+  }
 
+  // Verify blob ID is valid
+  if (result.blob_id && result.blob_id.startsWith("blob_")) {
+    echoPass("Blob ID is valid");
+  } else {
+    echoFail(`Invalid blob ID: ${result.blob_id}`);
+    throw new Error("Invalid blob ID format");
+  }
+
+  // Verify file size matches
+  if (Number(result.size) === fileSize) {
+    echoPass("File size matches uploaded size");
+  } else {
+    echoFail(`Size mismatch: expected ${fileSize}, got ${result.size}`);
+    throw new Error("File size mismatch");
+  }
+
+  // Test blob read - first get metadata to determine the right approach
+  echoInfo("Testing blob read...");
+  try {
+    // First, get blob metadata to determine size and chunk count
+    const blobMetaResult = await backend.blob_get_meta(result.blob_id);
+    if ("Err" in blobMetaResult) {
+      echoFail(`Blob metadata read failed: ${JSON.stringify(blobMetaResult.Err)}`);
+      throw new Error("Blob metadata read failed");
+    }
+
+    const blobMeta = blobMetaResult.Ok;
+    echoInfo(`Blob metadata: size=${blobMeta.size} bytes, chunks=${blobMeta.chunk_count}`);
+
+    // Verify metadata size matches expected
+    if (Number(blobMeta.size) !== fileSize) {
+      echoFail(`Blob metadata size mismatch: expected ${fileSize}, got ${blobMeta.size}`);
+      throw new Error("Blob metadata size verification failed");
+    }
+    echoPass("Blob metadata size matches expected size");
+
+    // Choose read method based on size
+    if (blobMeta.size > 3 * 1024 * 1024) {
+      // Large file: use chunked read
+      echoInfo("File is large (>3MB), using chunked blob read...");
+
+      // Read first chunk to verify blob exists and is readable
+      const blobReadResult = await backend.blob_read_chunk(result.blob_id, 0);
+      if ("Ok" in blobReadResult) {
+        const chunkData = blobReadResult.Ok;
+        echoPass(`Blob read successful - first chunk size: ${chunkData.length} bytes`);
+        echoInfo("Large blob exists and is readable (chunked read works)");
+      } else {
+        echoFail(`Blob chunk read failed: ${JSON.stringify(blobReadResult.Err)}`);
+        throw new Error("Blob chunk read failed");
+      }
+    } else {
+      // Small file: read entire blob
+      echoInfo("File is small (≤3MB), reading entire blob...");
+      const blobReadResult = await backend.blob_read(result.blob_id);
+      if ("Ok" in blobReadResult) {
+        const blobData = blobReadResult.Ok;
+        if (blobData.length === fileSize) {
+          echoPass("Blob read successful - size matches");
+
+          // Verify hash matches
+          const actualHash = crypto.createHash("sha256").update(blobData).digest();
+          if (actualHash.equals(expectedHash)) {
+            echoPass("Blob hash matches expected hash");
+          } else {
+            echoFail("Blob hash mismatch");
+            throw new Error("Blob hash verification failed");
+          }
+        } else {
+          echoFail(`Blob size mismatch: expected ${fileSize}, got ${blobData.length}`);
+          throw new Error("Blob size verification failed");
+        }
+      } else {
+        echoFail(`Blob read failed: ${JSON.stringify(blobReadResult.Err)}`);
+        throw new Error("Blob read failed");
+      }
+    }
+  } catch (error) {
+    echoFail(`Blob read error: ${error.message}`);
+    throw error;
+  }
+
+  // Verify no memory was created in the list
+  echoInfo("Verifying no memory was created...");
+  const memoriesResult = await backend.memories_list(capsuleId, [], [10]);
   if ("Ok" in memoriesResult) {
     const page = memoriesResult.Ok;
     const memories = page.items;
-    const uploadedMemoryHeader = memories.find((m) => m.id === result.memory_id);
+    const newMemory = memories.find((m) => m.id === result.memory_id);
 
-    if (uploadedMemoryHeader) {
-      echoPass("Memory found in capsule list!");
-
-      // Now get the full memory with assets
-      echoInfo("Getting full memory with assets...");
-      const fullMemoryResult = await backend.memories_read(result.memory_id);
-
-      if ("Ok" in fullMemoryResult) {
-        const uploadedMemory = fullMemoryResult.Ok;
-        echoPass("Full memory retrieved!");
-        echoInfo(`Memory ID: ${uploadedMemory.id}`);
-        echoInfo(`Memory title: ${uploadedMemory.metadata?.title || "No title"}`);
-
-        // Check for assets in the correct fields
-        const hasInlineAssets = uploadedMemory.inline_assets && uploadedMemory.inline_assets.length > 0;
-        const hasBlobInternalAssets =
-          uploadedMemory.blob_internal_assets && uploadedMemory.blob_internal_assets.length > 0;
-        const hasBlobExternalAssets =
-          uploadedMemory.blob_external_assets && uploadedMemory.blob_external_assets.length > 0;
-
-        if (hasInlineAssets || hasBlobInternalAssets || hasBlobExternalAssets) {
-          echoPass("Assets found in memory!");
-
-          if (hasInlineAssets) {
-            const asset = uploadedMemory.inline_assets[0];
-            echoInfo(`Inline asset: ${asset.metadata?.Image?.base?.name || "Unknown"}`);
-            echoInfo(`Asset size: ${asset.metadata?.Image?.base?.bytes || "Unknown"} bytes`);
-          }
-
-          if (hasBlobInternalAssets) {
-            const asset = uploadedMemory.blob_internal_assets[0];
-            echoInfo(`Blob internal asset: ${asset.metadata?.Image?.base?.name || "Unknown"}`);
-            echoInfo(`Asset size: ${asset.metadata?.Image?.base?.bytes || "Unknown"} bytes`);
-            echoInfo(`Blob locator: ${asset.blob_ref?.locator || "Unknown"}`);
-          }
-
-          if (hasBlobExternalAssets) {
-            const asset = uploadedMemory.blob_external_assets[0];
-            echoInfo(`Blob external asset: ${asset.metadata?.Image?.base?.name || "Unknown"}`);
-            echoInfo(`Storage key: ${asset.storage_key || "Unknown"}`);
-          }
-
-          echoPass("Asset metadata matches uploaded file!");
-        } else {
-          echoFail("No assets found in memory - upload failed!");
-          return false;
-        }
-      } else {
-        echoFail("Failed to read full memory");
-        return false;
-      }
+    if (!newMemory) {
+      echoPass("Memory list API works (no new memory should be created)");
     } else {
-      echoFail("Memory not found in capsule list");
-      return false;
+      echoFail("Unexpected memory found in list");
+      throw new Error("Memory should not have been created");
     }
   } else {
-    echoFail("Failed to list memories");
-    return false;
+    echoFail(`Memory list failed: ${JSON.stringify(memoriesResult.Err)}`);
+    throw new Error("Memory list verification failed");
   }
+
+  echoPass("Pure blob upload test PASSED!");
+  echoInfo("✅ Blob upload, creation, and readback all work correctly");
+  echoInfo("✅ No memory was created (pure blob storage)");
+  echoInfo("✅ Ready for separate memory creation endpoints");
 
   return true;
 }

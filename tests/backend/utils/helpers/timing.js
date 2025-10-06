@@ -196,3 +196,4 @@ export function formatPerformanceMetrics(metrics) {
 
   return `${itemCount} items in ${durationMs}ms (${itemsPerSecond} items/sec, ${averageTimePerItem.toFixed(2)}ms/item)`;
 }
+

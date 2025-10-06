@@ -102,6 +102,15 @@ impl crate::memories::core::Store for StoreAdapter {
         })
     }
 
+    fn get_all_memories(&self, capsule: &CapsuleId) -> Vec<Memory> {
+        with_capsule_store(|store| {
+            store
+                .get(capsule)
+                .map(|capsule_data| capsule_data.memories.values().cloned().collect())
+                .unwrap_or_default()
+        })
+    }
+
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId> {
         with_capsule_store(|store| {
             let all_capsules = store.paginate(None, u32::MAX, Order::Asc);

@@ -16,7 +16,6 @@ pub struct UploadSessionMeta {
     pub expected_chunks: u32,
     pub status: crate::session::types::SessionStatus,
     pub chunk_count: u32,
-    pub asset_metadata: crate::types::AssetMetadata,
     pub provisional_memory_id: String,
     pub chunk_size: usize,
     pub idem: String,
@@ -66,7 +65,7 @@ impl SessionCompat {
         // Build a generic spec from upload meta
         let spec = SessionSpec {
             chunk_size: meta.chunk_size,
-            bytes_expected: meta.asset_metadata.get_base().bytes, // Use actual byte length, not formula
+            bytes_expected: 0, // No longer available without asset metadata
             owner: meta.caller,
             idem: meta.idem.clone(),
         };
@@ -262,34 +261,6 @@ mod tests {
             expected_chunks: 2,
             status: crate::session::types::SessionStatus::Pending,
             chunk_count: 2,
-            asset_metadata: crate::types::AssetMetadata::Document(
-                crate::types::DocumentAssetMetadata {
-                    base: crate::types::AssetMetadataBase {
-                        name: "test.pdf".to_string(),
-                        description: None,
-                        tags: vec![],
-                        asset_type: crate::types::AssetType::Original,
-                        bytes: 2048,
-                        mime_type: "application/pdf".to_string(),
-                        sha256: None,
-                        width: None,
-                        height: None,
-                        url: None,
-                        storage_key: None,
-                        bucket: None,
-                        asset_location: None,
-                        processing_status: None,
-                        processing_error: None,
-                        created_at: 1000,
-                        updated_at: 1000,
-                        deleted_at: None,
-                    },
-                    page_count: None,
-                    document_type: None,
-                    language: None,
-                    word_count: None,
-                },
-            ),
             provisional_memory_id: "test-mem-123".to_string(),
             chunk_size: 1024,
             idem: "test-idem".to_string(),

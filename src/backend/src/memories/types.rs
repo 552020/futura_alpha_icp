@@ -400,6 +400,35 @@ pub struct AssetCleanupResult {
     pub message: String,
 }
 
+// ============================================================================
+// MEMORY CREATION INPUT TYPES
+// ============================================================================
+
+/// Input type for creating memories with inline assets (small files ≤32KB)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct InlineAssetInput {
+    pub bytes: Vec<u8>,
+    pub metadata: AssetMetadata,
+}
+
+/// Input type for creating memories with internal blob assets (ICP blob storage)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct InternalBlobAssetInput {
+    pub blob_id: String,        // From uploads_finish (ICP blob storage)
+    pub metadata: AssetMetadata,
+}
+
+/// Input type for creating memories with external blob assets (S3, Vercel, Arweave, IPFS, etc.)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct ExternalBlobAssetInput {
+    pub location: StorageEdgeBlobType, // S3, Vercel, Arweave, IPFS, etc.
+    pub storage_key: String,
+    pub url: Option<String>,
+    pub size: Option<u64>,
+    pub hash: Option<Vec<u8>>,
+    pub metadata: AssetMetadata,
+}
+
 /// Result type for bulk asset cleanup operations
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct BulkAssetCleanupResult {
@@ -425,4 +454,14 @@ pub struct MemoryAssetsList {
     pub internal_assets: Vec<String>, // Blob references for ICP assets
     pub external_assets: Vec<String>, // Storage keys for external assets
     pub total_count: u32,
+}
+
+/// Gallery memory entry (for gallery-specific memory references)
+#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
+pub struct GalleryMemoryEntry {
+    pub memory_id: String,               // Reference to existing memory
+    pub position: u32,                   // Gallery-specific ordering
+    pub gallery_caption: Option<String>, // Only if different from memory caption
+    pub is_featured: bool,               // Gallery-specific highlighting
+    pub gallery_metadata: String,        // JSON for gallery-specific annotations
 }
