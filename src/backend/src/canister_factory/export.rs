@@ -565,6 +565,17 @@ mod tests {
                 memory_notes: None,
                 created_by: None,
                 database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
+                
+                // NEW: Pre-computed dashboard fields (defaults)
+                is_public: false,
+                shared_count: 0,
+                sharing_status: "private".to_string(),
+                total_size: data_size as u64,
+                asset_count: 1,
+                thumbnail_url: None,
+                primary_asset_url: None,
+                has_thumbnails: false,
+                has_previews: false,
             },
             access: MemoryAccess::Private {
                 owner_secure_code: format!("test_{}", id),

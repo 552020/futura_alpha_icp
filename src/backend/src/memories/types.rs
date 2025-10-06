@@ -212,17 +212,17 @@ pub struct MemoryMetadata {
     // System info
     pub created_by: Option<String>, // Who created this memory
     pub database_storage_edges: Vec<StorageEdgeDatabaseType>,
-    
+
     // NEW: Pre-computed dashboard fields
-    pub is_public: bool,                    // Computed from access rules
-    pub shared_count: u32,                  // Count of shared recipients
-    pub sharing_status: String,             // "public" | "shared" | "private"
-    pub total_size: u64,                    // Sum of all asset sizes
-    pub asset_count: u32,                   // Total number of assets
-    pub thumbnail_url: Option<String>,      // Pre-computed thumbnail URL
-    pub primary_asset_url: Option<String>,  // Primary asset URL for display
-    pub has_thumbnails: bool,               // Whether thumbnails exist
-    pub has_previews: bool,                 // Whether previews exist
+    pub is_public: bool,                   // Computed from access rules
+    pub shared_count: u32,                 // Count of shared recipients
+    pub sharing_status: String,            // "public" | "shared" | "private"
+    pub total_size: u64,                   // Sum of all asset sizes
+    pub asset_count: u32,                  // Total number of assets
+    pub thumbnail_url: Option<String>,     // Pre-computed thumbnail URL
+    pub primary_asset_url: Option<String>, // Primary asset URL for display
+    pub has_thumbnails: bool,              // Whether thumbnails exist
+    pub has_previews: bool,                // Whether previews exist
 }
 
 /// Blob reference for external storage
@@ -294,20 +294,20 @@ pub struct MemoryHeader {
     pub created_at: u64,
     pub updated_at: u64,
     pub access: MemoryAccess,
-    
+
     // NEW: Dashboard-specific fields (pre-computed)
-    pub title: Option<String>,           // From metadata
-    pub description: Option<String>,     // From metadata
-    pub parent_folder_id: Option<String>, // From metadata
-    pub tags: Vec<String>,               // From metadata
-    pub is_public: bool,                 // Computed from access
-    pub shared_count: u32,               // Computed from access
-    pub sharing_status: String,          // "public" | "shared" | "private"
-    pub asset_count: u32,                // Total number of assets
-    pub thumbnail_url: Option<String>,   // Pre-computed thumbnail URL
+    pub title: Option<String>,             // From metadata
+    pub description: Option<String>,       // From metadata
+    pub parent_folder_id: Option<String>,  // From metadata
+    pub tags: Vec<String>,                 // From metadata
+    pub is_public: bool,                   // Computed from access
+    pub shared_count: u32,                 // Computed from access
+    pub sharing_status: String,            // "public" | "shared" | "private"
+    pub asset_count: u32,                  // Total number of assets
+    pub thumbnail_url: Option<String>,     // Pre-computed thumbnail URL
     pub primary_asset_url: Option<String>, // Primary asset URL for display
-    pub has_thumbnails: bool,            // Whether thumbnails exist
-    pub has_previews: bool,              // Whether previews exist
+    pub has_thumbnails: bool,              // Whether thumbnails exist
+    pub has_previews: bool,                // Whether previews exist
 }
 
 /// Memory operation response
@@ -440,7 +440,7 @@ pub struct InlineAssetInput {
 /// Input type for creating memories with internal blob assets (ICP blob storage)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
 pub struct InternalBlobAssetInput {
-    pub blob_id: String,        // From uploads_finish (ICP blob storage)
+    pub blob_id: String, // From uploads_finish (ICP blob storage)
     pub metadata: AssetMetadata,
 }
 

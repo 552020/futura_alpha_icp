@@ -613,7 +613,7 @@ fn create_memory_from_assembled_data(
                 memory_notes: None,
                 created_by: None,
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
-                
+
                 // NEW: Pre-computed dashboard fields (defaults)
                 is_public: false,
                 shared_count: 0,

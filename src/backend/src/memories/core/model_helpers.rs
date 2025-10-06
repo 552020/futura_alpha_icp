@@ -74,7 +74,7 @@ pub fn create_inline_memory(
             memory_notes: None,
             created_by,
             database_storage_edges: vec![],
-            
+
             // NEW: Pre-computed dashboard fields (defaults)
             is_public: false,
             shared_count: 0,
@@ -136,7 +136,7 @@ pub fn create_blob_memory(
             memory_notes: None,
             created_by,
             database_storage_edges: vec![],
-            
+
             // NEW: Pre-computed dashboard fields (defaults)
             is_public: false,
             shared_count: 0,
@@ -204,7 +204,7 @@ pub fn create_external_memory(
             memory_notes: None,
             created_by,
             database_storage_edges: vec![],
-            
+
             // NEW: Pre-computed dashboard fields (defaults)
             is_public: false,
             shared_count: 0,

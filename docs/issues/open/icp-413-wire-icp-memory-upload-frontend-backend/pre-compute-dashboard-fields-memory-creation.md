@@ -405,17 +405,17 @@ mod tests {
 
 ### **Phase 1: Data Structure Updates (High Priority)**
 
-- [ ] Extend `MemoryMetadata` with dashboard fields
-- [ ] Add dashboard field computation functions
-- [ ] Update `MemoryHeader` to include dashboard fields
-- [ ] Regenerate Candid types (auto-generated after Rust changes)
+- [x] Extend `MemoryMetadata` with dashboard fields
+- [x] Add dashboard field computation functions
+- [x] Update `MemoryHeader` to include dashboard fields
+- [x] Regenerate Candid types (auto-generated after Rust changes)
 
 ### **Phase 2: Memory Creation Flow (High Priority)**
 
-- [ ] Update `memories_create_core` to compute dashboard fields
-- [ ] Update `memories_create_with_internal_blobs` to compute dashboard fields
-- [ ] Test memory creation with new fields
-- [ ] Verify dashboard fields are stored correctly
+- [x] Update `memories_create_core` to compute dashboard fields
+- [x] Update `memories_create_with_internal_blobs` to compute dashboard fields
+- [x] Test memory creation with new fields
+- [x] Verify dashboard fields are stored correctly
 
 ### **Phase 3: Memory Update Flow (Medium Priority)**
 

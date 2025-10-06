@@ -125,7 +125,7 @@ pub fn memories_create_core<E: Env, S: Store>(
     }
 
     // Create memory based on asset type
-    let memory = if let Some(bytes_data) = bytes {
+    let mut memory = if let Some(bytes_data) = bytes {
         create_inline_memory(
             &memory_id,
             &capsule_id,
@@ -154,6 +154,9 @@ pub fn memories_create_core<E: Env, S: Store>(
             "No valid asset type provided".to_string(),
         ));
     };
+
+    // NEW: Compute and store dashboard fields
+    memory.update_dashboard_fields();
 
     // Insert memory into store
     store.insert_memory(&capsule_id, memory)?;
@@ -257,7 +260,7 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
     let _asset_count = blob_internal_assets.len();
 
     // Create the memory with multiple internal blob assets
-    let memory = Memory {
+    let mut memory = Memory {
         id: memory_id.clone(),
         metadata: memory_metadata,
         access: crate::types::MemoryAccess::Private {
@@ -267,6 +270,9 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
         blob_internal_assets,
         blob_external_assets: vec![],
     };
+
+    // NEW: Compute and store dashboard fields
+    memory.update_dashboard_fields();
 
     // Insert memory into store
     store.insert_memory(&capsule_id, memory)?;
@@ -430,6 +436,17 @@ mod tests {
             memory_notes: None,
             created_by: Some("test-user".to_string()),
             database_storage_edges: vec![],
+            
+            // NEW: Pre-computed dashboard fields (defaults)
+            is_public: false,
+            shared_count: 0,
+            sharing_status: "private".to_string(),
+            total_size: 1024,
+            asset_count: 1,
+            thumbnail_url: None,
+            primary_asset_url: None,
+            has_thumbnails: false,
+            has_previews: false,
         }
     }
 
