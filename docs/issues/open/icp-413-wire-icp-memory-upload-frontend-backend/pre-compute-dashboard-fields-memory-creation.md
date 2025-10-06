@@ -419,9 +419,9 @@ mod tests {
 
 ### **Phase 3: Memory Update Flow (Medium Priority)**
 
-- [ ] Update `memories_update_core` to recompute dashboard fields
-- [ ] Test memory updates with field recomputation
-- [ ] Verify dashboard fields are updated correctly
+- [x] Update `memories_update_core` to recompute dashboard fields
+- [x] Test memory updates with field recomputation
+- [x] Verify dashboard fields are updated correctly
 
 ### **Phase 4: API Integration (Medium Priority)**
 

@@ -40,6 +40,9 @@ pub fn memories_update_core<E: Env, S: Store>(
             // Update timestamp with captured value
             memory.metadata.updated_at = now;
 
+            // NEW: Recompute dashboard fields after update
+            memory.update_dashboard_fields();
+
             // Save the updated memory back to the store
             store.insert_memory(&capsule_id, memory)?;
 
@@ -60,4 +63,74 @@ pub fn memories_update_core<E: Env, S: Store>(
     }
 
     Err(Error::NotFound)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::*;
+
+    #[test]
+    fn test_memory_update_dashboard_fields_logic() {
+        // Test that the dashboard field recomputation logic is correct
+        // by creating a memory and manually calling update_dashboard_fields
+        
+        let mut memory = Memory {
+            id: "test_memory".to_string(),
+            metadata: MemoryMetadata {
+                title: Some("Test Memory".to_string()),
+                description: Some("Test Description".to_string()),
+                memory_type: MemoryType::Document,
+                content_type: "text/plain".to_string(),
+                created_at: 1234567890,
+                updated_at: 1234567890,
+                uploaded_at: 1234567890,
+                date_of_memory: Some(1234567890),
+                file_created_at: Some(1234567890),
+                deleted_at: None,
+                tags: vec!["test".to_string()],
+                parent_folder_id: None,
+                people_in_memory: None,
+                location: None,
+                memory_notes: None,
+                created_by: None,
+                database_storage_edges: vec![],
+                
+                // Dashboard fields - initially set to defaults
+                is_public: false,
+                shared_count: 0,
+                sharing_status: "private".to_string(),
+                total_size: 1000,
+                asset_count: 1,
+                thumbnail_url: None,
+                primary_asset_url: None,
+                has_thumbnails: false,
+                has_previews: false,
+            },
+            access: MemoryAccess::Private {
+                owner_secure_code: "test_code".to_string(),
+            },
+            inline_assets: vec![],
+            blob_internal_assets: vec![],
+            blob_external_assets: vec![],
+        };
+
+        // Verify initial state
+        assert!(!memory.metadata.is_public);
+        assert_eq!(memory.metadata.sharing_status, "private");
+        assert_eq!(memory.metadata.shared_count, 0);
+
+        // Change access to public
+        memory.access = MemoryAccess::Public {
+            owner_secure_code: "new_code".to_string(),
+        };
+
+        // Call update_dashboard_fields
+        memory.update_dashboard_fields();
+
+        // Verify dashboard fields were recomputed
+        assert!(memory.metadata.is_public); // Should be true for Public access
+        assert_eq!(memory.metadata.sharing_status, "public");
+        assert_eq!(memory.metadata.shared_count, 0); // Public has no specific recipients
+    }
 }
