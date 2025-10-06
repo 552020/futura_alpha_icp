@@ -377,7 +377,7 @@ create_test_blob() {
     local blob_idem="test_blob_$(date +%s)_$$"
     
     # Begin upload session (1 chunk for small data)
-    local session_result=$(dfx canister call --identity "$identity" "$canister_id" uploads_begin "(\"$capsule_id\", $blob_asset_metadata, 1, \"$blob_idem\")" 2>/dev/null)
+    local session_result=$(dfx canister call --identity "$identity" "$canister_id" uploads_begin "(\"$capsule_id\", 1, \"$blob_idem\")" 2>/dev/null)
     
     if ! is_success "$session_result"; then
         echo_error "Failed to begin upload session for blob creation: $session_result"

@@ -15,31 +15,37 @@ Implement comprehensive caching mechanisms for the frontend to improve performan
 ### **Image Display Flows Identified**
 
 #### **1. Dashboard Flow**
+
 - **Dashboard Grid View** (`src/app/[lang]/dashboard/page.tsx`)
   - Uses `ContentCard` component with `_renderPreview()` function
   - Displays thumbnails via `memory.thumbnail` or derived from `assets` array
   - Image sizes: `IMAGE_SIZES.grid` with blur placeholders
   - **No caching**: Fresh API call on every navigation back
 
-#### **2. Folder Flow** 
+#### **2. Folder Flow**
+
 - **Folder Grid View** (`src/app/[lang]/dashboard/folder/[id]/page.tsx`)
   - Same `ContentCard` component as dashboard
   - Filters memories by `parentFolderId` after fetching all memories
   - **No caching**: Re-fetches all memories then filters client-side
 
 #### **3. Memory Detail Flow**
+
 - **Single Memory View** (`src/app/[lang]/dashboard/[id]/page.tsx`)
   - Full-size image display with `IMAGE_SIZES.lightbox`
   - Uses `memory.url` or `memory.assets` for display
   - **No caching**: Fresh fetch on every navigation
 
 #### **4. Gallery Flows**
+
 - **Gallery Grid View** (`src/app/[lang]/gallery/[id]/page.tsx`)
+
   - Uses `GalleryPhotoGrid` → `ContentCard` with `contentType="gallery-photo"`
   - Displays gallery items with `IMAGE_SIZES.gallery`
   - **No caching**: Fresh API call to `/api/galleries/[id]`
 
 - **Gallery Preview/Lightbox** (`src/app/[lang]/gallery/[id]/preview/page.tsx`)
+
   - Full-screen image display with navigation
   - Uses `IMAGE_SIZES.lightbox` for main image
   - Grid thumbnails with `IMAGE_SIZES.gallery`
@@ -51,6 +57,7 @@ Implement comprehensive caching mechanisms for the frontend to improve performan
   - **No caching**: Re-renders on every selection change
 
 #### **5. Memory Viewer Component**
+
 - **Shared Memory Display** (`src/components/memory/memory-viewer.tsx`)
   - Used for shared/public memories
   - Uses `primaryAsset.url` with `aspect-video` container
@@ -243,7 +250,7 @@ export const preloadImage = (src: string): Promise<HTMLImageElement> => {
   if (imageCache.has(src)) {
     return Promise.resolve(imageCache.get(src)!);
   }
-  
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -259,21 +266,21 @@ export const preloadImage = (src: string): Promise<HTMLImageElement> => {
 export const preloadMemoryImages = async (memory: MemoryWithAssets) => {
   const assets = memory.assets || [];
   const preloadPromises = [];
-  
+
   // Preload thumb first (fastest)
-  const thumbAsset = assets.find(a => a.assetType === 'thumb');
+  const thumbAsset = assets.find((a) => a.assetType === "thumb");
   if (thumbAsset) preloadPromises.push(preloadImage(thumbAsset.url));
-  
+
   // Then display (medium)
-  const displayAsset = assets.find(a => a.assetType === 'display');
+  const displayAsset = assets.find((a) => a.assetType === "display");
   if (displayAsset) preloadPromises.push(preloadImage(displayAsset.url));
-  
+
   // Finally original (slowest, but only if needed)
-  const originalAsset = assets.find(a => a.assetType === 'original');
-  if (originalAsset && memory.type === 'image') {
+  const originalAsset = assets.find((a) => a.assetType === "original");
+  if (originalAsset && memory.type === "image") {
     preloadPromises.push(preloadImage(originalAsset.url));
   }
-  
+
   return Promise.allSettled(preloadPromises);
 };
 ```
@@ -294,8 +301,8 @@ const { data: memories } = useInfiniteQuery({
 useEffect(() => {
   if (memories?.pages) {
     const visibleMemories = memories.pages.flat().slice(0, 20); // First 20 items
-    visibleMemories.forEach(memory => {
-      if (memory.type === 'image') {
+    visibleMemories.forEach((memory) => {
+      if (memory.type === "image") {
         preloadMemoryImages(memory);
       }
     });
@@ -322,7 +329,7 @@ useEffect(() => {
     gallery.items.slice(0, 10).forEach((item) => {
       preloadMemoryImages(item.memory);
     });
-    
+
     // Preload next 20 images after a delay
     setTimeout(() => {
       gallery.items.slice(10, 30).forEach((item) => {
@@ -342,13 +349,13 @@ useEffect(() => {
 useEffect(() => {
   if (gallery?.items && selectedImageIndex !== null) {
     const currentIndex = selectedImageIndex;
-    
+
     // Preload previous image
     if (currentIndex > 0) {
       const prevItem = gallery.items[currentIndex - 1];
       preloadMemoryImages(prevItem.memory);
     }
-    
+
     // Preload next image
     if (currentIndex < gallery.items.length - 1) {
       const nextItem = gallery.items[currentIndex + 1];
@@ -372,10 +379,10 @@ const { data: memory } = useQuery({
 
 // Preload full-size image when memory loads
 useEffect(() => {
-  if (memory?.type === 'image' && memory.assets) {
-    const displayAsset = memory.assets.find(a => a.assetType === 'display');
-    const originalAsset = memory.assets.find(a => a.assetType === 'original');
-    
+  if (memory?.type === "image" && memory.assets) {
+    const displayAsset = memory.assets.find((a) => a.assetType === "display");
+    const originalAsset = memory.assets.find((a) => a.assetType === "original");
+
     // Preload display version first, then original
     if (displayAsset) preloadImage(displayAsset.url);
     if (originalAsset) preloadImage(originalAsset.url);
@@ -537,6 +544,340 @@ const {
 - [Dashboard Caching Implementation Todo](./dashboard-caching-implementation-todo.md)
 - [Next.js Image Component Optimization Analysis](../done/nextjs-image-component-optimization-analysis.md)
 
+## 📊 **Image Caching Flow Summary**
+
+### **Complete User Journey Caching Strategy**
+
+#### **1. Dashboard Entry Point**
+
+```
+User opens dashboard → React Query caches memories → Preloads first 20 thumbnails
+```
+
+#### **2. Navigation Patterns**
+
+```
+Dashboard → Memory Detail → Back to Dashboard
+✅ Cached memories + preloaded thumbnails = Instant return
+
+Dashboard → Folder → Back to Dashboard
+✅ Cached memories + filtered folder data = Instant return
+
+Dashboard → Gallery → Gallery Preview → Back to Gallery → Back to Dashboard
+✅ Cached gallery data + preloaded images = Smooth navigation
+```
+
+#### **3. Image Preloading Hierarchy**
+
+```
+Priority 1: Thumbnails (dashboard/folder grids)
+Priority 2: Display images (memory detail, gallery preview)
+Priority 3: Original images (full-size viewing)
+Priority 4: Adjacent images (gallery navigation)
+```
+
+#### **4. Cache Invalidation Strategy**
+
+```
+Memory Deleted → Invalidate dashboard + folder + detail caches
+Memory Updated → Invalidate specific memory cache
+Gallery Modified → Invalidate gallery cache
+New Upload → Invalidate dashboard cache
+```
+
+## 📝 **Implementation Priority**
+
+### **Phase 1 (High Impact, Low Effort)**
+
+1. Convert dashboard to React Query (biggest UX improvement)
+2. Convert folder view to React Query
+3. Update QueryProvider configuration
+
+### **Phase 2 (Medium Impact, Medium Effort)**
+
+1. Implement image preloading for dashboard thumbnails
+2. Add gallery image caching
+3. Implement memory detail caching
+
+### **Phase 3 (High Impact, High Effort)**
+
+1. Add cache persistence with sessionStorage
+2. Implement predictive preloading
+3. Add cache analytics and monitoring
+
+## ✅ **Tech Lead Feedback & Implementation Updates**
+
+### **Approved with Surgical Upgrades**
+
+**Status**: ✅ **APPROVED** - "Solid plan. I'd ship it, with a few surgical upgrades so it's rock-solid and leak-free."
+
+### **Critical Fixes Before Implementation**
+
+#### **1. HTTP Caching Strategy (Priority: CRITICAL)**
+
+**Backend API Headers** - Add to all API endpoints:
+
+```typescript
+// Next.js route handlers
+return NextResponse.json(data, {
+  headers: {
+    "Cache-Control": "public, max-age=300, stale-while-revalidate=86400",
+    ETag: etagFrom(data), // stable hash of payload
+    "Last-Modified": new Date().toUTCString(),
+  },
+});
+```
+
+**Image Asset Caching**:
+
+- **Thumbnails**: `public, max-age=86400, immutable` (24 hours, never changes)
+- **Display**: `public, max-age=3600, stale-while-revalidate=86400` (1 hour, 24h SWR)
+- **Originals**: `public, max-age=0, must-revalidate` (always validate)
+- **Versioned URLs**: Append `?v=<asset_hash>` so browser caches survive deploys
+
+#### **2. Stable ID Strategy (Priority: HIGH)**
+
+**Don't store image URLs in state** - Use stable asset IDs instead:
+
+```typescript
+// ❌ Bad: Store URLs in state
+const [imageUrl, setImageUrl] = useState(memory.thumbnail);
+
+// ✅ Good: Use stable IDs, derive URLs on render
+const thumbnailUrl = useMemo(() => generateAssetUrl(memory.thumbnail_asset_id), [memory.thumbnail_asset_id]);
+```
+
+#### **3. React Query Correct Patterns (Priority: HIGH)**
+
+**Updated QueryProvider Configuration**:
+
+```typescript
+new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60_000, // 5 minutes
+      gcTime: 10 * 60_000, // 10 minutes (v5 name)
+      refetchOnWindowFocus: false, // Avoid surprise refetches
+      refetchOnMount: false, // Use cache when available
+      refetchOnReconnect: true, // Refresh on network reconnect
+    },
+  },
+});
+```
+
+**Dashboard Infinite Query Pattern**:
+
+```typescript
+const q = useInfiniteQuery({
+  queryKey: ["memories", "dashboard", { userId, lang, filters }],
+  queryFn: ({ pageParam = 1 }) => fetchMemories(pageParam, filters),
+  getNextPageParam: (last) => (last.hasMore ? last.nextPage : undefined),
+  staleTime: 5 * 60_000,
+  placeholderData: keepPreviousData, // Prevents flicker
+});
+
+const items = (q.data?.pages ?? []).flatMap((p) => p.items);
+```
+
+**Folder View Query Pattern**:
+
+```typescript
+useQuery({
+  queryKey: ["memories", "folder", folderId, { userId, lang }],
+  queryFn: () => fetchFolderMemories(folderId),
+  select: (r) => r.items, // Return only what you render
+  staleTime: 5 * 60_000,
+});
+```
+
+#### **4. Memory-Leak-Free Image Preloading (Priority: MEDIUM)**
+
+**Avoid Global HTMLImageElement Storage**:
+
+```typescript
+// ❌ Bad: Store HTMLImageElement globally (GC pressure)
+export const imageCache = new Map<string, HTMLImageElement>();
+
+// ✅ Good: Store Promises only, let GC handle elements
+export const imagePreloadCache = new Map<string, Promise<void>>();
+
+export const preloadImage = (src: string): Promise<void> => {
+  if (imagePreloadCache.has(src)) {
+    return imagePreloadCache.get(src)!;
+  }
+
+  const promise = new Promise<void>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = reject;
+    img.src = src;
+  });
+
+  imagePreloadCache.set(src, promise);
+  return promise;
+};
+```
+
+**Lightbox Adjacent Prefetch**:
+
+```typescript
+useEffect(() => {
+  const prev = items[idx - 1]?.displayUrl;
+  const next = items[idx + 1]?.displayUrl;
+
+  [prev, next].filter(Boolean).forEach((src) => {
+    const link = document.createElement("link");
+    link.rel = "prefetch";
+    link.as = "image";
+    link.href = src!;
+    document.head.appendChild(link);
+
+    return () => document.head.removeChild(link);
+  });
+}, [idx, items]);
+```
+
+#### **5. Service Worker for Thumbnails (Priority: MEDIUM)**
+
+**Workbox Runtime Cache Strategy**:
+
+```typescript
+// Service Worker caching rules
+workbox.routing.registerRoute(
+  ({ url }) => url.pathname.includes("/thumbs/"),
+  new workbox.strategies.StaleWhileRevalidate({
+    cacheName: "thumbnails",
+    maxEntries: 2000,
+    maxAgeSeconds: 7 * 86400, // 7 days
+  })
+);
+
+workbox.routing.registerRoute(
+  ({ url }) => url.pathname.includes("/display/"),
+  new workbox.strategies.CacheFirst({
+    cacheName: "display-images",
+    maxEntries: 500,
+    maxAgeSeconds: 86400, // 1 day
+  })
+);
+
+workbox.routing.registerRoute(
+  ({ url }) => url.pathname.includes("/original/"),
+  new workbox.strategies.NetworkOnly() // Or CacheFirst behind user toggle
+);
+```
+
+#### **6. Smart Persistence Strategy (Priority: LOW)**
+
+**Start In-Memory Only**:
+
+- Add sessionStorage later via `react-query-persist-client`
+- Persist dashboard + folder lists only
+- **Do NOT persist** detail objects with PII
+- **Do NOT persist** auth'd image responses unless URLs are public
+
+#### **7. Back/Forward UX Enhancement (Priority: MEDIUM)**
+
+**Store Navigation State**:
+
+```typescript
+// Tiny Zustand store for navigation state
+interface NavigationState {
+  scrollPositions: Record<string, number>;
+  currentPages: Record<string, number>;
+  selections: Record<string, string[]>;
+}
+
+const useNavigationStore = create<NavigationState>((set) => ({
+  scrollPositions: {},
+  currentPages: {},
+  selections: {},
+
+  saveScrollPosition: (route: string, position: number) =>
+    set((state) => ({
+      scrollPositions: { ...state.scrollPositions, [route]: position },
+    })),
+
+  restoreScrollPosition: (route: string) => useNavigationStore.getState().scrollPositions[route] || 0,
+}));
+```
+
+### **Updated Implementation Phases**
+
+#### **Phase 1: Core Caching (High Impact, Low Risk)**
+
+1. ✅ Update QueryProvider with correct v5 configuration
+2. ✅ Add HTTP cache headers to API endpoints
+3. ✅ Convert dashboard to `useInfiniteQuery` with `keepPreviousData`
+4. ✅ Convert folder view to dedicated query
+5. ✅ Implement stable ID strategy for assets
+
+#### **Phase 2: Image Optimization (Medium Impact, Medium Risk)**
+
+1. ✅ Implement memory-leak-free image preloading
+2. ✅ Add lightbox adjacent prefetch
+3. ✅ Add Service Worker for thumbnail caching
+4. ✅ Implement proper blob URL cleanup
+
+#### **Phase 3: Advanced Features (High Impact, High Risk)**
+
+1. ✅ Add navigation state persistence
+2. ✅ Implement sessionStorage for dashboard/folder lists
+3. ✅ Add cache analytics and monitoring
+4. ✅ Implement offline support
+
+### **Success Metrics (Updated)**
+
+**Performance Targets**:
+
+- ✅ Median "back to dashboard" time < 100ms
+- ✅ 60-80% drop in `/api/memories` requests per session
+- ✅ Image cache hit rate > 85% for thumbnails, > 60% for display
+- ✅ Memory usage stable: no growth after 10 mins of gallery navigation
+
+**Monitoring Points**:
+
+- ✅ API response times and cache hit rates
+- ✅ Image preload success rates
+- ✅ Memory usage patterns
+- ✅ User navigation patterns and satisfaction
+
+### **Security & Privacy Considerations**
+
+**Asset URL Strategy**:
+
+- ✅ If assets require auth headers, emit **signed public URLs** (time-boxed)
+- ✅ Browser/SW can cache signed URLs; `next/image` can't add per-request headers
+- ✅ Avoid persisting cached JSON with share tokens or PII
+
+**Data Persistence**:
+
+- ✅ Only persist non-sensitive data (dashboard lists, folder structures)
+- ✅ Never persist user-specific content or authentication tokens
+- ✅ Implement cache expiration for sensitive data
+
+### **Rollout Strategy (Updated)**
+
+**Feature Flag Approach**:
+
+```typescript
+const CACHE_V1_ENABLED = process.env.NEXT_PUBLIC_CACHE_V1 === "true";
+```
+
+**Deployment Phases**:
+
+1. **Week 1**: Phase 1 (queries + API headers) - Feature flag enabled
+2. **Week 2**: Phase 2 (image optimization) - Monitor performance
+3. **Week 3**: Phase 3 (advanced features) - Full rollout
+4. **Week 4**: Remove feature flag, optimize based on metrics
+
+### **Next Steps**
+
+1. **Create PR Outline**: Updated QueryProvider, dashboard useInfiniteQuery, route handler headers
+2. **Implement Service Worker**: Minimal Workbox setup for thumbnail caching
+3. **Add Monitoring**: Performance metrics and cache hit rate tracking
+4. **Test Strategy**: Automated tests for cache invalidation and data consistency
+
 ## 📝 **Notes**
 
 - React Query is already installed and partially configured
@@ -544,3 +885,6 @@ const {
 - Image optimization is already implemented with Next.js Image component
 - Need to maintain backward compatibility with existing mock data system
 - Consider implementing cache warming strategies for better initial load performance
+- **Key Insight**: The biggest performance gain comes from caching the dashboard data, as this is the most frequently accessed view
+- **Gallery Optimization**: Galleries benefit most from image preloading due to their sequential viewing pattern
+- **Memory Detail**: Full-size images should be cached longer (15 minutes) as they're expensive to re-download

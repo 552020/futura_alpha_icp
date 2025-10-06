@@ -84,24 +84,64 @@ This implementation was done **WITHOUT EXPLICIT APPROVAL** and needs review befo
   - [ ] 7.3. Add sync status indicators for advanced users
   - [ ] 7.4. Show/hide toggle based on `hasAdvancedSettings`
 
-### **Phase 4: Cleanup & Testing**
+### **Phase 4: Pre-compute Dashboard Fields (COMPLETED ✅)**
 
-- [ ] **8. Revert Unauthorized Changes**
+- [x] **8. Extend MemoryMetadata with Dashboard Fields**
+
+  - **File**: `src/backend/src/memories/types.rs`
+  - [x] 8.1. Add pre-computed dashboard fields to `MemoryMetadata` struct
+  - [x] 8.2. Add dashboard fields to `MemoryHeader` struct for `memories_list` response
+  - [x] 8.3. Implement dashboard field computation functions in `Memory` adapter
+  - [x] 8.4. Update all `MemoryMetadata` initializers with default dashboard field values
+
+- [x] **9. Integrate Dashboard Field Computation**
+
+  - **File**: `src/backend/src/memories/core/create.rs`
+  - [x] 9.1. Update `memories_create_core` to compute dashboard fields after memory creation
+  - [x] 9.2. Update `memories_create_with_internal_blobs_core` to compute dashboard fields
+  - [x] 9.3. Ensure dashboard fields are stored with new memories
+
+- [x] **10. Update Memory Update Flow**
+
+  - **File**: `src/backend/src/memories/core/update.rs`
+  - [x] 10.1. Update `memories_update_core` to recompute dashboard fields after updates
+  - [x] 10.2. Add unit tests for dashboard field recomputation logic
+  - [x] 10.3. Verify dashboard fields are updated correctly when memory access changes
+
+- [x] **11. Update API Integration**
+
+  - **File**: `src/backend/src/memories/adapters.rs`
+  - [x] 11.1. Update `to_header()` method to use pre-computed dashboard fields
+  - [x] 11.2. Ensure `memories_list` returns enhanced `MemoryHeader` with dashboard fields
+  - [x] 11.3. Verify query calls remain free (no cycle costs)
+
+- [x] **12. Testing & Validation**
+
+  - **Files**: `tests/backend/shared-capsule/memories/test_memories_list.sh` and related tests
+  - [x] 12.1. Update `memories_list` tests to use 3-parameter signature (capsule_id, cursor, limit)
+  - [x] 12.2. Add comprehensive dashboard fields validation test
+  - [x] 12.3. Fix test utility paths and color output issues
+  - [x] 12.4. Verify all 6 `memories_list` tests pass with new dashboard fields
+  - [x] 12.5. Run comprehensive memory operation tests (memories_read, golden E2E tests passing)
+
+### **Phase 5: Cleanup & Testing**
+
+- [ ] **13. Revert Unauthorized Changes**
 
   - **Files**: Various unauthorized files
-  - [ ] 8.1. Revert unauthorized database schema changes
-  - [ ] 8.2. Delete unapproved migration file
-  - [ ] 8.3. Clean up unauthorized hosting preferences modifications
-  - [ ] 8.4. Remove unauthorized type extensions
+  - [ ] 13.1. Revert unauthorized database schema changes
+  - [ ] 13.2. Delete unapproved migration file
+  - [ ] 13.3. Clean up unauthorized hosting preferences modifications
+  - [ ] 13.4. Remove unauthorized type extensions
 
-- [ ] **9. Testing & Validation**
+- [ ] **14. Testing & Validation**
 
   - **Files**: Test files and documentation
-  - [ ] 9.1. Test Web2 user scenarios (Neon-only, dual database)
-  - [ ] 9.2. Test Web3 user scenarios (ICP-only, dual access)
-  - [ ] 9.3. Test sync functionality between Web2 and ICP
-  - [ ] 9.4. Test feature flag functionality
-  - [ ] 9.5. Performance testing for database switching
+  - [ ] 14.1. Test Web2 user scenarios (Neon-only, dual database)
+  - [ ] 14.2. Test Web3 user scenarios (ICP-only, dual access)
+  - [ ] 14.3. Test sync functionality between Web2 and ICP
+  - [ ] 14.4. Test feature flag functionality
+  - [ ] 14.5. Performance testing for database switching
 
 ## 🎯 **Key Design Decisions**
 
@@ -134,6 +174,11 @@ This implementation was done **WITHOUT EXPLICIT APPROVAL** and needs review befo
 - ✅ **Type Safety**: Full TypeScript and Candid type definitions
 - ✅ **Compilation**: All code compiles successfully
 - ✅ **Authentication**: Proper session and principal validation
+- ✅ **Pre-computed Dashboard Fields**: MemoryMetadata extended with dashboard-specific fields
+- ✅ **Memory Creation/Update**: Dashboard fields computed and stored during memory operations
+- ✅ **memories_list API**: Returns enhanced MemoryHeader with pre-computed dashboard fields
+- ✅ **Query Performance**: Query calls remain free (no cycle costs) using pre-computed values
+- ✅ **Test Validation**: All memories_list tests passing with new dashboard fields
 
 ### **❌ What Needs Cleanup**
 
@@ -144,7 +189,8 @@ This implementation was done **WITHOUT EXPLICIT APPROVAL** and needs review befo
 
 ### **🔄 Currently In Progress**
 
-- **Dashboard Logic**: Implementing database switching logic in dashboard
+- **Waiting for Frontend Caching Team**: Other team is implementing frontend caching, may conflict with our dashboard logic work
+- **Dashboard Logic**: Ready to implement database switching logic in dashboard (pending caching team completion)
 
 ## 🔧 **Approved Resolution**
 
@@ -163,11 +209,13 @@ This implementation was done **WITHOUT EXPLICIT APPROVAL** and needs review befo
 3. ✅ **User Settings Hook Complete**: Smart hook with dual access sync implemented
 4. ✅ **Database Toggle Complete**: Updated to use new settings system
 5. ✅ **Hosting Preferences Logic Fixed**: Checkbox logic allowing both Web2 and Web3 stacks enabled
-6. **🔄 Current**: Implement dashboard database switching logic
-7. **Next**: Implement bidirectional sync between Web2 and ICP
-8. **Next**: Cleanup unauthorized changes and migrations
-9. **Next**: Comprehensive testing of all user scenarios
-10. **Next**: Update development guidelines to prevent unauthorized changes
+6. ✅ **Phase 4 Complete**: Pre-compute dashboard fields implementation and testing
+7. **⏸️ Waiting**: Frontend caching team to complete their work (avoid file conflicts)
+8. **🔄 Next**: Implement dashboard database switching logic (after caching team completes)
+9. **Next**: Implement bidirectional sync between Web2 and ICP
+10. **Next**: Cleanup unauthorized changes and migrations
+11. **Next**: Comprehensive testing of all user scenarios
+12. **Next**: Update development guidelines to prevent unauthorized changes
 
 ## 🎯 **Lessons Learned**
 

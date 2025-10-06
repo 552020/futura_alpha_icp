@@ -48,7 +48,7 @@ test_memories_update_valid() {
     # Call memories_update with the memory ID and update data
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    if [[ $result == *"Ok ="* ]]; then
         echo_success "✅ memories_update with valid data succeeded"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         
@@ -84,8 +84,8 @@ test_memories_update_invalid_memory() {
     
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"invalid_memory_id_123\", $update_data)" 2>/dev/null)
     
-    if [[ $result == *"success = false"* ]]; then
-        if [[ $result == *"Failed to update memory: NotFound"* ]]; then
+    if [[ $result == *"Err ="* ]]; then
+        if [[ $result == *"NotFound"* ]]; then
             echo_success "✅ memories_update with invalid memory ID returned expected error"
             [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
             return 0
@@ -131,7 +131,7 @@ test_memories_update_empty_data() {
     
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"$memory_id\", $empty_update_data)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    if [[ $result == *"Ok ="* ]]; then
         echo_success "✅ memories_update with empty update data succeeded (no-op update)"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         return 0
@@ -172,7 +172,7 @@ test_memories_update_access() {
     
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    if [[ $result == *"Ok ="* ]]; then
         echo_success "✅ memories_update with name changes succeeded"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         
@@ -230,7 +230,7 @@ test_memories_update_comprehensive_info() {
     # Call memories_update with the memory ID and update data
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_update "(\"$memory_id\", $update_data)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    if [[ $result == *"Ok ="* ]]; then
         echo_success "✅ memories_update with comprehensive info succeeded"
         [[ "$DEBUG" == "true" ]] && echo_debug "Result: $result"
         

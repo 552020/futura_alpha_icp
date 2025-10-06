@@ -61,17 +61,17 @@ test_memories_delete_valid() {
     # Verify memory exists before deletion
     local read_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory_id\")" 2>/dev/null)
     
-    if [[ $read_result == *"Ok = record"* ]]; then
+    if [[ $read_result == *"Ok ="* ]] && [[ $read_result == *"record"* ]]; then
         echo_success "✅ Memory exists before deletion"
     else
         echo_error "❌ Memory not found before deletion"
         return 1
     fi
     
-    # Delete the memory
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"$memory_id\")" 2>/dev/null)
+    # Delete the memory (with delete_assets=true)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"$memory_id\", true)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    if [[ $result == *"Ok"* ]]; then
         echo_success "✅ memories_delete with valid data succeeded"
         echo_debug "Result: $result"
         
@@ -97,9 +97,9 @@ test_memories_delete_valid() {
 test_memories_delete_invalid_memory() {
     echo_debug "Testing memories_delete with invalid memory ID..."
     
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"invalid_memory_id_123\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"invalid_memory_id_123\", true)" 2>/dev/null)
     
-    if [[ $result == *"success = false"* ]]; then
+    if [[ $result == *"Err ="* ]]; then
         if [[ $result == *"NotFound"* ]] || [[ $result == *"Memory not found"* ]]; then
             echo_success "✅ memories_delete with invalid memory ID returned expected error"
             echo_debug "Result: $result"
@@ -119,9 +119,9 @@ test_memories_delete_invalid_memory() {
 test_memories_delete_empty_id() {
     echo_debug "Testing memories_delete with empty memory ID..."
     
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"\", true)" 2>/dev/null)
     
-    if [[ $result == *"success = false"* ]]; then
+    if [[ $result == *"Err ="* ]]; then
         if [[ $result == *"NotFound"* ]] || [[ $result == *"Memory not found"* ]]; then
             echo_success "✅ memories_delete with empty memory ID returned expected error"
             echo_debug "Result: $result"
@@ -159,9 +159,9 @@ test_memories_delete_cross_capsule() {
     fi
     
     # Delete the memory using memories_delete (which searches across all accessible capsules)
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"$memory_id\")" 2>/dev/null)
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_delete "(\"$memory_id\", true)" 2>/dev/null)
     
-    if [[ $result == *"success = true"* ]]; then
+    if [[ $result == *"Ok"* ]]; then
         echo_success "✅ memories_delete with cross-capsule access succeeded"
         echo_debug "Result: $result"
         
@@ -238,7 +238,7 @@ test_memories_delete_asset_cleanup() {
     fi
     
     # Delete the memory
-    local delete_result=$(dfx canister call backend memories_delete "(\"$memory_id\")" --identity "$IDENTITY" 2>/dev/null)
+    local delete_result=$(dfx canister call backend memories_delete "(\"$memory_id\", true)" --identity "$IDENTITY" 2>/dev/null)
     
     if [[ -z "$delete_result" ]]; then
         echo_error "❌ Failed to delete memory"
@@ -246,7 +246,7 @@ test_memories_delete_asset_cleanup() {
     fi
     
     # Check if deletion was successful
-    if ! echo "$delete_result" | grep -q "success = true"; then
+    if ! echo "$delete_result" | grep -q "Ok"; then
         echo_error "❌ Memory deletion failed"
         echo_debug "Delete result: $delete_result"
         return 1

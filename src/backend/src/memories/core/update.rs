@@ -44,7 +44,7 @@ pub fn memories_update_core<E: Env, S: Store>(
             memory.update_dashboard_fields();
 
             // Save the updated memory back to the store
-            store.insert_memory(&capsule_id, memory)?;
+            store.update_memory(&capsule_id, &memory_id, memory)?;
 
             // POST-WRITE ASSERTION: Verify memory was actually updated
             if let Some(updated_memory) = store.get_memory(&capsule_id, &memory_id) {
@@ -133,12 +133,12 @@ mod tests {
         assert_eq!(memory.metadata.sharing_status, "public");
         assert_eq!(memory.metadata.shared_count, 0); // Public has no specific recipients
     }
-    
+
     #[test]
     fn test_memories_list_uses_precomputed_dashboard_fields() {
         // Test that memories_list returns pre-computed dashboard fields
         // This test verifies that the to_header() method uses pre-computed values
-        
+
         let memory = Memory {
             id: "test_memory".to_string(),
             metadata: MemoryMetadata {
@@ -159,7 +159,7 @@ mod tests {
                 memory_notes: None,
                 created_by: None,
                 database_storage_edges: vec![],
-                
+
                 // Dashboard fields - pre-computed values
                 is_public: true,
                 shared_count: 5,
@@ -181,20 +181,26 @@ mod tests {
 
         // Call to_header() method
         let header = memory.to_header();
-        
+
         // Verify that pre-computed dashboard fields are used
         assert_eq!(header.is_public, true);
         assert_eq!(header.shared_count, 5);
         assert_eq!(header.sharing_status, "shared");
         assert_eq!(header.asset_count, 3);
-        assert_eq!(header.thumbnail_url, Some("icp://memory/test_memory/thumbnail".to_string()));
-        assert_eq!(header.primary_asset_url, Some("icp://memory/test_memory/primary".to_string()));
+        assert_eq!(
+            header.thumbnail_url,
+            Some("icp://memory/test_memory/thumbnail".to_string())
+        );
+        assert_eq!(
+            header.primary_asset_url,
+            Some("icp://memory/test_memory/primary".to_string())
+        );
         assert_eq!(header.has_thumbnails, true);
         assert_eq!(header.has_previews, false);
-        
+
         // Verify that size uses pre-computed value
         assert_eq!(header.size, 2048);
-        
+
         // Verify other fields are correctly mapped
         assert_eq!(header.title, Some("Test Memory".to_string()));
         assert_eq!(header.description, Some("Test Description".to_string()));
