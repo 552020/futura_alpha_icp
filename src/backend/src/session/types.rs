@@ -18,8 +18,10 @@ pub struct SessionSpec {
 /// Generic session metadata (minimal, no upload semantics)
 #[derive(Debug, Clone)]
 pub struct SessionMeta {
+    #[allow(dead_code)] // Idempotency key - used for session deduplication
     pub idem: String,
     pub last_seen: u64, // timestamp in ms
+    #[allow(dead_code)] // Session status tracking - used for session lifecycle management
     pub status: SessionStatus,
 }
 
@@ -42,8 +44,10 @@ pub trait Clock {
 /// Generic session state (no upload-specific fields)
 #[derive(Debug, Clone)]
 pub struct Session {
+    #[allow(dead_code)] // Session owner - used for access control and cleanup
     pub owner: Vec<u8>, // Principal as bytes (opaque)
     pub chunk_size: usize,
+    #[allow(dead_code)] // Expected total bytes - used for upload validation
     pub bytes_expected: u64,
     pub bytes_received: u64,
     pub received_idxs: BTreeSet<u32>,
