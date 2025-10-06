@@ -565,7 +565,7 @@ mod tests {
                 memory_notes: None,
                 created_by: None,
                 database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
-                
+
                 // NEW: Pre-computed dashboard fields (defaults)
                 is_public: false,
                 shared_count: 0,

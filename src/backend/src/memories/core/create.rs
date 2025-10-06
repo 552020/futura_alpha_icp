@@ -436,7 +436,7 @@ mod tests {
             memory_notes: None,
             created_by: Some("test-user".to_string()),
             database_storage_edges: vec![],
-            
+
             // NEW: Pre-computed dashboard fields (defaults)
             is_public: false,
             shared_count: 0,
