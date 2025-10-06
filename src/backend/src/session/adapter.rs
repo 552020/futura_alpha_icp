@@ -1,6 +1,5 @@
 use crate::session::service::SessionService;
-use crate::session::types::{ByteSink, Clock, SessionId, SessionMeta, SessionSpec};
-use crate::types::{CapsuleId, Error};
+use crate::session::types::Clock;
 use std::cell::RefCell;
 
 // Thread-local storage for the session service
@@ -8,18 +7,12 @@ thread_local! {
     static SESSION_SERVICE: RefCell<SessionService> = RefCell::new(SessionService::new());
 }
 
+// TODO: SessionAdapter is currently unused but may be needed for future session management
+// Uncomment when needed for production session handling
+/*
 /// IC adapter for session management
 /// This provides the IC-specific interface while delegating to the generic SessionService
 pub struct SessionAdapter;
-
-/// IC Clock implementation
-pub struct ICClock;
-
-impl Clock for ICClock {
-    fn now_ms(&self) -> u64 {
-        ic_cdk::api::time() / 1_000_000 // Convert nanoseconds to milliseconds
-    }
-}
 
 impl SessionAdapter {
     pub fn new() -> Self {
@@ -147,5 +140,15 @@ impl Iterator for ChunkIterator {
 
         // TODO: Implement actual chunk retrieval from storage
         Some((chunk_idx, Vec::new()))
+    }
+}
+*/
+
+/// IC Clock implementation
+pub struct ICClock;
+
+impl Clock for ICClock {
+    fn now_ms(&self) -> u64 {
+        ic_cdk::api::time() / 1_000_000 // Convert nanoseconds to milliseconds
     }
 }

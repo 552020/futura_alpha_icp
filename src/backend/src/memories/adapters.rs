@@ -178,6 +178,9 @@ pub fn ping(
     Ok(results)
 }
 
+// TODO: list() function is currently unused but may be needed for legacy API compatibility
+// Uncomment when needed for frontend integration or legacy support
+/*
 /// List memories in a capsule
 pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
     use crate::capsule_acl::{CapsuleAccess, CapsuleAcl};
@@ -231,12 +234,16 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
         message: "Memories retrieved successfully".to_string(),
     }
 }
+*/
 
 // ============================================================================
 // MEMORY TYPE IMPLEMENTATIONS
 // ============================================================================
 
 impl Memory {
+    // TODO: from_blob() method is currently unused but may be needed for blob-based memory creation
+    // Uncomment when needed for alternative memory creation patterns
+    /*
     /// Create a new memory with blob reference (>32KB)
     pub fn from_blob(
         blob_id: u64,
@@ -294,6 +301,7 @@ impl Memory {
             blob_external_assets: vec![],
         }
     }
+    */
 
     /// Get memory header for listing
     pub fn to_header(&self) -> crate::types::MemoryHeader {
