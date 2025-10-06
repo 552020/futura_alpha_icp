@@ -613,6 +613,17 @@ fn create_memory_from_assembled_data(
                 memory_notes: None,
                 created_by: None,
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
+                
+                // NEW: Pre-computed dashboard fields (defaults)
+                is_public: false,
+                shared_count: 0,
+                sharing_status: "private".to_string(),
+                total_size: data_size,
+                asset_count: 1,
+                thumbnail_url: None,
+                primary_asset_url: None,
+                has_thumbnails: false,
+                has_previews: false,
             },
             inline_assets: vec![types::MemoryAssetInline {
                 asset_id: {

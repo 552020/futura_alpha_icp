@@ -74,6 +74,17 @@ pub fn create_inline_memory(
             memory_notes: None,
             created_by,
             database_storage_edges: vec![],
+            
+            // NEW: Pre-computed dashboard fields (defaults)
+            is_public: false,
+            shared_count: 0,
+            sharing_status: "private".to_string(),
+            total_size: base.bytes,
+            asset_count: 1,
+            thumbnail_url: None,
+            primary_asset_url: None,
+            has_thumbnails: false,
+            has_previews: false,
         },
         access: MemoryAccess::Private {
             owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
@@ -125,6 +136,17 @@ pub fn create_blob_memory(
             memory_notes: None,
             created_by,
             database_storage_edges: vec![],
+            
+            // NEW: Pre-computed dashboard fields (defaults)
+            is_public: false,
+            shared_count: 0,
+            sharing_status: "private".to_string(),
+            total_size: base.bytes,
+            asset_count: 1,
+            thumbnail_url: None,
+            primary_asset_url: None,
+            has_thumbnails: false,
+            has_previews: false,
         },
         access: MemoryAccess::Private {
             owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
@@ -182,6 +204,17 @@ pub fn create_external_memory(
             memory_notes: None,
             created_by,
             database_storage_edges: vec![],
+            
+            // NEW: Pre-computed dashboard fields (defaults)
+            is_public: false,
+            shared_count: 0,
+            sharing_status: "private".to_string(),
+            total_size: base.bytes,
+            asset_count: 1,
+            thumbnail_url: None,
+            primary_asset_url: None,
+            has_thumbnails: false,
+            has_previews: false,
         },
         access: MemoryAccess::Private {
             owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code

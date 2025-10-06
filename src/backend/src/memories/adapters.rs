@@ -330,6 +330,7 @@ impl Memory {
         let size = inline_size + blob_internal_size + blob_external_size;
 
         crate::types::MemoryHeader {
+            // Existing fields
             id: self.id.clone(),
             name: self
                 .metadata
@@ -337,10 +338,223 @@ impl Memory {
                 .clone()
                 .unwrap_or_else(|| "Untitled".to_string()),
             memory_type: self.metadata.memory_type.clone(),
-            size,
+            size: self.metadata.total_size, // Use pre-computed value
             created_at: self.metadata.created_at,
             updated_at: self.metadata.updated_at,
             access: self.access.clone(),
+            
+            // NEW: Dashboard-specific fields (pre-computed)
+            title: self.metadata.title.clone(),
+            description: self.metadata.description.clone(),
+            parent_folder_id: self.metadata.parent_folder_id.clone(),
+            tags: self.metadata.tags.clone(),
+            is_public: self.metadata.is_public,
+            shared_count: self.metadata.shared_count,
+            sharing_status: self.metadata.sharing_status.clone(),
+            asset_count: self.metadata.asset_count,
+            thumbnail_url: self.metadata.thumbnail_url.clone(),
+            primary_asset_url: self.metadata.primary_asset_url.clone(),
+            has_thumbnails: self.metadata.has_thumbnails,
+            has_previews: self.metadata.has_previews,
         }
+    }
+    
+    /// Compute and update dashboard fields in metadata
+    pub fn update_dashboard_fields(&mut self) {
+        self.metadata.is_public = self.compute_is_public();
+        self.metadata.shared_count = self.count_shared_recipients();
+        self.metadata.sharing_status = self.compute_sharing_status();
+        self.metadata.total_size = self.calculate_total_size();
+        self.metadata.asset_count = self.count_assets();
+        self.metadata.thumbnail_url = self.generate_thumbnail_url();
+        self.metadata.primary_asset_url = self.generate_primary_asset_url();
+        self.metadata.has_thumbnails = self.has_thumbnails();
+        self.metadata.has_previews = self.has_previews();
+    }
+    
+    /// Check if memory is public based on access rules
+    fn compute_is_public(&self) -> bool {
+        match &self.access {
+            crate::types::MemoryAccess::Public { .. } => true,
+            crate::types::MemoryAccess::Private { .. } => false,
+            crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
+                individuals.is_empty() && groups.is_empty()
+            },
+            crate::types::MemoryAccess::Scheduled { access, .. } => match access.as_ref() {
+                crate::types::MemoryAccess::Public { .. } => true,
+                _ => false,
+            },
+            crate::types::MemoryAccess::EventTriggered { .. } => false,
+        }
+    }
+    
+    /// Count number of shared recipients
+    fn count_shared_recipients(&self) -> u32 {
+        match &self.access {
+            crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
+                (individuals.len() + groups.len()) as u32
+            },
+            _ => 0,
+        }
+    }
+    
+    /// Compute sharing status string
+    fn compute_sharing_status(&self) -> String {
+        match &self.access {
+            crate::types::MemoryAccess::Public { .. } => "public".to_string(),
+            crate::types::MemoryAccess::Private { .. } => "private".to_string(),
+            crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
+                if individuals.is_empty() && groups.is_empty() {
+                    "public".to_string()
+                } else {
+                    "shared".to_string()
+                }
+            },
+            crate::types::MemoryAccess::Scheduled { .. } => "private".to_string(),
+            crate::types::MemoryAccess::EventTriggered { .. } => "private".to_string(),
+        }
+    }
+    
+    /// Calculate total size of all assets
+    fn calculate_total_size(&self) -> u64 {
+        let mut total = 0u64;
+        
+        // Add inline assets
+        for asset in &self.inline_assets {
+            total += asset.bytes.len() as u64;
+        }
+        
+        // Add blob internal assets
+        for asset in &self.blob_internal_assets {
+            total += asset.blob_ref.len;
+        }
+        
+        // Add blob external assets
+        for asset in &self.blob_external_assets {
+            total += match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => img.base.bytes,
+                crate::types::AssetMetadata::Video(vid) => vid.base.bytes,
+                crate::types::AssetMetadata::Audio(audio) => audio.base.bytes,
+                crate::types::AssetMetadata::Document(doc) => doc.base.bytes,
+                crate::types::AssetMetadata::Note(note) => note.base.bytes,
+            };
+        }
+        
+        total
+    }
+    
+    /// Count total number of assets
+    fn count_assets(&self) -> u32 {
+        (self.inline_assets.len() + 
+         self.blob_internal_assets.len() + 
+         self.blob_external_assets.len()) as u32
+    }
+    
+    /// Generate thumbnail URL if available
+    fn generate_thumbnail_url(&self) -> Option<String> {
+        // Look for thumbnail in blob internal assets
+        for asset in &self.blob_internal_assets {
+            let is_thumbnail = match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Thumbnail),
+            };
+            if is_thumbnail {
+                return Some(format!("icp://memory/{}/blob/{}", self.id, asset.asset_id));
+            }
+        }
+        
+        // Look for thumbnail in inline assets
+        for asset in &self.inline_assets {
+            let is_thumbnail = match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Thumbnail),
+            };
+            if is_thumbnail {
+                return Some(format!("icp://memory/{}/inline/{}", self.id, asset.asset_id));
+            }
+        }
+        
+        None
+    }
+    
+    /// Generate primary asset URL for display
+    fn generate_primary_asset_url(&self) -> Option<String> {
+        // Look for original asset in blob internal assets
+        for asset in &self.blob_internal_assets {
+            let is_original = match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Original),
+            };
+            if is_original {
+                return Some(format!("icp://memory/{}/blob/{}", self.id, asset.asset_id));
+            }
+        }
+        
+        // Look for original asset in inline assets
+        for asset in &self.inline_assets {
+            let is_original = match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Original),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Original),
+            };
+            if is_original {
+                return Some(format!("icp://memory/{}/inline/{}", self.id, asset.asset_id));
+            }
+        }
+        
+        None
+    }
+    
+    /// Check if memory has thumbnails
+    fn has_thumbnails(&self) -> bool {
+        self.blob_internal_assets.iter().any(|asset| {
+            match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Thumbnail),
+            }
+        }) || self.inline_assets.iter().any(|asset| {
+            match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Thumbnail),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Thumbnail),
+            }
+        })
+    }
+    
+    /// Check if memory has previews
+    fn has_previews(&self) -> bool {
+        self.blob_internal_assets.iter().any(|asset| {
+            match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Preview),
+            }
+        }) || self.inline_assets.iter().any(|asset| {
+            match &asset.metadata {
+                crate::types::AssetMetadata::Image(img) => matches!(img.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Video(vid) => matches!(vid.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Audio(audio) => matches!(audio.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Document(doc) => matches!(doc.base.asset_type, crate::types::AssetType::Preview),
+                crate::types::AssetMetadata::Note(note) => matches!(note.base.asset_type, crate::types::AssetType::Preview),
+            }
+        })
     }
 }
