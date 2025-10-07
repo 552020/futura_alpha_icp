@@ -32,6 +32,10 @@ export default defineConfig({
         find: "declarations",
         replacement: fileURLToPath(new URL("../nextjs/src/ic/declarations", import.meta.url)),
       },
+      {
+        find: "declarations_lab",
+        replacement: fileURLToPath(new URL("./src/ic/declarations_lab", import.meta.url)),
+      },
     ],
     dedupe: ["@dfinity/agent"],
   },
