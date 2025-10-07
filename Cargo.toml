@@ -2,6 +2,7 @@
 members = [
     "src/backend",
     "src/canister_factory",
+    "src/lab_backend",
     "lab/service_lifetimes_stateless",
     "lab/service_lifetimes_threadlocal",
     "lab/ic_upload_minimal",

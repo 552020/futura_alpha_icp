@@ -34,6 +34,21 @@
         "output": "src/nextjs/src/ic/declarations/internet_identity",
         "env_override": "process.env.NEXT_PUBLIC_CANISTER_ID_INTERNET_IDENTITY"
       }
+    },
+
+    "lab_backend": {
+      "candid": "src/lab_backend/lab_backend.did",
+      "package": "lab_backend",
+      "type": "rust",
+      "declarations": {
+        "output": "src/lab_frontend/src/ic/declarations_lab/lab_backend"
+      }
+    },
+
+    "lab_frontend": {
+      "type": "assets",
+      "source": ["src/lab_frontend/dist"],
+      "build": ["bash", "-lc", "cd src/lab_frontend && pnpm install && pnpm run build"]
     }
   },
   "defaults": {
