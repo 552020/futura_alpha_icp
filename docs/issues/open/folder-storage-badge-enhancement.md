@@ -295,9 +295,11 @@ storageStatus: {
 **Summary**: Successfully created `FolderStorageBadge` component and updated `renderStorageBadge` function to handle folders.
 
 **Files Modified**:
+
 - `src/nextjs/src/components/common/content-card.tsx` - Added `FolderStorageBadge` component and updated `renderStorageBadge` function
 
 **Key Changes**:
+
 - [x] **Create `FolderStorageBadge` component** - Simple component that displays multiple storage location badges
 - [x] **Update `renderStorageBadge` to handle folders** - Now supports both individual memories and folders
 - [x] **Update `MemoryItem` interface** - Added `storageSummary` property with `storageLocations` array
