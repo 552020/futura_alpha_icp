@@ -271,6 +271,7 @@ storageStatus: {
 **Summary**: Successfully removed confusing `overallStatus` field and replaced with proper `storageLocations: string[]` array that queries the actual `storageEdges` table.
 
 **Files Modified**:
+
 - `src/nextjs/src/app/api/memories/[id]/route.ts` - Updated `addStorageStatusToMemory()` to query `storageEdges` table
 - `src/nextjs/src/hooks/use-memory-storage-status.ts` - Updated types and logic to use `storageLocations` array
 - `src/nextjs/src/app/api/galleries/utils.ts` - Updated gallery storage status to use new format
@@ -278,6 +279,7 @@ storageStatus: {
 - `src/nextjs/src/components/galleries/gallery-storage-summary.tsx` - Updated to work with new storage summary format
 
 **Key Changes**:
+
 - [x] **Remove `overallStatus` field** from all API responses and type definitions
 - [x] **Query storageEdges table** to get actual storage locations per memory
 - [x] **Update API functions** to return `storageLocations: string[]` from database
@@ -288,18 +290,25 @@ storageStatus: {
 
 **Result**: Storage badges now show accurate data from the database instead of hardcoded assumptions. Badges can display multiple storage locations (e.g., "ICP+NEON") and are future-proof for new storage providers.
 
-### **Phase 2: Data Structure**
+### **Phase 2: Data Structure - ✅ COMPLETED**
 
-- [ ] Update `FolderItem` interface with `storageSummary`
+**Summary**: Successfully created `FolderStorageBadge` component and updated `renderStorageBadge` function to handle folders.
+
+**Files Modified**:
+- `src/nextjs/src/components/common/content-card.tsx` - Added `FolderStorageBadge` component and updated `renderStorageBadge` function
+
+**Key Changes**:
+- [x] **Create `FolderStorageBadge` component** - Simple component that displays multiple storage location badges
+- [x] **Update `renderStorageBadge` to handle folders** - Now supports both individual memories and folders
+- [x] **Update `MemoryItem` interface** - Added `storageSummary` property with `storageLocations` array
+- [x] **Add appropriate styling and colors** - Uses consistent Badge styling with secondary variant
+
+**Result**: The UI components are ready to display folder storage badges. The `renderStorageBadge` function now properly handles both individual memories (using `MemoryStorageBadge`) and folders (using `FolderStorageBadge`).
+
+### **Phase 3: Data Computation - ⏳ IN PROGRESS**
+
 - [ ] Update `processDashboardItems()` to compute storage summaries
 - [ ] Test with existing folder data
-
-### **Phase 2: UI Components**
-
-- [ ] Create `FolderStorageBadge` component
-- [ ] Update `renderStorageBadge` to handle folders
-- [ ] Add appropriate styling and colors
-- [ ] Add tooltips with detailed breakdown
 
 ### **Phase 3: Integration**
 
