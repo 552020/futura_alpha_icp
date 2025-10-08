@@ -42,3 +42,4 @@ The LLM functionality is available through:
 - `chat_canister(messages: Vec<ChatMessage>) -> String`
 
 See `src/llm_chatbot.rs` for the implementation details.
+

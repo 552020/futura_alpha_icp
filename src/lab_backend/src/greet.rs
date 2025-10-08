@@ -118,3 +118,4 @@ pub fn compare_approaches() -> String {
     "#
     .to_string()
 }
+
