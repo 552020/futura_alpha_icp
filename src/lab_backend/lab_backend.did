@@ -6,13 +6,19 @@ type ExperimentResult = record {
 };
 type Result = variant { Ok : text; Err : text };
 type Result_1 = variant { Ok : ExperimentData; Err : text };
+type ChatMessage = record {
+  role : text;
+  content : text;
+};
 service : {
+  chat_canister : (vec ChatMessage) -> (text);
   compare_approaches : () -> (text) query;
   get_status_robust : () -> (Result) query;
   get_status_simple : () -> (text) query;
   greet_robust : (text) -> (Result) query;
   greet_simple : (text) -> (text) query;
   health : () -> (text) query;
+  prompt_canister : (text) -> (text);
   run_experiment_robust : (text) -> (Result_1);
   run_experiment_simple : (text) -> (ExperimentResult);
 }

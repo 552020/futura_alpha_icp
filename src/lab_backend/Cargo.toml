@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 candid = "0.10"
 ic-cdk = "0.18"
 ic-cdk-timers = "0.12"         # Feel free to remove this dependency if you don't need timers
+# ic-llm = "1.1.0"               # LLM functionality for experiments (commented out due to version conflict)
 ic-stable-structures = "0.6"   # KV baseline for later
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
