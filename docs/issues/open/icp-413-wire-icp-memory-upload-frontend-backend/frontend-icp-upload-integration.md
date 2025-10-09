@@ -2,33 +2,37 @@
 
 ## Issue Summary
 
-**Status**: Open  
+**Status**: ✅ **IMPLEMENTED** - Direct ICP Upload Integration Complete  
 **Priority**: High  
 **Type**: Feature Implementation  
 **Assignee**: TBD
 
-The frontend currently lacks direct integration with the ICP canister for uploads. When users select "ICP only" storage preference, files are still uploaded to Neon/Vercel Blob instead of directly to the ICP canister.
+The frontend now has complete direct integration with the ICP canister for uploads. When users select ICP storage preference, files are uploaded directly to the ICP canister via chunked uploads.
 
 ## Problem Description
 
-### Current State
+### Current State - ✅ **IMPLEMENTED**
 
 - ✅ ICP canister has working upload endpoints (`uploads_begin`, `uploads_put_chunk`, `uploads_finish`)
 - ✅ Frontend has ICP agent utilities (`src/ic/agent.ts`, `src/ic/actor-factory.ts`)
 - ✅ Upload intent/verify endpoints are implemented
-- ❌ **Missing**: Direct frontend → ICP canister upload logic
+- ✅ **IMPLEMENTED**: Direct frontend → ICP canister upload logic via `uploadToICPWithProcessing()`
 
-### Current Upload Flow
-
-```
-Frontend → Next.js API → Neon/Vercel Blob (regardless of storage preference)
-```
-
-### Intended Upload Flow
+### Current Upload Flow - ✅ **IMPLEMENTED**
 
 ```
-Frontend → ICP Canister (direct) → /api/upload/verify (record in control plane)
+Frontend → ICP Canister (direct) → /api/upload/complete (record in control plane)
 ```
+
+### Implementation Details
+
+- ✅ **Direct ICP Upload**: `uploadFileToICPWithProgress()` handles chunked uploads to ICP canister
+- ✅ **Parallel Processing**: `uploadToICPWithProcessing()` implements 2-lane system (original + derivatives)
+- ✅ **Database Integration**: `finalizeAllAssets()` creates Neon database records
+- ✅ **Memory Edges**: `createICPMemoryEdge()` links ICP and Neon records for dual storage
+- ✅ **Authentication**: `checkICPAuthentication()` ensures Internet Identity is connected
+- ✅ **Progress Tracking**: Real-time upload progress for both lanes
+- ✅ **Error Handling**: Comprehensive error handling and cleanup
 
 ## Root Cause Analysis
 
@@ -36,9 +40,9 @@ The `user-file-upload.ts` hook only calls Next.js API endpoints and doesn't impl
 
 ```typescript
 // Current code in user-file-upload.ts
-const endpoint = isOnboarding ? '/api/memories/upload/onboarding/folder' : '/api/memories/upload/folder';
+const endpoint = isOnboarding ? "/api/memories/upload/onboarding/folder" : "/api/memories/upload/folder";
 const response = await fetch(endpoint, {
-  method: 'POST',
+  method: "POST",
   body: formData,
 });
 ```

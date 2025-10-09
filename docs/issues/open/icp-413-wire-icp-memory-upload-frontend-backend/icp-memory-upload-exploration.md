@@ -1,12 +1,16 @@
 # ICP Memory Upload Exploration Issue
 
-## Problem Statement
+**Status**: ✅ **IMPLEMENTED** - Complete ICP Memory Upload System
+
+## Problem Statement - ✅ **RESOLVED**
 
 We need to understand how to properly route memory uploads to ICP canisters based on user hosting preferences. Currently, users can upload files via the dashboard "Add File" and "Add Folder" buttons, but the system needs to intelligently route these uploads to ICP storage when the user has configured ICP as their preferred blob storage.
 
-## Current System Architecture
+**✅ SOLUTION IMPLEMENTED**: Complete intelligent routing system with 2-lane + 4-asset processing, hosting preferences, and dual storage integration.
 
-### 1. Upload Entry Points
+## Current System Architecture - ✅ **IMPLEMENTED**
+
+### 1. Upload Entry Points - ✅ **IMPLEMENTED**
 
 **Dashboard Upload Buttons:**
 
@@ -14,26 +18,32 @@ We need to understand how to properly route memory uploads to ICP canisters base
 - **Components**: `ItemUploadButton` with variants:
   - `variant="dashboard-add-folder"` (mode="directory")
   - `variant="dashboard-add-file"` (mode="multiple-files")
-- **Flow**: Button → `useFileUpload` hook → Service processors
+- **Flow**: Button → `useFileUpload` hook → Service processors → **Intelligent routing based on hosting preferences**
 
-### 2. Upload Flow Orchestration
+### 2. Upload Flow Orchestration - ✅ **IMPLEMENTED**
 
 **Main Upload Hook:**
 
 - **Location**: `src/nextjs/src/hooks/use-file-upload.ts`
 - **Key Logic**:
-  - Checks hosting preferences: `preferences?.blobHosting || ['s3']`
-  - Routes to ICP if `userBlobHostingPreferences.includes('icp')`
-  - Calls `checkICPAuthentication()` before ICP uploads
-  - Routes to appropriate processors based on mode
+  - ✅ Checks hosting preferences: `preferences?.blobHosting || ['s3']`
+  - ✅ Routes to ICP if `userBlobHostingPreferences.includes('icp')`
+  - ✅ Calls `checkICPAuthentication()` before ICP uploads
+  - ✅ Routes to appropriate processors based on mode
+  - ✅ **NEW**: Creates upload preferences object for processors
 
 **Service Processors:**
 
-- **Single File**: `src/nextjs/src/services/upload/single-file-processor.ts`
-- **Multiple Files**: `src/nextjs/src/services/upload/multiple-files-processor.ts`
+- **Single File**: `src/nextjs/src/services/upload/single-file-processor.ts` - ✅ **IMPLEMENTED**
+- **Multiple Files**: `src/nextjs/src/services/upload/multiple-files-processor.ts` - ✅ **IMPLEMENTED**
 - **Both check hosting preferences and route accordingly**
+- **ICP Processing**: `src/nextjs/src/services/upload/icp-with-processing.ts` - ✅ **IMPLEMENTED**
+  - 2-lane parallel processing (original + derivatives)
+  - 4-asset system (original + display + thumbnail + placeholder)
+  - Database integration via `finalizeAllAssets()`
+  - Memory edge creation via `createICPMemoryEdge()`
 
-### 3. Hosting Preferences System
+### 3. Hosting Preferences System - ✅ **IMPLEMENTED**
 
 **Database Schema:**
 
@@ -45,9 +55,16 @@ We need to understand how to properly route memory uploads to ICP canisters base
 
 **Available Blob Hosting Options:**
 
-- `'s3'` - AWS S3
-- `'vercel_blob'` - Vercel Blob
-- `'icp'` - ICP Canister Storage
+- `'s3'` - AWS S3 ✅ **IMPLEMENTED**
+- `'vercel_blob'` - Vercel Blob ✅ **IMPLEMENTED**
+- `'icp'` - ICP Canister Storage ✅ **IMPLEMENTED**
+
+**Hosting Preferences Management:**
+
+- **Hook**: `src/nextjs/src/hooks/use-hosting-preferences.ts` - ✅ **IMPLEMENTED**
+- **UI**: `src/nextjs/src/app/[lang]/user/settings/page.tsx` - ✅ **IMPLEMENTED**
+- **API**: `src/nextjs/src/app/api/me/hosting-preferences/route.ts` - ✅ **IMPLEMENTED**
+- **Validation**: Both Web2 and Web3 stacks can be enabled simultaneously - ✅ **IMPLEMENTED**
 - `'arweave'` - Arweave
 - `'ipfs'` - IPFS
 - `'neon'` - Database storage (small files)

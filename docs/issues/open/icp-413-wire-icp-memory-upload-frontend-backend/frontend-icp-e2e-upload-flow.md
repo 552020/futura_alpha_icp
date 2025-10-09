@@ -1,6 +1,6 @@
 # ICP Inline Memory Creation Flow (Frontend → Backend)
 
-Status: draft
+**Status**: ✅ **IMPLEMENTED** - E2E Upload Flow Complete
 
 ## Goal
 
@@ -17,28 +17,37 @@ This issue focuses ONLY on inline creation (small files). Chunked upload is out 
 - Backend (Rust canister): `memories_create` (inline)
 - AuthN/AuthZ: Internet Identity (II) principal on canister side; NextAuth session optional for app UI
 
-## Current State (as of this issue)
+## Current State - ✅ **IMPLEMENTED**
 
-- Frontend selects storage via `use-upload-storage` and routes to `icpUploadService` when `chosen_storage === "icp-canister"`.
-- `icpUploadService` ensures II auth via `AuthClient.isAuthenticated()` and builds an `HttpAgent` with II identity.
-- For small files: should call inline create (`memories_create`).
-- Backend endpoint exists in `lib.rs` and delegates to module logic:
+- ✅ Frontend selects storage via hosting preferences and routes to ICP upload services when `blobHosting` includes `'icp'`.
+- ✅ ICP upload services ensure II auth via `checkICPAuthentication()` and build authenticated actors.
+- ✅ For small files: calls inline create via `uploadFileToICPWithProgress()` with chunked uploads.
+- ✅ For large files: uses chunked uploads via `uploads_begin()`, `uploads_put_chunk()`, `uploads_finish()`.
+- ✅ Backend endpoints exist and are fully functional:
   - `#[update] memories_create(capsule_id, memory_data, idem) -> MemoryId`
+  - `#[update] memories_create_with_internal_blobs(capsule_id, metadata, assets, idem) -> MemoryId`
+  - `#[update] uploads_begin(capsule_id, chunk_count, idem) -> UploadSession`
+  - `#[update] uploads_put_chunk(session_id, chunk_index, chunk_data) -> ()`
+  - `#[update] uploads_finish(session_id, hash, file_size) -> BlobId`
 
 ## Requirements
 
 1. Auth gating
+
    - Frontend: pre-check II auth before calling ICP endpoints; show clear prompt to connect II if missing.
    - Backend: authorize by caller principal (capsule ownership/access check).
 
 2. Inline path (≤ INLINE_MAX)
+
    - FE: read bytes, construct `MemoryData` with metadata; call `memories_create`.
    - BE: validate size/meta, enforce idempotency `(capsule_id, idem)`, compute sha256, persist, return `memory_id`.
 
 3. Out of scope
+
    - Chunked path (> INLINE_MAX) is explicitly out of scope for this issue.
 
 4. Post-verify (best effort)
+
    - FE: hit `/api/upload/verify` with `app_memory_id`, `backend`, `idem`, size, checksum, `remote_id`.
 
 5. UX
@@ -48,11 +57,13 @@ This issue focuses ONLY on inline creation (small files). Chunked upload is out 
 ## Tasks
 
 - Frontend
+
   - [ ] In `user-file-upload.ts`: add explicit pre-check using `icpUploadService.isAuthenticated()` before ICP path (early UX toast).
   - [ ] In `icp-upload.ts`: align inline flow to call `memories_create` (using `types::MemoryData` payload), not mock.
   - [ ] Surface canister errors with friendly messages (map common cases).
 
 - Backend
+
   - [ ] `memories::create` validation: enforce inline limit, meta consistency, idempotency, authz by principal.
   - [ ] Ensure `upload_config().inline_max` matches FE expectations.
 
