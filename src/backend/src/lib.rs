@@ -18,6 +18,7 @@ thread_local! {
 
 // Import modules
 mod admin;
+mod utils;
 mod auth;
 mod canister_factory;
 mod capsule;
@@ -33,7 +34,6 @@ mod types;
 mod unified_types;
 mod upload;
 mod user;
-mod util;
 
 // ============================================================================
 // CORE SYSTEM & UTILITY FUNCTIONS (3 functions)
@@ -1101,6 +1101,8 @@ fn pre_upgrade() {
 
 #[ic_cdk::post_upgrade]
 fn post_upgrade() {
+    // UUID v7 generation no longer requires initialization - using proper IC primitives
+
     // Stable memory structures (StableBTreeMap) automatically restore their data
     // No explicit action needed for stable memory - ic-stable-structures handles this
 
