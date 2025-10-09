@@ -239,6 +239,7 @@ type Memory = record {
   id : text;
   inline_assets : vec MemoryAssetInline;
   access : MemoryAccess;
+  capsule_id : text;
   metadata : MemoryMetadata;
   blob_internal_assets : vec MemoryAssetBlobInternal;
   blob_external_assets : vec MemoryAssetBlobExternal;
@@ -303,6 +304,7 @@ type MemoryHeader = record {
   title : opt text;
   updated_at : nat64;
   sharing_status : text;
+  capsule_id : text;
   memory_type : MemoryType;
   name : text;
   size : nat64;
@@ -545,6 +547,8 @@ service : {
   memories_list : (text, opt text, opt nat32) -> (Result_16) query;
   // List all assets in a memory
   memories_list_assets : (text) -> (Result_17) query;
+  // List memories filtered by capsule_id field (for UUID v7 implementation)
+  memories_list_by_capsule : (text, opt text, opt nat32) -> (Result_16) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
   memories_ping : (vec text) -> (Result_18) query;
   memories_read : (text) -> (Result_19) query;
