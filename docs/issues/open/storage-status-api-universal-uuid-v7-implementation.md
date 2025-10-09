@@ -36,6 +36,210 @@ interface Memory {
 
 ## Implementation Plan
 
+### **🔑 Critical Understanding: Memory ID as HashMap Key**
+
+**Important**: The `memory.id` field is used as the **HashMap key** for storing and retrieving memories in the capsule:
+
+```rust
+pub struct Capsule {
+    pub memories: HashMap<String, Memory>,  // Key = memory.id, Value = Memory
+    // ...
+}
+```
+
+**How Memory Storage Works:**
+
+- **Insert**: `capsule_data.memories.insert(memory.id.clone(), memory)`
+- **Retrieve**: `capsule.memories.get(id).cloned()` where `id = memory.id`
+- **Check**: `capsule_data.memories.contains_key(&memory.id)`
+
+**Strategy**: Keep `pub id: String` but change it from compound ID to UUID v7, and add separate `pub capsule_id: String` field.
+
+## 🎯 **Optimal Greenfield Plan**
+
+### **Core Principles**
+
+1. **Single ID format everywhere**: `id: UUID v7` across ICP + Neon + Frontend
+2. **Keep field name `id`**: Don't invent new field names
+3. **Server generates ID**: Canister/backend mints UUID v7 on create
+4. **Capsule context**: Separate `capsule_id` field for explicit connection
+5. **No migration work**: Greenfield advantage - start clean
+
+### **Schema Design**
+
+**Neon Database:**
+
+```sql
+-- memories table
+CREATE TABLE memories (
+  id UUID PRIMARY KEY,           -- UUID v7 (not compound)
+  capsule_id TEXT NOT NULL,      -- Capsule context
+  -- ... other fields
+);
+CREATE INDEX memories_capsule_idx ON memories(capsule_id, created_at DESC);
+
+-- storage_edges table
+CREATE TABLE storage_edges (
+  id BIGSERIAL PRIMARY KEY,
+  memory_id UUID NOT NULL REFERENCES memories(id),  -- Same UUID v7
+  artifact TEXT NOT NULL,         -- 'metadata' | 'asset'
+  backend TEXT NOT NULL,          -- 'neon-db' | 'icp-canister' | 's3' | ...
+  present BOOLEAN NOT NULL DEFAULT FALSE,
+  -- ... other fields
+);
+CREATE INDEX storage_edges_memory_idx ON storage_edges(memory_id);
+```
+
+**ICP Canister:**
+
+```rust
+pub struct Memory {
+  pub id: String,        // UUID v7 (not compound)
+  pub capsule_id: String, // Capsule context
+  // ... other fields
+}
+
+// Capsule holds: HashMap<String, Memory> keyed by memory.id (UUID v7)
+pub struct Capsule {
+  pub memories: HashMap<String, Memory>,  // Key = memory.id (UUID v7)
+  // ...
+}
+```
+
+### **API Design**
+
+- All routes accept/return `id: UUID` - no parsing, no mapping
+- Storage status queries edges by same UUID
+- ICP-only flows skip Neon edges (FE shows "stored: icp")
+
+### **Frontend Design**
+
+- Use `id` (v7) everywhere (SWR keys, routes, components)
+- Derive UI strings only for rendering: `mem:capsule_${capsule_id}:${id}`
+- Never use derived strings for queries
+
+### **Guardrails**
+
+- Add shared `isUuidV7()` validation function (with optional v4 support for early dev)
+- Unit test: "create → read → list → delete" on both ICP and Neon paths
+- Database indexes are sufficient for MVP performance
+
+### **Why This is Optimal (Greenfield)**
+
+- ✅ **No migration work** - start clean with UUID v7
+- ✅ **Minimal surface area** - keep `id` field name, just change format
+- ✅ **Simple joins and status checks** - same UUID everywhere
+- ✅ **Time-ordered v7** gives better index locality out of the box
+- ✅ **No parsing/mapping** - direct UUID usage across all systems
+
+## 📋 **Implementation TODO List**
+
+### **Phase 1: Backend Foundation**
+
+- [ ] **1.1** Add UUID v7 dependency to Cargo.toml
+  - [ ] **1.1.1** Add `uuid = { version = "1.0", features = ["v7", "serde"] }`
+- [ ] **1.2** Update Memory struct in `src/backend/src/memories/types.rs`
+  - [ ] **1.2.1** Keep `pub id: String` field (change from compound to UUID v7)
+  - [ ] **1.2.2** Add `pub capsule_id: String` field
+- [ ] **1.3** Update MemoryHeader struct
+  - [ ] **1.3.1** Keep `pub id: String` field (change from compound to UUID v7)
+  - [ ] **1.3.2** Add `pub capsule_id: String` field
+- [ ] **1.4** Add UUID v7 generation function in `src/backend/src/memories/core/model_helpers.rs`
+  - [ ] **1.4.1** Add `generate_uuid_v7()` function
+  - [ ] **1.4.2** Update `generate_asset_id()` to use UUID v7
+- [ ] **1.5** Add shared validation function
+  - [ ] **1.5.1** Add `is_uuid_v7()` validation function
+  - [ ] **1.5.2** Add optional v4 support for early dev
+
+### **Phase 2: Fix Memory Creation Logic**
+
+- [ ] **2.1** Update `src/backend/src/memories/core/create.rs`
+  - [ ] **2.1.1** Replace `format!("mem:{}:{}", &capsule_id, idem)` with `generate_uuid_v7()`
+  - [ ] **2.1.2** Set `memory.capsule_id = capsule_id.clone()` in memory creation
+  - [ ] **2.1.3** Update function signatures to accept `capsule_id` parameter
+- [ ] **2.2** Update `src/backend/src/memories/core/model_helpers.rs`
+  - [ ] **2.2.1** Fix `create_inline_memory()` to set `capsule_id` field
+  - [ ] **2.2.2** Fix `create_blob_memory()` to set `capsule_id` field
+  - [ ] **2.2.3** Fix `create_external_memory()` to set `capsule_id` field
+- [ ] **2.3** Memory storage logic (no changes needed)
+  - [ ] **2.3.1** HashMap key remains `memory.id` (now UUID v7)
+  - [ ] **2.3.2** All lookups use `memory.id` (now UUID v7)
+  - [ ] **2.3.3** No breaking changes to storage/retrieval
+
+### **Phase 3: Fix Memory Retrieval Logic**
+
+- [ ] **3.1** Update `src/backend/src/memories/adapters.rs`
+  - [ ] **3.1.1** Fix `to_header()` to use `memory.id` (now UUID v7) and `memory.capsule_id`
+  - [ ] **3.1.2** No other changes needed - all access patterns remain the same
+- [ ] **3.2** Update `src/backend/src/lib.rs`
+  - [ ] **3.2.1** No changes needed - `memories_read()` already uses `memory.id`
+  - [ ] **3.2.2** No changes needed - `memories_list()` already uses `memory.id`
+  - [ ] **3.2.3** Add new `memories_list_by_capsule()` function for filtering
+- [ ] **3.3** Update memory update and delete functions
+  - [ ] **3.3.1** No changes needed - `memories_update()` already uses `memory.id`
+  - [ ] **3.3.2** No changes needed - `memories_delete()` already uses `memory.id`
+  - [ ] **3.3.3** No changes needed - bulk operations already use `memory.id`
+
+### **Phase 4: Testing and Validation**
+
+- [ ] **4.1** Add unit tests for UUID v7 generation
+  - [ ] **4.1.1** Test `generate_uuid_v7()` function
+  - [ ] **4.1.2** Test UUID v7 format validation
+  - [ ] **4.1.3** Test time-ordering of UUID v7
+- [ ] **4.2** Add integration tests for memory operations
+  - [ ] **4.2.1** Test memory creation with UUID v7
+  - [ ] **4.2.2** Test memory retrieval with UUID v7
+  - [ ] **4.2.3** Test memory listing with UUID v7
+- [ ] **4.3** Run full test suite
+  - [ ] **4.3.1** Run `cargo test` for backend
+  - [ ] **4.3.2** Run integration tests
+  - [ ] **4.3.3** Verify no regressions
+
+### **Phase 5: Migration Strategy**
+
+- [ ] **5.1** Create migration functions
+  - [ ] **5.1.1** Add `migrate_memory_ids()` function
+  - [ ] **5.1.2** Add `validate_migration()` function
+  - [ ] **5.1.3** Add rollback capability
+- [ ] **5.2** Test migration process
+  - [ ] **5.2.1** Test with sample data
+  - [ ] **5.2.2** Test migration validation
+  - [ ] **5.2.3** Test rollback process
+- [ ] **5.3** Deploy migration
+  - [ ] **5.3.1** Backup existing data
+  - [ ] **5.3.2** Run migration in staging
+  - [ ] **5.3.3** Run migration in production
+
+### **Phase 6: Frontend Integration**
+
+- [ ] **6.1** Update frontend to use UUID v7
+  - [ ] **6.1.1** Update memory upload logic
+  - [ ] **6.1.2** Update memory fetching logic
+  - [ ] **6.1.3** Update memory display components
+- [ ] **6.2** Update API endpoints
+  - [ ] **6.2.1** Update `/api/memories/[id]` to accept UUID v7
+  - [ ] **6.2.2** Update storage edges API
+  - [ ] **6.2.3** Update memory listing API
+- [ ] **6.3** Test end-to-end functionality
+  - [ ] **6.3.1** Test memory upload with UUID v7
+  - [ ] **6.3.2** Test memory display with UUID v7
+  - [ ] **6.3.3** Test storage status with UUID v7
+
+### **Phase 7: Cleanup and Documentation**
+
+- [ ] **7.1** Remove legacy code
+  - [ ] **7.1.1** Remove compound ID generation logic
+  - [ ] **7.1.2** Remove migration functions (after successful migration)
+  - [ ] **7.1.3** Clean up unused imports
+- [ ] **7.2** Update documentation
+  - [ ] **7.2.1** Update API documentation
+  - [ ] **7.2.2** Update architecture documentation
+  - [ ] **7.2.3** Update deployment guides
+- [ ] **7.3** Performance optimization
+  - [ ] **7.3.1** Add database indexes for UUID v7
+  - [ ] **7.3.2** Optimize memory lookup queries
+  - [ ] **7.3.3** Monitor performance metrics
+
 ### **Phase 1: Backend Changes**
 
 #### **1.1 ICP Canister Updates**
