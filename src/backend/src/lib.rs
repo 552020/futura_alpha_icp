@@ -486,6 +486,56 @@ fn memories_list(
     })
 }
 
+/// List memories filtered by capsule_id field (for UUID v7 implementation)
+#[ic_cdk::query]
+fn memories_list_by_capsule(
+    capsule_id: String,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> std::result::Result<crate::capsule_store::types::Page<types::MemoryHeader>, Error> {
+    use crate::capsule_store::CapsuleStore;
+    use crate::memory::with_capsule_store;
+    use crate::types::PersonRef;
+
+    let caller = PersonRef::from_caller();
+    let limit = limit.unwrap_or(50).min(100); // Default 50, max 100
+
+    with_capsule_store(|store| {
+        store
+            .get(&capsule_id)
+            .and_then(|capsule| {
+                if capsule.has_read_access(&caller) {
+                    // Filter memories by capsule_id field
+                    let memories: Vec<types::MemoryHeader> = capsule
+                        .memories
+                        .values()
+                        .filter(|memory| memory.capsule_id == capsule_id)
+                        .map(|memory| memory.to_header())
+                        .collect();
+
+                    // Pagination logic
+                    let start_idx = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
+                    let end_idx = (start_idx + limit as usize).min(memories.len());
+                    let page_items = memories[start_idx..end_idx].to_vec();
+
+                    let next_cursor = if end_idx < memories.len() {
+                        Some(end_idx.to_string())
+                    } else {
+                        None
+                    };
+
+                    Some(crate::capsule_store::types::Page {
+                        items: page_items,
+                        next_cursor,
+                    })
+                } else {
+                    None
+                }
+            })
+            .ok_or(Error::NotFound)
+    })
+}
+
 // === Presence ===
 
 /// Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)

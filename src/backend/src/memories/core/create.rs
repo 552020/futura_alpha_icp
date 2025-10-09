@@ -27,7 +27,7 @@ pub fn memories_create_core<E: Env, S: Store>(
     external_size: Option<u64>,
     external_hash: Option<Vec<u8>>,
     asset_metadata: AssetMetadata,
-    idem: String,
+    _idem: String,
 ) -> std::result::Result<MemoryId, Error> {
     // Validate that exactly one asset type is provided
     let asset_count =
@@ -116,8 +116,8 @@ pub fn memories_create_core<E: Env, S: Store>(
     // Capture timestamp once for consistency
     let now = env.now();
 
-    // Generate deterministic memory ID
-    let memory_id = format!("mem:{}:{}", &capsule_id, idem);
+    // Generate UUID v7 memory ID
+    let memory_id = generate_uuid_v7();
 
     // Check for existing memory (idempotency)
     if let Some(_existing) = store.get_memory(&capsule_id, &memory_id) {
@@ -189,7 +189,7 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
     capsule_id: CapsuleId,
     memory_metadata: MemoryMetadata,
     internal_blob_assets: Vec<InternalBlobAssetInput>,
-    idem: String,
+    _idem: String,
 ) -> std::result::Result<MemoryId, Error> {
     // Validate inputs
     if internal_blob_assets.is_empty() {
@@ -214,8 +214,8 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
     // Capture timestamp once for consistency
     let now = env.now();
 
-    // Generate deterministic memory ID
-    let memory_id = format!("mem:{}:{}", &capsule_id, idem);
+    // Generate UUID v7 memory ID
+    let memory_id = generate_uuid_v7();
 
     // Check for existing memory (idempotency)
     if let Some(_existing) = store.get_memory(&capsule_id, &memory_id) {
@@ -262,6 +262,7 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
     // Create the memory with multiple internal blob assets
     let mut memory = Memory {
         id: memory_id.clone(),
+        capsule_id: capsule_id.clone(),
         metadata: memory_metadata,
         access: crate::types::MemoryAccess::Private {
             owner_secure_code: "default_secure_code".to_string(),
@@ -494,7 +495,9 @@ mod tests {
         // Verify
         assert!(result.is_ok());
         let memory_id = result.unwrap();
-        assert_eq!(memory_id, "mem:capsule_123:test-idem");
+        // Should be a UUID format (not compound ID)
+        assert!(memory_id.len() == 36); // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        assert!(memory_id.contains('-'));
 
         // Verify memory was created
         let memory = store.get_memory(&capsule_id, &memory_id);
@@ -568,7 +571,9 @@ mod tests {
         // Verify
         assert!(result.is_ok());
         let memory_id = result.unwrap();
-        assert_eq!(memory_id, "mem:capsule_456:test-4assets");
+        // Should be a UUID format (not compound ID)
+        assert!(memory_id.len() == 36); // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        assert!(memory_id.contains('-'));
 
         // Verify memory was created with all 4 assets
         let memory = store.get_memory(&capsule_id, &memory_id);

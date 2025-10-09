@@ -272,6 +272,7 @@ mod tests {
     fn create_test_memory(id: &str) -> types::Memory {
         types::Memory {
             id: id.to_string(),
+            capsule_id: "test_capsule".to_string(),
             metadata: types::MemoryMetadata {
                 memory_type: types::MemoryType::Note,
                 title: Some(format!("Memory {}", id)),

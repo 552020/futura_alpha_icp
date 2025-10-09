@@ -327,11 +327,12 @@ impl Memory {
                 crate::types::AssetMetadata::Note(note) => note.base.bytes,
             })
             .sum();
-        let size = inline_size + blob_internal_size + blob_external_size;
+        let _size = inline_size + blob_internal_size + blob_external_size;
 
         crate::types::MemoryHeader {
             // Existing fields
             id: self.id.clone(),
+            capsule_id: self.capsule_id.clone(),
             name: self
                 .metadata
                 .title

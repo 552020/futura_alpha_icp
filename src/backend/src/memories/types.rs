@@ -276,7 +276,8 @@ pub struct MemoryAssetBlob {
 /// Main memory structure
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Memory {
-    pub id: String,                                         // unique identifier
+    pub id: String,                                         // UUID v7 (not compound)
+    pub capsule_id: String,                                 // Capsule context
     pub metadata: MemoryMetadata, // memory-level metadata (title, description, etc.)
     pub access: MemoryAccess,     // who can access + temporal rules
     pub inline_assets: Vec<MemoryAssetInline>, // 0 or more inline assets
@@ -287,7 +288,8 @@ pub struct Memory {
 /// Memory header for listings
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct MemoryHeader {
-    pub id: String,
+    pub id: String,         // UUID v7 (not compound)
+    pub capsule_id: String, // Capsule context
     pub name: String,
     pub memory_type: MemoryType,
     pub size: u64,

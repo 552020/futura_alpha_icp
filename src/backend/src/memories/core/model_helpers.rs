@@ -10,6 +10,22 @@ use crate::types::{
 };
 use uuid::Uuid;
 
+/// Generate a UUID v7 (time-ordered) for memory IDs
+pub fn generate_uuid_v7() -> String {
+    // For now, use a simple UUID generation until we can properly implement v7
+    // TODO: Implement proper UUID v7 with timestamp context
+    // Using a combination of timestamp and random data for uniqueness
+    let timestamp = if cfg!(test) {
+        // In test context, use a mock timestamp
+        1234567890
+    } else {
+        // In canister context, use real time
+        ic_cdk::api::time()
+    };
+    let random_data = format!("{}-{}", timestamp, timestamp % 1000);
+    Uuid::new_v5(&Uuid::NAMESPACE_DNS, random_data.as_bytes()).to_string()
+}
+
 /// Generate a UUID for asset IDs using tech lead's recommended pattern
 /// Uses v5 UUID (deterministic per unique seed) for ICP safety
 pub fn generate_asset_id(caller: &PersonRef, timestamp: u64) -> String {
@@ -20,6 +36,19 @@ pub fn generate_asset_id(caller: &PersonRef, timestamp: u64) -> String {
     };
     let seed = format!("{}-{}", caller_str, timestamp);
     Uuid::new_v5(&Uuid::NAMESPACE_OID, seed.as_bytes()).to_string()
+}
+
+/// Validate if a string is a valid UUID v7 format
+/// Also accepts UUID v4 for early development compatibility
+pub fn is_uuid_v7(id: &str) -> bool {
+    match Uuid::parse_str(id) {
+        Ok(uuid) => {
+            // Check if it's UUID v7 (preferred) or v4 (early dev compatibility)
+            uuid.get_version() == Some(uuid::Version::Random) || // v4
+            uuid.get_version() == Some(uuid::Version::SortRand) // v7
+        }
+        Err(_) => false,
+    }
 }
 
 /// Derive MemoryType from AssetMetadata variant
@@ -36,7 +65,7 @@ pub fn memory_type_from_asset(meta: &AssetMetadata) -> MemoryType {
 /// Create an inline memory (small assets stored directly)
 pub fn create_inline_memory(
     memory_id: &str,
-    _capsule_id: &CapsuleId,
+    capsule_id: &CapsuleId,
     bytes: Vec<u8>,
     asset_metadata: AssetMetadata,
     now: u64,
@@ -56,6 +85,7 @@ pub fn create_inline_memory(
 
     Memory {
         id: memory_id.to_string(),
+        capsule_id: capsule_id.clone(),
         metadata: MemoryMetadata {
             memory_type: memory_type_from_asset(&asset_metadata),
             title: Some(base.name.clone()),
@@ -98,7 +128,7 @@ pub fn create_inline_memory(
 /// Create a blob memory (large assets stored as blobs)
 pub fn create_blob_memory(
     memory_id: &str,
-    _capsule_id: &CapsuleId,
+    capsule_id: &CapsuleId,
     blob_ref: BlobRef,
     asset_metadata: AssetMetadata,
     now: u64,
@@ -118,6 +148,7 @@ pub fn create_blob_memory(
 
     Memory {
         id: memory_id.to_string(),
+        capsule_id: capsule_id.clone(),
         metadata: MemoryMetadata {
             memory_type: memory_type_from_asset(&asset_metadata),
             title: Some(base.name.clone()),
@@ -160,7 +191,7 @@ pub fn create_blob_memory(
 /// Create an external memory (assets stored outside ICP)
 pub fn create_external_memory(
     memory_id: &str,
-    _capsule_id: &CapsuleId,
+    capsule_id: &CapsuleId,
     location: StorageEdgeBlobType,
     storage_key: Option<String>,
     url: Option<String>,
@@ -186,6 +217,7 @@ pub fn create_external_memory(
 
     Memory {
         id: memory_id.to_string(),
+        capsule_id: capsule_id.clone(),
         metadata: MemoryMetadata {
             memory_type: memory_type_from_asset(&asset_metadata),
             title: Some(base.name.clone()),

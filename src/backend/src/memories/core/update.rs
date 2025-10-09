@@ -77,6 +77,7 @@ mod tests {
 
         let mut memory = Memory {
             id: "test_memory".to_string(),
+            capsule_id: "test_capsule".to_string(),
             metadata: MemoryMetadata {
                 title: Some("Test Memory".to_string()),
                 description: Some("Test Description".to_string()),
@@ -141,6 +142,7 @@ mod tests {
 
         let memory = Memory {
             id: "test_memory".to_string(),
+            capsule_id: "test_capsule".to_string(),
             metadata: MemoryMetadata {
                 title: Some("Test Memory".to_string()),
                 description: Some("Test Description".to_string()),

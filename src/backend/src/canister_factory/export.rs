@@ -547,6 +547,7 @@ mod tests {
     ) -> Memory {
         Memory {
             id: id.to_string(),
+            capsule_id: "test_capsule".to_string(),
             metadata: MemoryMetadata {
                 memory_type,
                 title: Some(name.to_string()),

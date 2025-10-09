@@ -374,6 +374,7 @@ pub fn commit_memory(
         // Create the complete memory object
         let memory = create_memory_from_assembled_data(
             &manifest.memory_id,
+            "default_capsule", // TODO: Get actual capsule_id from session or parameter
             assembled_data,
             memory_state.memory_metadata.as_ref(),
         )?;
@@ -539,6 +540,7 @@ fn simple_hash(data: &str) -> String {
 /// Create a memory object from assembled chunk data
 fn create_memory_from_assembled_data(
     memory_id: &str,
+    capsule_id: &str,
     data: Vec<u8>,
     metadata: Option<&types::Memory>,
 ) -> Result<types::Memory, String> {
@@ -595,6 +597,7 @@ fn create_memory_from_assembled_data(
         let data_size = data.len() as u64;
         types::Memory {
             id: memory_id.to_string(),
+            capsule_id: capsule_id.to_string(),
             metadata: types::MemoryMetadata {
                 memory_type: types::MemoryType::Document,
                 title: Some(format!("Imported Memory {memory_id}")),
