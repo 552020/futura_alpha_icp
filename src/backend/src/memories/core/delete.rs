@@ -191,7 +191,7 @@ pub fn cleanup_memory_assets(memory: &Memory) -> std::result::Result<(), Error> 
 fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<(), Error> {
     use crate::upload::blob_store::BlobStore;
     use crate::upload::types::BlobId;
-    use crate::util::blob_id::parse_blob_id;
+    use crate::utils::blob_id::parse_blob_id;
 
     // Parse the blob locator to get the BlobId
     // Format: "canister_id:blob_id" or just "blob_id"
