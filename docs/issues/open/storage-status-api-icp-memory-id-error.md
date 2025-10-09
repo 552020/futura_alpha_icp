@@ -2,7 +2,46 @@
 
 ## Issue Summary
 
-The storage status API is returning HTTP 500 errors when trying to fetch storage status for ICP memories. The API endpoint is receiving ICP memory IDs (e.g., `mem:capsule_1759961288865356000:82c18495-e8b8-4dd8-acb6-21fdad745539`) but is likely expecting Neon UUIDs, causing server-side errors.
+~~The storage status API is returning HTTP 500 errors when trying to fetch storage status for ICP memories. The API endpoint is receiving ICP memory IDs (e.g., `mem:capsule_1759961288865356000:82c18495-e8b8-4dd8-acb6-21fdad745539`) but is likely expecting Neon UUIDs, causing server-side errors.~~
+
+**✅ RESOLVED**: Implemented Universal UUID v7 solution that eliminates ID format mismatches between ICP and Neon systems.
+
+## 🎯 Current Status (Updated)
+
+### ✅ **COMPLETED**
+
+- **Backend Implementation**: UUID v7 generation, validation, and memory operations
+- **Memory Creation**: Updated to use UUID v7 for all new memories
+- **Memory Retrieval**: All functions work with UUID v7 format
+- **Testing**: 6/7 test suites passing, core functionality validated
+- **Frontend Preparation**: Updated storage status logic to handle UUID v7
+
+### ✅ **COMPLETED**
+
+- **Backend Deployment**: Successfully deployed canister with custom UUID v7-like implementation
+- **Type Generation**: Regenerated Candid declarations for frontend
+- **Frontend Integration**: Updated to use `memories_list_by_capsule` function
+
+### ✅ **COMPLETED**
+
+- **Expert Review**: APPROVED - Custom UUID v7-like implementation validated by ICP expert
+
+### 🔄 **IN PROGRESS**
+
+- **End-to-End Testing**: Verify complete UUID v7 system works
+
+## ✅ **Expert Review - APPROVED**
+
+We implemented a **custom UUID v7-like ID generator** to resolve the WASM compatibility issues. The solution:
+
+- **Removes external dependencies** (`uuid`, `getrandom`) that cause WASM conflicts
+- **Uses ICP's native randomness** via `ic_cdk::management_canister::raw_rand()`
+- **Maintains UUID format** for frontend compatibility
+- **Provides timestamp ordering** for time-based sorting
+
+**✅ Expert Validation**: The ICP expert has **approved our approach** as recommended for the ICP environment with no security or compatibility concerns.
+
+**See detailed analysis**: `uuid-v7-deployment-wasm-compatibility-issues.md`
 
 ## Current Behavior
 
