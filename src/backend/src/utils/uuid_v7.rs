@@ -54,6 +54,7 @@ fn format_uuid_hyphenated(bytes: [u8; 16]) -> String {
 
 /// Generate a UUID v7 string using IC time + raw_rand entropy.
 /// Call this from **update** handlers (raw_rand requires update context).
+#[allow(dead_code)]
 pub async fn uuid_v7() -> String {
     // 1) 48-bit milliseconds timestamp
     let ns = ic_cdk::api::time(); // nanoseconds since epoch
