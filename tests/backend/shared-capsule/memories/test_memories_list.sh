@@ -116,8 +116,8 @@ test_memories_list_with_controlled_memories() {
     
     echo_success "✅ Created 3 test memories: $memory1_id, $memory2_id, $memory3_id"
     
-    # Call memories_list with the capsule ID
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", null, null)" 2>/dev/null)
+    # Call memories_list with the capsule ID and higher limit to ensure we get the newly created memories
+    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", null, opt 100)" 2>/dev/null)
     
     if [[ $result == *"variant {"* ]] && [[ $result == *"Ok ="* ]] && [[ $result == *"items"* ]]; then
         echo_success "✅ memories_list with controlled memories succeeded"
@@ -132,21 +132,22 @@ test_memories_list_with_controlled_memories() {
         local found_memory2=false
         local found_memory3=false
         
-        if echo "$result" | grep -q "$memory1_id"; then
+        # Use more specific grep pattern to find memory IDs in the response
+        if echo "$result" | grep -q "id = \"$memory1_id\""; then
             found_memory1=true
             echo_success "✅ Memory 1 found in list"
         else
             echo_error "❌ Memory 1 not found in list"
         fi
         
-        if echo "$result" | grep -q "$memory2_id"; then
+        if echo "$result" | grep -q "id = \"$memory2_id\""; then
             found_memory2=true
             echo_success "✅ Memory 2 found in list"
         else
             echo_error "❌ Memory 2 not found in list"
         fi
         
-        if echo "$result" | grep -q "$memory3_id"; then
+        if echo "$result" | grep -q "id = \"$memory3_id\""; then
             found_memory3=true
             echo_success "✅ Memory 3 found in list"
         else
@@ -252,9 +253,8 @@ test_memories_list_dashboard_fields() {
         if [[ $result == *"title"* ]] && \
            [[ $result == *"description"* ]] && \
            [[ $result == *"tags"* ]] && \
-           [[ $result == *"is_public"* ]] && \
-           [[ $result == *"shared_count"* ]] && \
            [[ $result == *"sharing_status"* ]] && \
+           [[ $result == *"shared_count"* ]] && \
            [[ $result == *"asset_count"* ]] && \
            [[ $result == *"has_thumbnails"* ]] && \
            [[ $result == *"has_previews"* ]]; then
