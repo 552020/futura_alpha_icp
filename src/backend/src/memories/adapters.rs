@@ -329,15 +329,16 @@ impl Memory {
             .sum();
         let _size = inline_size + blob_internal_size + blob_external_size;
 
+        let title = self.metadata.title.clone();
+        let name = title.as_ref()
+            .map(|t| crate::utils::title_to_name(t))
+            .unwrap_or_else(|| "untitled".to_string());
+
         crate::types::MemoryHeader {
             // Existing fields
             id: self.id.clone(),
             capsule_id: self.capsule_id.clone(),
-            name: self
-                .metadata
-                .title
-                .clone()
-                .unwrap_or_else(|| "Untitled".to_string()),
+            name,                    // ✅ Now properly generated from title
             memory_type: self.metadata.memory_type.clone(),
             size: self.metadata.total_size, // Use pre-computed value
             created_at: self.metadata.created_at,
@@ -345,7 +346,7 @@ impl Memory {
             // access: self.access.clone(), // Legacy - commented out for greenfield
             
             // NEW: Dashboard-specific fields (pre-computed)
-            title: self.metadata.title.clone(),
+            title,                   // ✅ User-facing title
             description: self.metadata.description.clone(),
             parent_folder_id: self.metadata.parent_folder_id.clone(),
             tags: self.metadata.tags.clone(),

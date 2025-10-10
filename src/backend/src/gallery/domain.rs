@@ -68,10 +68,15 @@ impl crate::capsule::domain::AccessControlled for Gallery {
 impl Gallery {
     /// Convert Gallery to GalleryHeader for listing operations
     pub fn to_header(&self) -> GalleryHeader {
+        let title = self.metadata.title.clone();
+        let name = title.as_ref()
+            .map(|t| crate::utils::title_to_name(t))
+            .unwrap_or_else(|| "untitled".to_string());
+
         GalleryHeader {
             id: self.id.clone(),
-            title: self.metadata.title.clone(),
-            name: self.metadata.name.clone(),
+            title,
+            name,                    // ✅ Now uses shared function
             memory_count: self.items.len() as u64,
             created_at: self.created_at,
             updated_at: self.updated_at,
