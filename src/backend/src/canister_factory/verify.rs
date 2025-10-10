@@ -1,5 +1,8 @@
 use crate::canister_factory::export::*;
 use crate::canister_factory::types::*;
+use crate::capsule::domain::{
+    AccessCondition, AccessEntry, GrantSource, ResourceRole, SharingStatus,
+};
 // Removed unused imports: AssetMetadata, AssetMetadataBase, AssetType, MemoryAssetBlobInternal, NoteAssetMetadata
 use candid::Principal;
 
@@ -261,6 +264,7 @@ mod tests {
             connection_groups: std::collections::HashMap::new(),
             memories: std::collections::HashMap::new(),
             galleries: std::collections::HashMap::new(),
+            folders: std::collections::HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_neon: false, // Default to not bound to Neon
@@ -293,9 +297,8 @@ mod tests {
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
 
                 // NEW: Pre-computed dashboard fields (defaults)
-                is_public: false,
                 shared_count: 0,
-                sharing_status: "private".to_string(),
+                sharing_status: SharingStatus::Private,
                 total_size: 100,
                 asset_count: 1,
                 thumbnail_url: None,
@@ -303,9 +306,19 @@ mod tests {
                 has_thumbnails: false,
                 has_previews: false,
             },
-            access: types::MemoryAccess::Private {
-                owner_secure_code: format!("test_{}", id),
-            },
+            access_entries: vec![AccessEntry {
+                id: format!("test_access_{}", id),
+                person_ref: Some(types::PersonRef::Principal(create_test_principal(1))),
+                is_public: false,
+                grant_source: GrantSource::System,
+                source_id: None,
+                role: ResourceRole::Owner,
+                perm_mask: 0b11111, // All permissions
+                invited_by_person_ref: None,
+                created_at: 1000000000,
+                updated_at: 1000000000,
+                condition: AccessCondition::Immediate,
+            }],
             inline_assets: vec![],
             blob_internal_assets: vec![types::MemoryAssetBlobInternal {
                 asset_id: format!("test_asset_{}", id),

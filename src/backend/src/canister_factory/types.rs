@@ -1,3 +1,4 @@
+use crate::capsule::domain::Capsule;
 use crate::types;
 use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
@@ -50,7 +51,7 @@ pub struct DetailedCreationStatus {
 /// Exported capsule data for migration
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
 pub struct ExportData {
-    pub capsule: types::Capsule,
+    pub capsule: Capsule,
     pub memories: Vec<(String, types::Memory)>,
     pub connections: Vec<(types::PersonRef, types::Connection)>,
     pub metadata: ExportMetadata,

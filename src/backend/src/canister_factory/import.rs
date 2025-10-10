@@ -1,8 +1,8 @@
 use crate::canister_factory::types::*;
 use crate::types;
 use candid::Principal;
-use std::collections::HashMap;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 
 /// Begin a new import session for chunked data transfer
 /// This function creates a new import session and returns a session ID
@@ -568,8 +568,8 @@ fn create_memory_from_assembled_data(
                         u16::from_be_bytes([hash[6], hash[7]]),
                         u16::from_be_bytes([hash[8], hash[9]]),
                         u64::from_be_bytes([
-                            hash[10], hash[11], hash[12], hash[13],
-                            hash[14], hash[15], hash[16], hash[17]
+                            hash[10], hash[11], hash[12], hash[13], hash[14], hash[15], hash[16],
+                            hash[17]
                         ])
                     )
                 },
@@ -629,9 +629,9 @@ fn create_memory_from_assembled_data(
                 database_storage_edges: vec![types::StorageEdgeDatabaseType::Icp],
 
                 // NEW: Pre-computed dashboard fields (defaults)
-                is_public: false,
+                // ❌ REMOVED: is_public: false,                   // Redundant with sharing_status
                 shared_count: 0,
-                sharing_status: "private".to_string(),
+                sharing_status: crate::capsule::domain::SharingStatus::Private,
                 total_size: data_size,
                 asset_count: 1,
                 thumbnail_url: None,
@@ -650,8 +650,8 @@ fn create_memory_from_assembled_data(
                         u16::from_be_bytes([hash[6], hash[7]]),
                         u16::from_be_bytes([hash[8], hash[9]]),
                         u64::from_be_bytes([
-                            hash[10], hash[11], hash[12], hash[13],
-                            hash[14], hash[15], hash[16], hash[17]
+                            hash[10], hash[11], hash[12], hash[13], hash[14], hash[15], hash[16],
+                            hash[17]
                         ])
                     )
                 },
@@ -685,13 +685,15 @@ fn create_memory_from_assembled_data(
             }],
             blob_internal_assets: vec![],
             blob_external_assets: vec![],
-            access: types::MemoryAccess::Private {
-                owner_secure_code: format!(
-                    "import_mem_{}_{:x}",
-                    memory_id,
-                    ic_cdk::api::time() % 0xFFFF
-                ),
-            },
+            // access: types::MemoryAccess::Private {
+            //     owner_secure_code: format!(
+            //         "import_mem_{}_{:x}",
+            //         memory_id,
+            //         ic_cdk::api::time() % 0xFFFF
+            //     ),
+            // },
+            access_entries: vec![], // NEW: Initialize empty access entries
+                                    // ❌ REMOVED: public_policy field - now unified in AccessEntry
         }
     };
 

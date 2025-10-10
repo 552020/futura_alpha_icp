@@ -1,4 +1,5 @@
 use crate::canister_factory::types::*;
+use crate::capsule::domain::Capsule;
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::with_capsule_store;
 use crate::types;
@@ -91,7 +92,7 @@ pub fn export_user_capsule_data(user: Principal) -> Result<ExportData, String> {
 /// Calculate the approximate size of exported data in bytes
 /// This provides an estimate for monitoring and validation purposes
 fn calculate_export_data_size(
-    capsule: &types::Capsule,
+    capsule: &Capsule,
     memories: &[(String, types::Memory)],
     connections: &[(types::PersonRef, types::Connection)],
 ) -> u64 {
@@ -306,7 +307,7 @@ fn validate_memory_data(memory: &types::Memory) -> Result<(), String> {
 }
 
 /// Generate checksum for capsule data
-fn generate_capsule_checksum(capsule: &types::Capsule) -> Result<String, String> {
+fn generate_capsule_checksum(capsule: &Capsule) -> Result<String, String> {
     // Create a deterministic representation of capsule for hashing
     let capsule_data = format!(
         "{}|{}|{}|{}|{}|{}|{}",
@@ -477,10 +478,15 @@ pub fn verify_export_against_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capsule::domain::SharingStatus;
+    use crate::test_utils::{
+        create_test_capsule as shared_create_test_capsule,
+        create_test_memory as shared_create_test_memory,
+    };
     use crate::types::{
         AssetMetadata, AssetMetadataBase, AssetType, BlobRef, Connection, ConnectionStatus,
-        DocumentAssetMetadata, HostingPreferences, Memory, MemoryAccess, MemoryAssetBlobInternal,
-        MemoryMetadata, MemoryType, OwnerState, PersonRef, StorageEdgeDatabaseType,
+        DocumentAssetMetadata, HostingPreferences, Memory, MemoryAssetBlobInternal, MemoryMetadata,
+        MemoryType, OwnerState, PersonRef, StorageEdgeDatabaseType,
     };
     use candid::Principal;
     use std::collections::HashMap;
@@ -490,6 +496,26 @@ mod tests {
         Principal::from_slice(&[id; 29])
     }
 
+    // Helper function to create owner access entry
+    fn create_owner_access_entry(
+        owner: &PersonRef,
+        created_at: u64,
+    ) -> crate::capsule::domain::AccessEntry {
+        crate::capsule::domain::AccessEntry {
+            id: format!("owner_access_{}", created_at),
+            person_ref: Some(owner.clone()),
+            is_public: false,
+            grant_source: crate::capsule::domain::GrantSource::System,
+            source_id: None,
+            role: crate::capsule::domain::ResourceRole::Owner,
+            perm_mask: 0b11111, // All permissions
+            invited_by_person_ref: None,
+            created_at,
+            updated_at: created_at,
+            condition: crate::capsule::domain::AccessCondition::Immediate,
+        }
+    }
+
     // Helper function to create a test capsule with given subject and owners
     fn create_test_capsule(
         id: &str,
@@ -497,7 +523,7 @@ mod tests {
         owners: Vec<PersonRef>,
         memories: Vec<(String, Memory)>,
         connections: Vec<(PersonRef, Connection)>,
-    ) -> types::Capsule {
+    ) -> Capsule {
         let mut owner_map = HashMap::new();
         for owner in owners {
             owner_map.insert(
@@ -519,7 +545,7 @@ mod tests {
             connection_map.insert(person_ref, connection);
         }
 
-        types::Capsule {
+        Capsule {
             id: id.to_string(),
             subject,
             owners: owner_map,
@@ -529,6 +555,7 @@ mod tests {
             connection_groups: HashMap::new(),
             memories: memory_map,
             galleries: HashMap::new(),
+            folders: HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_neon: false, // Default to not bound to Neon
@@ -568,9 +595,8 @@ mod tests {
                 database_storage_edges: vec![StorageEdgeDatabaseType::Icp],
 
                 // NEW: Pre-computed dashboard fields (defaults)
-                is_public: false,
                 shared_count: 0,
-                sharing_status: "private".to_string(),
+                sharing_status: SharingStatus::Private,
                 total_size: data_size as u64,
                 asset_count: 1,
                 thumbnail_url: None,
@@ -578,9 +604,10 @@ mod tests {
                 has_thumbnails: false,
                 has_previews: false,
             },
-            access: MemoryAccess::Private {
-                owner_secure_code: format!("test_{}", id),
-            },
+            access_entries: vec![create_owner_access_entry(
+                &PersonRef::Principal(Principal::anonymous()),
+                1000000000,
+            )],
             inline_assets: vec![],
             blob_internal_assets: vec![MemoryAssetBlobInternal {
                 asset_id: format!("test_asset_{}", id),
@@ -631,7 +658,7 @@ mod tests {
     }
 
     // Helper function to setup test capsules in memory
-    fn setup_test_capsule_with_data() -> (Principal, types::Capsule) {
+    fn setup_test_capsule_with_data() -> (Principal, Capsule) {
         let user = test_principal(1);
         let user_ref = PersonRef::Principal(user);
 

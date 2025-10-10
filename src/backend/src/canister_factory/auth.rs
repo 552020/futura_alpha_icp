@@ -174,6 +174,7 @@ mod tests {
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
+            folders: HashMap::new(),
             created_at: 1000000000,
             updated_at: 1000000000,
             bound_to_neon: false,
