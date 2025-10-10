@@ -11,9 +11,10 @@
 //! - Schema versioning for upgrade compatibility
 
 use super::{CapsuleId, CapsuleStore, Order, Page};
+use crate::capsule::domain::Capsule;
 use crate::memory::{MEM_CAPSULES, MEM_CAPSULES_IDX_OWNER, MEM_CAPSULES_IDX_SUBJECT, MM};
 use crate::state::track_size_change;
-use crate::types::{Capsule, Error};
+use crate::types::Error;
 #[allow(unused_imports)]
 use candid::{Decode, Encode, Principal};
 use ic_stable_structures::memory_manager::VirtualMemory;
@@ -571,6 +572,7 @@ mod tests {
             connection_groups: HashMap::new(),
             memories: HashMap::new(),
             galleries: HashMap::new(),
+            folders: HashMap::new(),
             has_advanced_settings: false, // Default to simple settings
             created_at: 1234567890,
             updated_at: 1234567890,

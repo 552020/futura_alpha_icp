@@ -300,6 +300,7 @@ fn create_test_capsule_with_principal(
         connection_groups: HashMap::new(),
         memories: HashMap::new(),
         galleries: HashMap::new(),
+        folders: HashMap::new(),
         has_advanced_settings: false, // Default to simple settings
         created_at: 1234567890,
         updated_at: 1234567890,
@@ -329,6 +330,7 @@ fn create_test_capsule(id: CapsuleId) -> Capsule {
         connection_groups: HashMap::new(),
         memories: HashMap::new(),
         galleries: HashMap::new(),
+        folders: HashMap::new(),
         has_advanced_settings: false, // Default to simple settings
         created_at: 1234567890,
         updated_at: 1234567890,
