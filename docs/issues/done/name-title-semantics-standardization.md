@@ -1,10 +1,29 @@
 # Issue: Name/Title Semantics Standardization
 
-**Status**: `OPEN` - Analysis Required  
+**Status**: `COMPLETED` - Implementation Complete  
 **Priority**: `MEDIUM` - Architecture Improvement  
 **Assigned**: Backend Developer + Frontend Developer  
 **Created**: 2024-12-19  
+**Completed**: 2025-01-10  
 **Related Issues**: [ICP Memory Title Placeholder Display Issue](./icp-memory-title-placeholder-display-issue.md)
+
+## ✅ **COMPLETION SUMMARY**
+
+**Implementation Complete (2025-01-10):**
+
+- ✅ **Shared Utility Function**: Created `title_to_name()` function in `src/backend/src/utils/name_conversion.rs`
+- ✅ **Backend Implementation**: Updated Memory, Gallery, and Folder modules to use shared function
+- ✅ **Schema Implementation**: NextJS schema.ts implements name/title pattern for all user-facing entities
+- ✅ **Consistent Pattern**: All entities now follow the standardized name/title semantics
+- ✅ **URL-Safe Names**: Auto-generated from titles using shared transformation logic
+- ✅ **Comprehensive Tests**: Added test coverage for name conversion functionality
+
+**Current Implementation Status:**
+- **Backend**: ✅ **COMPLETE** - All modules use shared `title_to_name()` function
+- **NextJS Schema**: ✅ **COMPLETE** - All tables have both `title` and `name` fields
+- **Memory Types**: ✅ **COMPLETE** - Uses shared function for name generation
+- **Gallery Types**: ✅ **COMPLETE** - Uses shared function for name generation  
+- **Folder Types**: ✅ **COMPLETE** - Uses shared function for name generation
 
 ## Problem Description
 
@@ -417,12 +436,116 @@ fn test_memory_header_name_generation() {
 
 ## Success Criteria
 
-- [ ] All user-facing entities have consistent `name`/`title` pattern
-- [ ] System entities use only `name` field
-- [ ] URL-safe names are auto-generated from titles
-- [ ] No breaking changes to existing functionality
-- [ ] Clear documentation of naming conventions
-- [ ] All tests pass
+- [x] **All user-facing entities have consistent `name`/`title` pattern** ✅ **COMPLETED**
+  - Memory, Gallery, and Folder types all implement the pattern
+  - NextJS schema.ts has both fields for all user-facing entities
+- [x] **System entities use only `name` field** ✅ **COMPLETED**
+  - Assets, blobs, and other system entities use only internal names
+- [x] **URL-safe names are auto-generated from titles** ✅ **COMPLETED**
+  - Shared `title_to_name()` function handles all transformations
+  - Comprehensive test coverage for edge cases
+- [x] **No breaking changes to existing functionality** ✅ **COMPLETED**
+  - All existing APIs maintained, only internal logic improved
+- [x] **Clear documentation of naming conventions** ✅ **COMPLETED**
+  - Function documentation with examples
+  - This document serves as the reference
+- [x] **All tests pass** ✅ **COMPLETED**
+  - Backend tests pass with new utility function
+  - Schema validation passes
+
+## ✅ **IMPLEMENTATION DETAILS**
+
+### **Backend Implementation (Rust)**
+
+**Shared Utility Function**: `src/backend/src/utils/name_conversion.rs`
+```rust
+pub fn title_to_name(title: &str) -> String {
+    if title.trim().is_empty() {
+        return "untitled".to_string();
+    }
+    
+    title
+        .to_lowercase()
+        .replace(" ", "-")           // spaces to hyphens
+        .replace("_", "-")           // underscores to hyphens
+        .replace(".", "-")           // dots to hyphens
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-')  // only alphanumeric + hyphens
+        .collect::<String>()
+        .trim_matches('-')           // remove leading/trailing hyphens
+        .to_string()
+}
+```
+
+**Memory Implementation**: `src/backend/src/memories/adapters.rs`
+```rust
+let title = self.metadata.title.clone();
+let name = title.as_ref()
+    .map(|t| crate::utils::title_to_name(t))
+    .unwrap_or_else(|| "untitled".to_string());
+```
+
+**Gallery Implementation**: `src/backend/src/gallery/domain.rs`
+```rust
+let title = self.metadata.title.clone();
+let name = title.as_ref()
+    .map(|t| crate::utils::title_to_name(t))
+    .unwrap_or_else(|| "untitled".to_string());
+```
+
+**Folder Implementation**: `src/backend/src/folder/domain.rs`
+```rust
+let title = self.metadata.title.clone();
+let name = title.as_ref()
+    .map(|t| crate::utils::title_to_name(t))
+    .unwrap_or_else(|| "untitled".to_string());
+```
+
+### **NextJS Schema Implementation (TypeScript)**
+
+**Memory Table**: `src/nextjs/src/db/schema.ts`
+```typescript
+export const memories = pgTable('memories', {
+  // ...
+  title: text('title'),
+  name: text('name'), // ✅ URL-safe identifier (auto-generated from title)
+  // ...
+});
+```
+
+**Folder Table**: `src/nextjs/src/db/schema.ts`
+```typescript
+export const folders = pgTable('folders', {
+  // ...
+  title: text('title').notNull(), // ✅ User-facing display name
+  name: text('name').notNull(), // ✅ URL-safe identifier (auto-generated from title)
+  // ...
+});
+```
+
+**Gallery Table**: `src/nextjs/src/db/schema.ts`
+```typescript
+export const galleries = pgTable('gallery', {
+  // ...
+  title: text('title').notNull(),
+  name: text('name').notNull(), // ✅ URL-safe identifier (auto-generated from title)
+  // ...
+});
+```
+
+### **Test Coverage**
+
+**Backend Tests**: `src/backend/src/utils/name_conversion.rs`
+```rust
+#[test]
+fn test_title_to_name_conversion() {
+    assert_eq!(title_to_name("Vacation Photo 2024"), "vacation-photo-2024");
+    assert_eq!(title_to_name("My Dog's Birthday!"), "my-dogs-birthday");
+    assert_eq!(title_to_name("IMG_2024_12_19.jpg"), "img-2024-12-19-jpg");
+    assert_eq!(title_to_name("Beach Sunset 🌅"), "beach-sunset");
+    assert_eq!(title_to_name(""), "untitled");
+}
+```
 
 ## Priority Justification
 
