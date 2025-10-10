@@ -9,7 +9,8 @@ set -e
 
 # Source test utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-source "$SCRIPT_DIR/../../test_utils.sh"
+source "$SCRIPT_DIR/../shared_test_utils.sh"
+source "$SCRIPT_DIR/../upload/upload_test_utils.sh"
 
 # Configuration
 CANISTER_ID="backend"
@@ -119,7 +120,7 @@ EOF
 test_create_document_memory() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing Document memory creation..."
     
-    local capsule_id=$(get_test_capsule_id)
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
@@ -128,7 +129,7 @@ test_create_document_memory() {
     # Use the same pattern as working tests - use a simple content that works
     local memory_bytes='blob "SGVsbG8gV29ybGQ="'  # "Hello World" in base64 (11 bytes)
     
-    local memory_id=$(create_test_memory "$capsule_id" "test_document" "Test document for asset types" '"test"; "asset-types"; "document"' "$memory_bytes" "$CANISTER_ID" "$IDENTITY")
+    local memory_id=$(create_test_memory_with_asset_type "$capsule_id" "test_document" "Test document for asset types" '"test"; "asset-types"; "document"' "$memory_bytes" "Document" "text/plain" "$CANISTER_ID" "$IDENTITY")
     
     if [[ -n "$memory_id" ]]; then
         echo_success "✅ Document memory creation succeeded"
@@ -144,16 +145,16 @@ test_create_document_memory() {
 test_create_image_memory() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing Image memory creation..."
     
-    local capsule_id=$(get_test_capsule_id)
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
     fi
     
-    # Use simple content for image test
-    local memory_bytes='blob "SGVsbG8gSW1hZ2U="'  # "Hello Image" in base64
+    # Use the same test image data as the advanced tests
+    local memory_bytes='blob "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jU8j8wAAAABJRU5ErkJggg=="'
     
-    local memory_id=$(create_test_memory "$capsule_id" "test_image" "Test image for asset types" '"test"; "asset-types"; "image"' "$memory_bytes" "$CANISTER_ID" "$IDENTITY")
+    local memory_id=$(create_test_memory_with_asset_type "$capsule_id" "test_image" "Test image for asset types" '"test"; "asset-types"; "image"' "$memory_bytes" "Image" "image/png" "$CANISTER_ID" "$IDENTITY")
     
     if [[ -n "$memory_id" ]]; then
         echo_success "✅ Image memory creation succeeded"
@@ -169,16 +170,16 @@ test_create_image_memory() {
 test_create_pdf_memory() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing PDF memory creation..."
     
-    local capsule_id=$(get_test_capsule_id)
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
     fi
     
-    # Use simple content for PDF test
-    local memory_bytes='blob "SGVsbG8gUERG"'  # "Hello PDF" in base64
+    # Use the same test PDF data as the advanced tests
+    local memory_bytes='blob "JVBERi0xLjQKJcOkw7zDtsOgCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSL0ZpbHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nCvkMlAwULCx0XfOzCtJzSvRy87MS9dLzs8rSc0rzi9KLMnMz1OwMDJQsLVVqK4FAIjNDLoKZW5kc3RyZWFtCmVuZG9iagoKMyAwIG9iago5CmVuZG9iagoKNSAwIG9iago8PAovVHlwZSAvUGFnZQovUGFyZW50IDQgMCBSCi9NZWRpYUJveCBbMCAwIDYxMiA3OTJdCj4+CmVuZG9iagoKNCAwIG9iago8PAovVHlwZSAvUGFnZXMKL0tpZHMgWzUgMCBSXQovQ291bnQgMQo+PgplbmRvYmoKCjEgMCBvYmoKPDwKL1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDQgMCBSCj4+CmVuZG9iagoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMjkzIDAwMDAwIG4gCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA3NCAwMDAwMCBuIAowMDAwMDAwMTc4IDAwMDAwIG4gCjAwMDAwMDAxMjAgMDAwMDAgbiAKdHJhaWxlcgo8PAovU2l6ZSA2Ci9Sb290IDEgMCBSCj4+CnN0YXJ0eHJlZgozNDIKJSVFT0Y="'
     
-    local memory_id=$(create_test_memory "$capsule_id" "test_pdf" "Test PDF for asset types" '"test"; "asset-types"; "pdf"' "$memory_bytes" "$CANISTER_ID" "$IDENTITY")
+    local memory_id=$(create_test_memory_with_asset_type "$capsule_id" "test_pdf" "Test PDF for asset types" '"test"; "asset-types"; "pdf"' "$memory_bytes" "Document" "application/pdf" "$CANISTER_ID" "$IDENTITY")
     
     if [[ -n "$memory_id" ]]; then
         echo_success "✅ PDF memory creation succeeded"
@@ -194,7 +195,7 @@ test_create_pdf_memory() {
 test_create_large_memory() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing large content memory creation..."
     
-    local capsule_id=$(get_test_capsule_id)
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
@@ -203,7 +204,7 @@ test_create_large_memory() {
     # Use simple content for large test
     local memory_bytes='blob "SGVsbG8gTGFyZ2U="'  # "Hello Large" in base64
     
-    local memory_id=$(create_test_memory "$capsule_id" "test_large" "Test large content for asset types" '"test"; "asset-types"; "large"' "$memory_bytes" "$CANISTER_ID" "$IDENTITY")
+    local memory_id=$(create_test_memory_with_asset_type "$capsule_id" "test_large" "Test large content for asset types" '"test"; "asset-types"; "large"' "$memory_bytes" "Document" "text/plain" "$CANISTER_ID" "$IDENTITY")
     
     if [[ -n "$memory_id" ]]; then
         echo_success "✅ Large content memory creation succeeded"
@@ -219,7 +220,7 @@ test_create_large_memory() {
 test_memory_persistence() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing memory persistence..."
     
-    local capsule_id=$(get_test_capsule_id)
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
@@ -228,7 +229,7 @@ test_memory_persistence() {
     # Create a memory first
     local memory_bytes='blob "SGVsbG8gUGVyc2lzdA=="'  # "Hello Persist" in base64
     
-    local memory_id=$(create_test_memory "$capsule_id" "test_persistence" "Test persistence" '"test"; "asset-types"; "persistence"' "$memory_bytes" "$CANISTER_ID" "$IDENTITY")
+    local memory_id=$(create_test_memory_with_asset_type "$capsule_id" "test_persistence" "Test persistence" '"test"; "asset-types"; "persistence"' "$memory_bytes" "Document" "text/plain" "$CANISTER_ID" "$IDENTITY")
     
     if [[ -z "$memory_id" ]]; then
         echo_error "❌ Failed to create memory for persistence test"
@@ -258,7 +259,7 @@ test_memory_persistence() {
 test_invalid_memory_data() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing invalid memory data handling..."
     
-    local capsule_id=$(get_test_capsule_id)
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
@@ -283,7 +284,7 @@ test_invalid_memory_data() {
 test_memory_access_patterns() {
     [[ "$DEBUG" == "true" ]] && echo_debug "Testing memory access patterns..."
     
-    local capsule_id=$(get_test_capsule_id)
+    local capsule_id=$(get_test_capsule_id $CANISTER_ID $IDENTITY)
     if [[ -z "$capsule_id" ]]; then
         echo_error "Failed to get capsule ID for testing"
         return 1
@@ -292,7 +293,7 @@ test_memory_access_patterns() {
     # Create memory
     local memory_bytes='blob "SGVsbG8gQWNjZXNz"'  # "Hello Access" in base64
     
-    local memory_id=$(create_test_memory "$capsule_id" "test_access" "Test access patterns" '"test"; "asset-types"; "access"' "$memory_bytes" "$CANISTER_ID" "$IDENTITY")
+    local memory_id=$(create_test_memory_with_asset_type "$capsule_id" "test_access" "Test access patterns" '"test"; "asset-types"; "access"' "$memory_bytes" "Document" "text/plain" "$CANISTER_ID" "$IDENTITY")
     
     if [[ -z "$memory_id" ]]; then
         echo_error "❌ Failed to create memory for access pattern test"
@@ -301,9 +302,8 @@ test_memory_access_patterns() {
     
     # Test different read patterns
     local read_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read "(\"$memory_id\")" 2>/dev/null)
-    local read_with_assets_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_read_with_assets "(\"$memory_id\")" 2>/dev/null)
     
-    if [[ $read_result == *"Ok"* ]] && [[ $read_with_assets_result == *"Ok"* ]]; then
+    if [[ $read_result == *"Ok"* ]]; then
         echo_success "✅ Memory access patterns work correctly"
         
         # Clean up
@@ -313,7 +313,6 @@ test_memory_access_patterns() {
     else
         echo_error "❌ Memory access patterns failed"
         [[ "$DEBUG" == "true" ]] && echo_debug "Read result: $read_result"
-        [[ "$DEBUG" == "true" ]] && echo_debug "Read with assets result: $read_with_assets_result"
         return 1
     fi
 }

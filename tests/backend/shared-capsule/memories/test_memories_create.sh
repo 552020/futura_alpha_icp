@@ -8,7 +8,7 @@ set -e
 
 # Source test utilities
 unset -f get_test_capsule_id 2>/dev/null || true
-source "$(dirname "$0")/../../test_utils.sh"
+source "$(dirname "$0")/../shared_test_utils.sh"
 source "$(dirname "$0")/../upload/upload_test_utils.sh"
 
 # Configuration
@@ -126,7 +126,7 @@ test_memories_create_blobref() {
     # Call memories_create with BlobRef: (capsule_id, null, blob_ref, null, null, null, null, null, asset_metadata, idem)
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", null, opt $blob_ref, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
-    if [[ $result == *"Ok"* ]] && [[ $result == *"mem:"* ]]; then
+    if [[ $result == *"Ok"* ]] && echo "$result" | grep -q "[0-9a-f-]\{36\}"; then
         echo_success "✅ memories_create with BlobRef data succeeded"
         echo_debug "Result: $result"
     else
@@ -188,7 +188,7 @@ test_memories_create_external() {
     echo_debug "Calling memories_create with external asset..."
     local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", null, null, opt variant { S3 }, opt \"s3://bucket/test_video.mp4\", opt \"https://s3.amazonaws.com/bucket/test_video.mp4\", opt 5000000, opt blob \"$external_hash\", $asset_metadata, \"$idem\")" 2>/dev/null)
 
-    if [[ $result == *"Ok"* ]] && [[ $result == *"mem:"* ]]; then
+    if [[ $result == *"Ok"* ]] && echo "$result" | grep -q "[0-9a-f-]\{36\}"; then
         echo_success "✅ memories_create with external asset succeeded"
         echo_debug "Result: $result"
     else
@@ -326,12 +326,42 @@ test_memories_create_idempotency() {
     local idem="test_idempotent_$(date +%s)"
     local memory_bytes='blob "VGVzdCBpZGVtcG90ZW5jeSBkYXRh"'
 
-    # Both calls need to use the same idem key, so we'll do them manually
+    # Both calls need to use the same idem key, so we'll do them manually with proper byte size handling
     local base64_content=$(echo "$memory_bytes" | sed 's/blob "//' | sed 's/"//')
-    local asset_metadata=$(create_document_asset_metadata "test_idempotent" "Test idempotency with same idem key" '"test"; "idempotent"' "$(echo -n "$base64_content" | wc -c)")
+    local actual_bytes=$(echo -n "$base64_content" | base64 -d | wc -c)
+    local vec_content=$(b64_to_vec "$base64_content")
+    
+    local asset_metadata='(variant {
+      Document = record {
+        base = record {
+          name = "test_idempotent";
+          description = opt "Test idempotency with same idem key";
+          tags = vec { "test"; "idempotent" };
+          asset_type = variant { Original };
+          bytes = '$actual_bytes';
+          mime_type = "text/plain";
+          sha256 = null;
+          width = null;
+          height = null;
+          url = null;
+          storage_key = null;
+          bucket = null;
+          asset_location = null;
+          processing_status = null;
+          processing_error = null;
+          created_at = 0;
+          updated_at = 0;
+          deleted_at = null;
+        };
+        page_count = null;
+        document_type = null;
+        language = null;
+        word_count = null;
+      }
+    })'
 
     # First call
-    local first_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
+    local first_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $vec_content, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     if [[ $first_result != *"Ok"* ]]; then
         echo_error "❌ First memories_create call failed"
@@ -340,13 +370,13 @@ test_memories_create_idempotency() {
     fi
 
     # Extract first memory ID
-    local first_memory_id=$(echo "$first_result" | grep -o '"mem:[^"]*"' | sed 's/"//g')
+    local first_memory_id=$(echo "$first_result" | grep -o 'Ok = "[^"]*"' | sed 's/Ok = "//' | sed 's/"//')
 
     # Second call with same idem key (should return same memory ID)
-    local second_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $memory_bytes, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
+    local second_result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_create "(\"$capsule_id\", opt $vec_content, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
 
     if [[ $second_result == *"Ok"* ]]; then
-        local second_memory_id=$(echo "$second_result" | grep -o '"mem:[^"]*"' | sed 's/"//g')
+        local second_memory_id=$(echo "$second_result" | grep -o 'Ok = "[^"]*"' | sed 's/Ok = "//' | sed 's/"//')
         if [[ "$first_memory_id" == "$second_memory_id" ]]; then
             echo_success "✅ memories_create idempotency verified (same memory ID returned)"
             echo_debug "First ID: $first_memory_id, Second ID: $second_memory_id"

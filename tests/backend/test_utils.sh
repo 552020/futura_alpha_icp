@@ -59,9 +59,9 @@ vec_nat8_len() {
 b64_to_vec() {
   local b64="$1"
   # Decode base64 and convert to hex bytes
-  local hex_bytes=$(printf %s "$b64" | base64 -d | xxd -p -c 1 | sed 's/../0x&;/g' | tr -d '\n')
-  # Remove trailing semicolon
-  hex_bytes="${hex_bytes%;}"
+  local hex_bytes=$(printf %s "$b64" | base64 -d | xxd -p -c 1 | sed 's/../0x&; /g' | tr -d '\n')
+  # Remove trailing semicolon and space
+  hex_bytes="${hex_bytes%; }"
   printf "vec { %s }" "$hex_bytes"
 }
 
@@ -391,7 +391,8 @@ extract_creation_status() {
 # Helper function to extract memory ID from memories_create response
 extract_memory_id() {
     local response="$1"
-    echo "$response" | grep -o '"mem:[^"]*"' | sed 's/"//g'
+    # Extract memory ID from response - it's now a UUID format
+    echo "$response" | grep -o '"[0-9a-f-]\{36\}"' | sed 's/"//g'
 }
 
 # Helper function to create standard Document asset metadata
@@ -421,8 +422,8 @@ create_document_asset_metadata() {
       asset_location = null;
       processing_status = null;
       processing_error = null;
-      created_at = $(date +%s)000000000 : nat64;
-      updated_at = $(date +%s)000000000 : nat64;
+      created_at = $(date +%s)000000000;
+      updated_at = $(date +%s)000000000;
       deleted_at = null;
     };
     page_count = null;

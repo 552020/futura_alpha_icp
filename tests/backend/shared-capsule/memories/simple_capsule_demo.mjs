@@ -17,7 +17,7 @@ import { loadDfxIdentity } from "../upload/ic-identity.js";
 import fetch from "node-fetch";
 
 // Import the backend interface
-import { idlFactory } from "../../../../.dfx/local/canisters/backend/service.did.js";
+import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
 
 // Test configuration
 const HOST = process.env.IC_HOST || "http://127.0.0.1:4943";
@@ -102,11 +102,10 @@ async function simpleCapsuleDemo() {
 
     capsuleId = capsuleResult.Ok.id;
     echoPass(`Capsule created: ${capsuleId}`);
-    
+
     // Print the full create result
     echoInfo("📋 CAPSULE CREATE FUNCTION RESULT:");
-    echoInfo(JSON.stringify(capsuleResult, (key, value) => 
-      typeof value === 'bigint' ? value.toString() : value, 2));
+    echoInfo(JSON.stringify(capsuleResult, (key, value) => (typeof value === "bigint" ? value.toString() : value), 2));
 
     // Step 3: Read the capsule back
     echoInfo("Reading capsule back...");
@@ -118,12 +117,11 @@ async function simpleCapsuleDemo() {
 
     const capsule = readResult.Ok;
     echoPass("Capsule read successfully!");
-    
+
     // Print the full read result
     echoInfo("📋 CAPSULE READ FUNCTION RESULT:");
-    echoInfo(JSON.stringify(readResult, (key, value) => 
-      typeof value === 'bigint' ? value.toString() : value, 2));
-    
+    echoInfo(JSON.stringify(readResult, (key, value) => (typeof value === "bigint" ? value.toString() : value), 2));
+
     // Step 4: Show capsule data
     echoInfo("Capsule data:");
     echoInfo(`  🆔 ID: ${capsule.capsule_id}`);

@@ -19,7 +19,7 @@ import fetch from "node-fetch";
 import crypto from "crypto";
 
 // Import the backend interface
-import { idlFactory } from "../../../../.dfx/local/canisters/backend/service.did.js";
+import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
 
 // Test configuration
 const HOST = process.env.IC_HOST || "http://127.0.0.1:4943";
@@ -246,21 +246,21 @@ async function cleanup(actor, capsuleId, memoryId) {
 
       // Delete memory first
       if (memoryId) {
-        const deleteResult = await actor.memories_delete(memoryId);
-        if (deleteResult.Ok) {
+        const deleteResult = await actor.memories_delete(memoryId, false);
+        if (deleteResult && deleteResult.Ok !== undefined) {
           echoPass("Memory deleted successfully");
         } else {
-          echoError(`Failed to delete memory: ${JSON.stringify(deleteResult.Err)}`);
+          echoError(`Failed to delete memory: ${JSON.stringify(deleteResult)}`);
         }
       }
 
       // Delete capsule
       if (capsuleId) {
         const deleteCapsuleResult = await actor.capsules_delete(capsuleId);
-        if (deleteCapsuleResult.Ok) {
+        if (deleteCapsuleResult && deleteCapsuleResult.Ok !== undefined) {
           echoPass("Capsule deleted successfully");
         } else {
-          echoError(`Failed to delete capsule: ${JSON.stringify(deleteCapsuleResult.Err)}`);
+          echoError(`Failed to delete capsule: ${JSON.stringify(deleteCapsuleResult)}`);
         }
       }
     } catch (error) {
