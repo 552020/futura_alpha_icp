@@ -53,7 +53,7 @@ The backend has been refactored to use:
 
 ### 5. Advanced Memory Tests
 
-- [ ] `test_memories_advanced.sh` - Advanced memory operations
+- [x] `test_memories_advanced.sh` - Advanced memory operations (all 10/10 tests passing)
 - [ ] `test_memory_golden_e2e.sh` - End-to-end memory testing
 - [ ] `test_memories_ping.sh` - Memory ping/health checks
 
@@ -61,12 +61,13 @@ The backend has been refactored to use:
 
 ### ✅ PASSING TESTS
 
-- `test_memories_create.sh` - ✅ **5/6 tests passing** - Advanced creation tests mostly working
+- `test_memories_create.sh` - ✅ **ALL 6/6 tests passing** - Complete creation functionality working
   - Inline memory creation test: ✅ PASSED
   - BlobRef memory creation test: ✅ PASSED
   - External asset creation test: ✅ PASSED
   - Invalid capsule ID test: ✅ PASSED
   - Large inline data rejection test: ✅ PASSED
+  - Idempotency test: ✅ PASSED (fixed with deterministic UUID generation)
 - `test_memories_read.sh` - ✅ **ALL 6/6 tests passing** - Complete read functionality working
   - Valid memory ID test: ✅ PASSED
   - Invalid memory ID test: ✅ PASSED

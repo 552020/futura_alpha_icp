@@ -185,3 +185,4 @@ impl MagicLinkIndex {
 This implementation is **optional** and should only be pursued if magic links are actually needed for the product. The core access control system (Tasks 1-5) provides all the essential functionality for user-to-user sharing and access control.
 
 If magic links are not needed, this task can be skipped entirely, and the access control system will work perfectly without it.
+
