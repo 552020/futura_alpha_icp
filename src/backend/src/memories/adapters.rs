@@ -342,14 +342,14 @@ impl Memory {
             size: self.metadata.total_size, // Use pre-computed value
             created_at: self.metadata.created_at,
             updated_at: self.metadata.updated_at,
-            access: self.access.clone(),
+            // access: self.access.clone(), // Legacy - commented out for greenfield
             
             // NEW: Dashboard-specific fields (pre-computed)
             title: self.metadata.title.clone(),
             description: self.metadata.description.clone(),
             parent_folder_id: self.metadata.parent_folder_id.clone(),
             tags: self.metadata.tags.clone(),
-            is_public: self.metadata.is_public,
+            // ❌ REMOVED: is_public: self.metadata.is_public,     // Redundant with sharing_status
             shared_count: self.metadata.shared_count,
             sharing_status: self.metadata.sharing_status.clone(),
             asset_count: self.metadata.asset_count,
@@ -362,7 +362,7 @@ impl Memory {
     
     /// Compute and update dashboard fields in metadata
     pub fn update_dashboard_fields(&mut self) {
-        self.metadata.is_public = self.compute_is_public();
+        // ❌ REMOVED: self.metadata.is_public = self.compute_is_public(); // Redundant with sharing_status
         self.metadata.shared_count = self.count_shared_recipients();
         self.metadata.sharing_status = self.compute_sharing_status();
         self.metadata.total_size = self.calculate_total_size();
@@ -374,45 +374,48 @@ impl Memory {
     }
     
     /// Check if memory is public based on access rules
+    #[allow(dead_code)]
     fn compute_is_public(&self) -> bool {
-        match &self.access {
-            crate::types::MemoryAccess::Public { .. } => true,
-            crate::types::MemoryAccess::Private { .. } => false,
-            crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
-                individuals.is_empty() && groups.is_empty()
-            },
-            crate::types::MemoryAccess::Scheduled { access, .. } => match access.as_ref() {
-                crate::types::MemoryAccess::Public { .. } => true,
-                _ => false,
-            },
-            crate::types::MemoryAccess::EventTriggered { .. } => false,
-        }
+        // TODO: Replace with new access control system
+        // match &self.access {
+        //     crate::types::MemoryAccess::Public { .. } => true,
+        //     crate::types::MemoryAccess::Private { .. } => false,
+        //     crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
+        //         individuals.is_empty() && groups.is_empty()
+        //     },
+        //     crate::types::MemoryAccess::Scheduled { access, .. } => match access.as_ref() {
+        //         crate::types::MemoryAccess::Public { .. } => true,
+        //         _ => false,
+        //     },
+        //     crate::types::MemoryAccess::EventTriggered { .. } => false,
+        // }
+        false // Temporary - assume private for greenfield
     }
     
     /// Count number of shared recipients
+    /// TODO: Replace with new access control system
     fn count_shared_recipients(&self) -> u32 {
-        match &self.access {
-            crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
-                (individuals.len() + groups.len()) as u32
-            },
-            _ => 0,
-        }
+        // match &self.access {
+        //     crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
+        //         (individuals.len() + groups.len()) as u32
+        //     },
+        //     _ => 0,
+        // }
+        self.access_entries.len() as u32 // Use new access control system
     }
     
     /// Compute sharing status string
-    fn compute_sharing_status(&self) -> String {
-        match &self.access {
-            crate::types::MemoryAccess::Public { .. } => "public".to_string(),
-            crate::types::MemoryAccess::Private { .. } => "private".to_string(),
-            crate::types::MemoryAccess::Custom { individuals, groups, .. } => {
-                if individuals.is_empty() && groups.is_empty() {
-                    "public".to_string()
-                } else {
-                    "shared".to_string()
-                }
-            },
-            crate::types::MemoryAccess::Scheduled { .. } => "private".to_string(),
-            crate::types::MemoryAccess::EventTriggered { .. } => "private".to_string(),
+    /// TODO: Replace with new access control system
+    fn compute_sharing_status(&self) -> crate::capsule::domain::SharingStatus {
+        // TODO: Replace with new access control system
+        // match &self.access { ... }
+        // TODO: Check if any access entry is public
+        if self.access_entries.iter().any(|entry| entry.is_public) {
+            crate::capsule::domain::SharingStatus::Public
+        } else if !self.access_entries.is_empty() {
+            crate::capsule::domain::SharingStatus::Shared
+        } else {
+            crate::capsule::domain::SharingStatus::Private
         }
     }
     

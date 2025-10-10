@@ -5,6 +5,7 @@
 
 use super::{model_helpers::*, traits::*};
 use crate::capsule_acl::CapsuleAcl;
+use crate::capsule::domain::SharingStatus;
 use crate::memories::types::{InternalBlobAssetInput, MemoryMetadata};
 use crate::types::{
     AssetMetadata, BlobRef, CapsuleId, Error, Memory, MemoryAssetBlobInternal, MemoryId,
@@ -264,9 +265,11 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
         id: memory_id.clone(),
         capsule_id: capsule_id.clone(),
         metadata: memory_metadata,
-        access: crate::types::MemoryAccess::Private {
-            owner_secure_code: "default_secure_code".to_string(),
-        },
+        // access: crate::types::MemoryAccess::Private {
+        //     owner_secure_code: "default_secure_code".to_string(),
+        // },
+        access_entries: vec![create_owner_access_entry(&caller, now)], // ✅ Create owner access entry
+        // ❌ REMOVED: public_policy field - now unified in AccessEntry
         inline_assets: vec![],
         blob_internal_assets,
         blob_external_assets: vec![],
@@ -439,9 +442,8 @@ mod tests {
             database_storage_edges: vec![],
 
             // NEW: Pre-computed dashboard fields (defaults)
-            is_public: false,
             shared_count: 0,
-            sharing_status: "private".to_string(),
+            sharing_status: SharingStatus::Private,
             total_size: 1024,
             asset_count: 1,
             thumbnail_url: None,

@@ -4,12 +4,30 @@
 //! providing common functionality for creating memories and managing assets.
 
 use crate::types::{
-    AssetMetadata, BlobRef, CapsuleId, Memory, MemoryAccess, MemoryAssetBlobExternal,
+    AssetMetadata, BlobRef, CapsuleId, Memory, MemoryAssetBlobExternal,
     MemoryAssetBlobInternal, MemoryAssetInline, MemoryMetadata, MemoryType, PersonRef,
     StorageEdgeBlobType,
 };
+use crate::capsule::domain::{AccessEntry, AccessCondition, GrantSource, ResourceRole, Perm};
 use crate::utils::uuid_v7;
 use sha2::Digest;
+
+/// Create default owner access entry for a new memory
+pub fn create_owner_access_entry(owner: &PersonRef, now: u64) -> AccessEntry {
+    AccessEntry {
+        id: uuid_v7::uuid_v7_weak(),
+        person_ref: Some(owner.clone()),
+        is_public: false,
+        grant_source: GrantSource::System, // System grants owner access
+        source_id: None,
+        role: ResourceRole::Owner,
+        perm_mask: (Perm::VIEW | Perm::DOWNLOAD | Perm::SHARE | Perm::MANAGE | Perm::OWN).bits(),
+        invited_by_person_ref: None,
+        created_at: now,
+        updated_at: now,
+        condition: AccessCondition::Immediate,
+    }
+}
 
 // Thread-local RNG state for UUID generation (DEPRECATED - using proper UUID v7 now)
 // thread_local! {
@@ -72,6 +90,7 @@ pub fn generate_asset_id(caller: &PersonRef, timestamp: u64) -> String {
 }
 
 /// Validate if a string is a valid UUID-like format
+#[allow(dead_code)]
 pub fn is_uuid_v7(id: &str) -> bool {
     // Check if it matches UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     let parts: Vec<&str> = id.split('-').collect();
@@ -147,9 +166,9 @@ pub fn create_inline_memory(
             database_storage_edges: vec![],
 
             // NEW: Pre-computed dashboard fields (defaults)
-            is_public: false,
+            // ❌ REMOVED: is_public: false,                   // Redundant with sharing_status
             shared_count: 0,
-            sharing_status: "private".to_string(),
+            sharing_status: crate::capsule::domain::SharingStatus::Private,
             total_size: base.bytes,
             asset_count: 1,
             thumbnail_url: None,
@@ -157,9 +176,11 @@ pub fn create_inline_memory(
             has_thumbnails: false,
             has_previews: false,
         },
-        access: MemoryAccess::Private {
-            owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
-        },
+        // access: MemoryAccess::Private {
+        //     owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
+        // },
+        access_entries: vec![create_owner_access_entry(caller, now)], // ✅ Create owner access entry
+            // ❌ REMOVED: public_policy field - now unified in AccessEntry
         inline_assets,
         blob_internal_assets: vec![],
         blob_external_assets: vec![],
@@ -210,9 +231,9 @@ pub fn create_blob_memory(
             database_storage_edges: vec![],
 
             // NEW: Pre-computed dashboard fields (defaults)
-            is_public: false,
+            // ❌ REMOVED: is_public: false,                   // Redundant with sharing_status
             shared_count: 0,
-            sharing_status: "private".to_string(),
+            sharing_status: crate::capsule::domain::SharingStatus::Private,
             total_size: base.bytes,
             asset_count: 1,
             thumbnail_url: None,
@@ -220,9 +241,11 @@ pub fn create_blob_memory(
             has_thumbnails: false,
             has_previews: false,
         },
-        access: MemoryAccess::Private {
-            owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
-        },
+        // access: MemoryAccess::Private {
+        //     owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
+        // },
+        access_entries: vec![create_owner_access_entry(caller, now)], // ✅ Create owner access entry
+            // ❌ REMOVED: public_policy field - now unified in AccessEntry
         inline_assets: vec![],
         blob_internal_assets,
         blob_external_assets: vec![],
@@ -279,9 +302,9 @@ pub fn create_external_memory(
             database_storage_edges: vec![],
 
             // NEW: Pre-computed dashboard fields (defaults)
-            is_public: false,
+            // ❌ REMOVED: is_public: false,                   // Redundant with sharing_status
             shared_count: 0,
-            sharing_status: "private".to_string(),
+            sharing_status: crate::capsule::domain::SharingStatus::Private,
             total_size: base.bytes,
             asset_count: 1,
             thumbnail_url: None,
@@ -289,9 +312,11 @@ pub fn create_external_memory(
             has_thumbnails: false,
             has_previews: false,
         },
-        access: MemoryAccess::Private {
-            owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
-        },
+        // access: MemoryAccess::Private {
+        //     owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
+        // },
+        access_entries: vec![create_owner_access_entry(caller, now)], // ✅ Create owner access entry
+            // ❌ REMOVED: public_policy field - now unified in AccessEntry
         inline_assets: vec![],
         blob_internal_assets: vec![],
         blob_external_assets,

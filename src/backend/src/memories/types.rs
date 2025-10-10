@@ -4,7 +4,9 @@ use serde::Serialize;
 use std::borrow::Cow;
 
 // Import types from the main types module
-use crate::types::{PersonRef, StorageEdgeBlobType, StorageEdgeDatabaseType};
+use crate::types::{StorageEdgeBlobType, StorageEdgeDatabaseType};
+// Import access control types from capsule domain
+use crate::capsule::domain::SharingStatus;
 
 // ============================================================================
 // ASSET METADATA TYPES (moved from unified_types.rs)
@@ -133,55 +135,8 @@ pub enum MemoryType {
     Note,
 }
 
-/// Memory access control
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub enum MemoryAccess {
-    Public {
-        owner_secure_code: String, // secure code for owner access control
-    },
-    Private {
-        owner_secure_code: String, // secure code for owner access control
-    },
-    Custom {
-        individuals: Vec<PersonRef>, // direct individual access
-        groups: Vec<String>,         // group access (group IDs)
-        owner_secure_code: String,   // secure code for owner access control
-    },
-
-    // Time-based access
-    Scheduled {
-        accessible_after: u64,     // nanoseconds since Unix epoch
-        access: Box<MemoryAccess>, // what it becomes after the time
-        owner_secure_code: String, // secure code for owner access control
-    },
-
-    // Event-based access
-    EventTriggered {
-        trigger_event: AccessEvent,
-        access: Box<MemoryAccess>, // what it becomes after the event
-        owner_secure_code: String, // secure code for owner access control
-    },
-}
-
-/// Events that can trigger access changes
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub enum AccessEvent {
-    // Memorial events
-    AfterDeath,       // revealed after subject's death is recorded
-    Anniversary(u32), // revealed on specific anniversary (Nth year)
-
-    // Life events
-    Birthday(u32), // revealed on Nth birthday
-    Graduation,    // revealed after graduation
-    Wedding,       // revealed after wedding
-
-    // Capsule events
-    CapsuleMaturity(u32), // revealed when capsule reaches N years old
-    ConnectionCount(u32), // revealed when capsule has N connections
-
-    // Custom events
-    Custom(String), // custom event identifier
-}
+// ❌ REMOVED: MemoryAccess enum - replaced by unified AccessEntry system
+// ❌ REMOVED: AccessEvent enum - moved to capsule/domain.rs
 
 /// Enhanced MemoryMetadata (Memory-Level Metadata)
 #[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
@@ -214,9 +169,9 @@ pub struct MemoryMetadata {
     pub database_storage_edges: Vec<StorageEdgeDatabaseType>,
 
     // NEW: Pre-computed dashboard fields
-    pub is_public: bool,                   // Computed from access rules
+    // ❌ REMOVED: pub is_public: bool,                   // Redundant with sharing_status
     pub shared_count: u32,                 // Count of shared recipients
-    pub sharing_status: String,            // "public" | "shared" | "private"
+    pub sharing_status: SharingStatus,     // ✅ ENUM: "public" | "shared" | "private"
     pub total_size: u64,                   // Sum of all asset sizes
     pub asset_count: u32,                  // Total number of assets
     pub thumbnail_url: Option<String>,     // Pre-computed thumbnail URL
@@ -276,13 +231,14 @@ pub struct MemoryAssetBlob {
 /// Main memory structure
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct Memory {
-    pub id: String,                                         // UUID v7 (not compound)
-    pub capsule_id: String,                                 // Capsule context
+    pub id: String,               // UUID v7 (not compound)
+    pub capsule_id: String,       // Capsule context
     pub metadata: MemoryMetadata, // memory-level metadata (title, description, etc.)
-    pub access: MemoryAccess,     // who can access + temporal rules
-    pub inline_assets: Vec<MemoryAssetInline>, // 0 or more inline assets
-    pub blob_internal_assets: Vec<MemoryAssetBlobInternal>, // 0 or more ICP blob assets
-    pub blob_external_assets: Vec<MemoryAssetBlobExternal>, // 0 or more external blob assets
+    // pub access: MemoryAccess,     // who can access + temporal rules (legacy - commented out for greenfield)
+    pub access_entries: Vec<crate::capsule::domain::AccessEntry>, // ✅ Unified access control (individual + public)
+    pub inline_assets: Vec<MemoryAssetInline>,                    // 0 or more inline assets
+    pub blob_internal_assets: Vec<MemoryAssetBlobInternal>,       // 0 or more ICP blob assets
+    pub blob_external_assets: Vec<MemoryAssetBlobExternal>,       // 0 or more external blob assets
 }
 
 /// Memory header for listings
@@ -295,16 +251,16 @@ pub struct MemoryHeader {
     pub size: u64,
     pub created_at: u64,
     pub updated_at: u64,
-    pub access: MemoryAccess,
+    // pub access: MemoryAccess, // Legacy - commented out for greenfield
 
     // NEW: Dashboard-specific fields (pre-computed)
-    pub title: Option<String>,             // From metadata
-    pub description: Option<String>,       // From metadata
-    pub parent_folder_id: Option<String>,  // From metadata
-    pub tags: Vec<String>,                 // From metadata
-    pub is_public: bool,                   // Computed from access
+    pub title: Option<String>,            // From metadata
+    pub description: Option<String>,      // From metadata
+    pub parent_folder_id: Option<String>, // From metadata
+    pub tags: Vec<String>,                // From metadata
+    // ❌ REMOVED: pub is_public: bool,                   // Redundant with sharing_status
     pub shared_count: u32,                 // Computed from access
-    pub sharing_status: String,            // "public" | "shared" | "private"
+    pub sharing_status: SharingStatus,     // ✅ ENUM: "public" | "shared" | "private"
     pub asset_count: u32,                  // Total number of assets
     pub thumbnail_url: Option<String>,     // Pre-computed thumbnail URL
     pub primary_asset_url: Option<String>, // Primary asset URL for display
@@ -325,7 +281,7 @@ pub struct MemoryOperationResponse {
 pub struct MemoryUpdateData {
     pub name: Option<String>,
     pub metadata: Option<MemoryMetadata>,
-    pub access: Option<MemoryAccess>,
+    pub access_entries: Option<Vec<crate::capsule::domain::AccessEntry>>, // ✅ NEW: Unified access control system
 }
 
 /// Memory list response
@@ -492,4 +448,15 @@ pub struct GalleryMemoryEntry {
     pub gallery_caption: Option<String>, // Only if different from memory caption
     pub is_featured: bool,               // Gallery-specific highlighting
     pub gallery_metadata: String,        // JSON for gallery-specific annotations
+}
+
+// ============================================================================
+// ACCESS CONTROL IMPLEMENTATION
+// ============================================================================
+
+impl crate::capsule::domain::AccessControlled for Memory {
+    fn access_entries(&self) -> &[crate::capsule::domain::AccessEntry] {
+        &self.access_entries
+    }
+    // ❌ REMOVED: public_policy method - now unified in AccessEntry
 }
