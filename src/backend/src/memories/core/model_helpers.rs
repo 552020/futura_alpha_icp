@@ -67,6 +67,28 @@ pub fn generate_uuid_v7() -> String {
     }
 }
 
+/// Generate a deterministic UUID from an idempotency key for proper idempotency
+/// This ensures that the same idempotency key always produces the same UUID
+pub fn generate_deterministic_uuid_from_idem(idem: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
+    // Create a hasher and hash the idempotency key
+    let mut hasher = DefaultHasher::new();
+    idem.hash(&mut hasher);
+    let hash = hasher.finish();
+    
+    // Convert the hash to a UUID-like string format
+    // Use a simple approach: take the hash and format it as a UUID
+    format!("{:08x}-{:04x}-{:04x}-{:04x}-{:012x}", 
+        (hash >> 32) as u32,
+        (hash >> 16) as u16,
+        hash as u16,
+        (hash >> 48) as u16,
+        hash as u64 & 0x0000_0000_0000_FFFF
+    )
+}
+
 /// Generate a UUID-like ID for asset IDs using deterministic pattern
 pub fn generate_asset_id(caller: &PersonRef, timestamp: u64) -> String {
     let caller_str = match caller {

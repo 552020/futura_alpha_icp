@@ -117,8 +117,8 @@ pub fn memories_create_core<E: Env, S: Store>(
     // Capture timestamp once for consistency
     let now = env.now();
 
-    // Generate UUID v7 memory ID
-    let memory_id = generate_uuid_v7();
+    // Generate deterministic UUID from idempotency key for proper idempotency
+    let memory_id = generate_deterministic_uuid_from_idem(&_idem);
 
     // Check for existing memory (idempotency)
     if let Some(_existing) = store.get_memory(&capsule_id, &memory_id) {
@@ -215,8 +215,8 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
     // Capture timestamp once for consistency
     let now = env.now();
 
-    // Generate UUID v7 memory ID
-    let memory_id = generate_uuid_v7();
+    // Generate deterministic UUID from idempotency key for proper idempotency
+    let memory_id = generate_deterministic_uuid_from_idem(&_idem);
 
     // Check for existing memory (idempotency)
     if let Some(_existing) = store.get_memory(&capsule_id, &memory_id) {
