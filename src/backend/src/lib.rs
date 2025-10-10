@@ -6,9 +6,12 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 // Internal imports
+use crate::capsule::domain::Capsule;
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
-use crate::types::{Error, Result13, Result14};
+use crate::types::{
+    CapsuleHeader, CapsuleId, CapsuleInfo, CapsuleUpdateData, Error, Result13, Result14,
+};
 use crate::upload::types::{Result15, UploadFinishResult};
 
 // Rolling hash storage for upload verification
@@ -18,12 +21,12 @@ thread_local! {
 
 // Import modules
 mod admin;
-mod utils;
 mod auth;
 mod canister_factory;
 mod capsule;
 mod capsule_acl;
 mod capsule_store;
+mod folder;
 mod gallery;
 mod memories;
 mod memory;
@@ -34,6 +37,10 @@ mod types;
 mod unified_types;
 mod upload;
 mod user;
+mod utils;
+
+#[cfg(test)]
+mod test_utils;
 
 // ============================================================================
 // CORE SYSTEM & UTILITY FUNCTIONS (3 functions)
@@ -100,54 +107,43 @@ fn list_superadmins() -> Vec<Principal> {
 // CAPSULE MANAGEMENT (5 functions)
 // ============================================================================
 
-// Capsule management endpoints
 #[ic_cdk::update]
-fn capsules_create(
-    subject: Option<types::PersonRef>,
-) -> std::result::Result<types::Capsule, Error> {
-    // Delegate to capsule module (thin facade)
-    capsule::capsules_create(subject)
+fn capsules_create(subject: Option<types::PersonRef>) -> std::result::Result<Capsule, Error> {
+    crate::capsule::commands::capsules_create(subject)
 }
 
 #[ic_cdk::query]
-fn capsules_read_basic(
-    capsule_id: Option<String>,
-) -> std::result::Result<types::CapsuleInfo, Error> {
-    // Delegate to capsule module (thin facade)
+fn capsules_read_basic(capsule_id: Option<String>) -> std::result::Result<CapsuleInfo, Error> {
     match capsule_id {
-        Some(id) => capsule::capsules_read_basic(id),
-        None => capsule::capsule_read_self_basic(),
+        Some(id) => crate::capsule::query::capsules_read_basic(id),
+        None => crate::capsule::query::capsule_read_self_basic(),
     }
 }
 
 #[ic_cdk::query]
-fn capsules_read_full(capsule_id: Option<String>) -> std::result::Result<types::Capsule, Error> {
-    // Delegate to capsule module (thin facade)
+fn capsules_read_full(capsule_id: Option<String>) -> std::result::Result<Capsule, Error> {
     match capsule_id {
-        Some(id) => capsule::capsules_read(id),
-        None => capsule::capsule_read_self(),
+        Some(id) => crate::capsule::query::capsules_read(id),
+        None => crate::capsule::query::capsule_read_self(),
     }
 }
 
 #[ic_cdk::update]
 fn capsules_update(
     capsule_id: String,
-    updates: types::CapsuleUpdateData,
-) -> std::result::Result<types::Capsule, Error> {
-    // Delegate to capsule module (thin facade)
-    capsule::capsules_update(capsule_id, updates)
+    updates: CapsuleUpdateData,
+) -> std::result::Result<Capsule, Error> {
+    crate::capsule::commands::capsules_update(capsule_id, updates)
 }
 
 #[ic_cdk::update]
 fn capsules_delete(capsule_id: String) -> std::result::Result<(), Error> {
-    // Delegate to capsule module (thin facade)
-    capsule::capsules_delete(capsule_id)
+    crate::capsule::commands::capsules_delete(capsule_id)
 }
 
 #[ic_cdk::query]
-fn capsules_list() -> Vec<types::CapsuleHeader> {
-    // Delegate to capsule module (thin facade)
-    capsule::capsules_list()
+fn capsules_list() -> Vec<CapsuleHeader> {
+    crate::capsule::query::capsules_list()
 }
 
 #[ic_cdk::update]
@@ -156,22 +152,19 @@ fn capsules_bind_neon(
     resource_id: String,
     bind: bool,
 ) -> std::result::Result<(), Error> {
-    // Delegate to capsule module (thin facade)
-    capsule::resources_bind_neon(resource_type, resource_id, bind)
+    crate::capsule::commands::resources_bind_neon(resource_type, resource_id, bind)
 }
 
 #[ic_cdk::query]
 fn get_user_settings() -> std::result::Result<types::UserSettingsResponse, Error> {
-    // Delegate to capsule module (thin facade)
-    capsule::get_user_settings()
+    crate::capsule::query::get_user_settings()
 }
 
 #[ic_cdk::update]
 fn update_user_settings(
     updates: types::UserSettingsUpdateData,
 ) -> std::result::Result<types::UserSettingsResponse, Error> {
-    // Delegate to capsule module (thin facade)
-    capsule::update_user_settings(updates)
+    crate::capsule::commands::update_user_settings(updates)
 }
 
 // ============================================================================
@@ -182,7 +175,7 @@ async fn galleries_create(
     gallery_data: types::GalleryData,
 ) -> std::result::Result<types::Gallery, Error> {
     // TESTING: Using gallery.rs implementation
-    gallery::galleries_create(gallery_data)
+    gallery::commands::galleries_create(gallery_data)
 }
 
 #[ic_cdk::update]
@@ -191,22 +184,22 @@ async fn galleries_create_with_memories(
     sync_memories: bool,
 ) -> std::result::Result<types::Gallery, Error> {
     // TESTING: Using gallery.rs implementation
-    gallery::galleries_create_with_memories(gallery_data, sync_memories)
+    gallery::commands::galleries_create_with_memories(gallery_data, sync_memories)
 }
 
 #[ic_cdk::update]
 fn update_gallery_storage_location(
     gallery_id: String,
-    new_location: types::GalleryStorageLocation,
+    new_location: Vec<types::BlobHosting>,
 ) -> std::result::Result<(), Error> {
     // Delegate to gallery module (thin facade)
-    gallery::update_gallery_storage_location(gallery_id, new_location)
+    gallery::commands::update_gallery_storage_location(gallery_id, new_location)
 }
 
 #[ic_cdk::query]
 fn galleries_list() -> Vec<types::GalleryHeader> {
     // Delegate to gallery module (thin facade)
-    gallery::galleries_list()
+    gallery::query::galleries_list()
 }
 
 #[ic_cdk::query]
@@ -235,13 +228,13 @@ async fn galleries_update(
     update_data: types::GalleryUpdateData,
 ) -> std::result::Result<types::Gallery, Error> {
     // Delegate to gallery module (thin facade)
-    gallery::galleries_update(gallery_id, update_data)
+    gallery::commands::galleries_update(gallery_id, update_data)
 }
 
 #[ic_cdk::update]
 async fn galleries_delete(gallery_id: String) -> std::result::Result<(), Error> {
     // Delegate to gallery module (thin facade)
-    gallery::galleries_delete(gallery_id)
+    gallery::commands::galleries_delete(gallery_id)
 }
 
 // ============================================================================
@@ -251,25 +244,52 @@ async fn galleries_delete(gallery_id: String) -> std::result::Result<(), Error> 
 /// Get gallery size information for debugging stable memory limits
 #[ic_cdk::query]
 fn get_gallery_size_info(gallery: types::Gallery) -> String {
-    gallery::get_gallery_size_report(&gallery)
+    gallery::util::get_gallery_size_report(&gallery)
 }
 
 /// Get detailed gallery size breakdown
 #[ic_cdk::query]
-fn get_gallery_size_breakdown(gallery: types::Gallery) -> gallery::GallerySizeInfo {
-    gallery::get_gallery_size_breakdown(&gallery)
+fn get_gallery_size_breakdown(gallery: types::Gallery) -> gallery::util::GallerySizeInfo {
+    gallery::util::get_gallery_size_breakdown(&gallery)
 }
 
 /// Calculate just the gallery size (without capsule overhead)
 #[ic_cdk::query]
 fn calculate_gallery_size(gallery: types::Gallery) -> u64 {
-    gallery::estimate_gallery_size(&gallery)
+    gallery::util::estimate_gallery_size(&gallery)
 }
 
 /// Calculate gallery size when stored in capsule context
 #[ic_cdk::query]
 fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
-    gallery::estimate_gallery_capsule_size(&gallery)
+    gallery::util::estimate_gallery_capsule_size(&gallery)
+}
+
+// ============================================================================
+// FOLDERS
+// ============================================================================
+
+#[ic_cdk::update]
+fn folders_create(folder_data: types::FolderData) -> std::result::Result<types::Folder, Error> {
+    folder::commands::folders_create(folder_data)
+}
+
+#[ic_cdk::update]
+fn folders_update(
+    folder_id: String,
+    update_data: types::FolderUpdateData,
+) -> std::result::Result<types::Folder, Error> {
+    folder::commands::folders_update(folder_id, update_data)
+}
+
+#[ic_cdk::update]
+fn folders_delete(folder_id: String) -> std::result::Result<(), Error> {
+    folder::commands::folders_delete(folder_id)
+}
+
+#[ic_cdk::query]
+fn folders_list() -> Vec<types::FolderHeader> {
+    folder::query::folders_list()
 }
 
 // ============================================================================
@@ -279,7 +299,7 @@ fn calculate_gallery_capsule_size(gallery: types::Gallery) -> u64 {
 // === Core ===
 #[ic_cdk::update]
 fn memories_create(
-    capsule_id: types::CapsuleId,
+    capsule_id: CapsuleId,
     bytes: Option<Vec<u8>>,
     blob_ref: Option<types::BlobRef>,
     external_location: Option<types::StorageEdgeBlobType>,
@@ -317,7 +337,7 @@ fn memories_create(
 
 #[ic_cdk::update]
 fn memories_create_with_internal_blobs(
-    capsule_id: types::CapsuleId,
+    capsule_id: CapsuleId,
     memory_metadata: crate::memories::types::MemoryMetadata,
     internal_blob_assets: Vec<crate::memories::types::InternalBlobAssetInput>,
     idem: String,
@@ -562,7 +582,7 @@ fn upload_config() -> types::UploadConfig {
 
 /// Begin chunked upload for large files
 #[ic_cdk::update]
-fn uploads_begin(capsule_id: types::CapsuleId, expected_chunks: u32, idem: String) -> Result13 {
+fn uploads_begin(capsule_id: CapsuleId, expected_chunks: u32, idem: String) -> Result13 {
     match with_capsule_store_mut(|store| {
         upload::service::begin_upload(store, capsule_id, expected_chunks, idem)
     }) {
@@ -1077,7 +1097,7 @@ fn pre_upgrade() {
             .items
             .into_iter()
             .map(|capsule| (capsule.id.clone(), capsule))
-            .collect::<Vec<(String, types::Capsule)>>()
+            .collect::<Vec<(String, Capsule)>>()
     });
     let admin_data = admin::export_admins_for_upgrade();
 
@@ -1111,7 +1131,7 @@ fn post_upgrade() {
     {
         // Restore capsules, admins, and migration state after upgrade
         if let Ok((capsule_data, admin_data, migration_data)) = ic_cdk::storage::stable_restore::<(
-            Vec<(String, types::Capsule)>,
+            Vec<(String, Capsule)>,
             Vec<Principal>,
             canister_factory::PersonalCanisterCreationStateData,
         )>() {
@@ -1129,7 +1149,7 @@ fn post_upgrade() {
     {
         // Restore capsules and admins only if migration feature is disabled
         if let Ok((capsule_data, admin_data)) =
-            ic_cdk::storage::stable_restore::<(Vec<(String, types::Capsule)>, Vec<Principal>)>()
+            ic_cdk::storage::stable_restore::<(Vec<(String, Capsule)>, Vec<Principal>)>()
         {
             with_capsule_store_mut(|store| {
                 for (id, capsule) in capsule_data {
