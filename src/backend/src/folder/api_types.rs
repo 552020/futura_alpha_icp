@@ -22,3 +22,4 @@ pub struct FolderCreationResult {
     pub folder_id: String,
     pub success: bool,
 }
+
