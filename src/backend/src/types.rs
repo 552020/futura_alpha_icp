@@ -2,12 +2,31 @@ use candid::{CandidType, Deserialize, Principal};
 use ic_stable_structures::Storable;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::collections::HashMap;
 
 // Re-export types from specialized modules
 pub use crate::memories::types::*;
 pub use crate::unified_types::*;
 pub use crate::upload::types::*;
+
+// Re-export core domain types from capsule module
+pub use crate::capsule::domain::{Capsule, Connection, ConnectionStatus, ControllerState, OwnerState, PersonRef};
+
+// Re-export capsule API types from capsule module
+pub use crate::capsule::api_types::{
+    CapsuleHeader, CapsuleInfo, CapsuleUpdateData, UserSettingsResponse, UserSettingsUpdateData,
+};
+
+// Re-export folder domain types from folder module
+pub use crate::folder::domain::{Folder, FolderHeader};
+
+// Re-export folder API types from folder module
+pub use crate::folder::api_types::{FolderData, FolderUpdateData};
+
+// Re-export gallery domain types from gallery module
+pub use crate::gallery::domain::{Gallery, GalleryHeader};
+
+// Re-export gallery API types from gallery module
+pub use crate::gallery::api_types::{GalleryData, GalleryUpdateData};
 
 // ============================================================================
 // TYPE ALIASES
@@ -236,77 +255,7 @@ pub struct User {
 // #[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
 // pub struct UserRegistrationResult { ... }
 
-// Capsule types for user-owned data architecture
-// Core person reference - can be a live principal or opaque identifier
-#[derive(
-    CandidType, Deserialize, Serialize, Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord,
-)]
-pub enum PersonRef {
-    Principal(Principal), // live II user
-    Opaque(String),       // non-principal subject (e.g., deceased), UUID-like
-}
-
-impl PersonRef {
-    /// Extract the Principal if this is a Principal variant, None otherwise
-    pub fn principal(&self) -> Option<&Principal> {
-        match self {
-            PersonRef::Principal(p) => Some(p),
-            PersonRef::Opaque(_) => None,
-        }
-    }
-}
-
-impl std::fmt::Display for PersonRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            PersonRef::Principal(p) => write!(f, "{}", p),
-            PersonRef::Opaque(s) => write!(f, "{}", s),
-        }
-    }
-}
-
-// Connection status for peer relationships
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum ConnectionStatus {
-    Pending,
-    Accepted,
-    Blocked,
-    Revoked,
-}
-
-// Connection between persons
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct Connection {
-    pub peer: PersonRef,
-    pub status: ConnectionStatus,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-// Connection groups for organizing relationships
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize, PartialEq)]
-pub struct ConnectionGroup {
-    pub id: String,
-    pub name: String, // "Family", "Close Friends", etc.
-    pub description: Option<String>,
-    pub members: Vec<PersonRef>,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-// Controller state tracking (simplified - full control except ownership transfer)
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct ControllerState {
-    pub granted_at: u64,
-    pub granted_by: PersonRef,
-}
-
-// Owner state tracking
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct OwnerState {
-    pub since: u64,
-    pub last_activity_at: u64, // Track owner activity
-}
+// Core domain types moved to capsule/domain.rs for better organization
 
 // Hosting preference enums - mirrors Web2 structure
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -357,91 +306,15 @@ impl Default for HostingPreferences {
     }
 }
 
-// Main capsule structure
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct Capsule {
-    pub id: String,                                          // unique capsule identifier
-    pub subject: PersonRef,                                  // who this capsule is about
-    pub owners: HashMap<PersonRef, OwnerState>,              // 1..n owners (usually 1)
-    pub controllers: HashMap<PersonRef, ControllerState>,    // delegated admins (full control)
-    pub connections: HashMap<PersonRef, Connection>,         // social graph
-    pub connection_groups: HashMap<String, ConnectionGroup>, // organized connection groups
-    pub memories: HashMap<String, Memory>,                   // content
-    pub galleries: HashMap<String, Gallery>,                 // galleries (collections of memories)
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub bound_to_neon: bool,         // Neon database binding status
-    pub inline_bytes_used: u64,      // Track inline storage consumption
-    pub has_advanced_settings: bool, // Controls whether user sees advanced settings panels
-    pub hosting_preferences: HostingPreferences, // User's preferred hosting providers
-}
+// Main capsule structure moved to capsule/domain.rs for better organization
 
 // CapsuleRegistrationResult - REMOVED: unused
 // #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 // pub struct CapsuleRegistrationResult { ... }
 
-// Capsule information for user queries
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct CapsuleInfo {
-    pub capsule_id: String,
-    pub subject: PersonRef,
-    pub is_owner: bool,
-    pub is_controller: bool,
-    pub is_self_capsule: bool, // true if subject == caller
-    pub bound_to_neon: bool,
-    pub created_at: u64,
-    pub updated_at: u64,
-
-    // Lightweight counts for summary information
-    pub memory_count: u64,     // Number of memories in this capsule
-    pub gallery_count: u64,    // Number of galleries in this capsule
-    pub connection_count: u64, // Number of connections to other people
-}
-
-// Capsule header for listing
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct CapsuleHeader {
-    pub id: String,
-    pub subject: PersonRef,
-    pub owner_count: u64,
-    pub controller_count: u64,
-    pub memory_count: u64,
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-// Capsule update data for partial updates
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct CapsuleUpdateData {
-    pub bound_to_neon: Option<bool>, // Update binding status
-                                     // Note: Most capsule fields (id, subject, owners, etc.) are immutable
-                                     // Only binding status and timestamps can be updated
-}
-
-/// User settings data for updating capsule settings
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct UserSettingsUpdateData {
-    pub has_advanced_settings: Option<bool>,
-}
-
-/// User settings response for reading capsule settings
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct UserSettingsResponse {
-    pub has_advanced_settings: bool,
-    pub hosting_preferences: HostingPreferences,
-}
+// Capsule API types moved to capsule/api_types.rs for better organization
 
 // MemoryHeader moved to memories/types.rs
-
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct GalleryHeader {
-    pub id: String,
-    pub name: String,
-    pub memory_count: u64,
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub storage_location: GalleryStorageLocation,
-}
 
 // New unified memory system
 // Old metadata structures removed - replaced with new AssetMetadata enum and AssetMetadataBase
@@ -488,59 +361,10 @@ pub struct BlobMeta {
 // Memory implementation moved to memory.rs
 
 // ============================================================================
-// GALLERY SYSTEM - Minimal Abstraction Approach
+// GALLERY SYSTEM - Types moved to gallery/domain.rs
 // ============================================================================
 
-// Gallery storage status for tracking where gallery data is stored
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub enum GalleryStorageLocation {
-    Web2Only,  // Stored only in Web2 database
-    ICPOnly,   // Stored only in ICP canister
-    Both,      // Stored in both Web2 and ICP
-    Migrating, // Currently being migrated from Web2 to ICP
-    Failed,    // Migration or storage failed
-}
-
 // GalleryMemoryEntry moved to memories/types.rs
-
-// Main gallery structure with embedded memory entries
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct Gallery {
-    pub id: String,                               // unique gallery identifier
-    pub owner_principal: Principal,               // who owns this gallery
-    pub title: String,                            // gallery title
-    pub description: Option<String>,              // gallery description
-    pub is_public: bool,                          // whether gallery is publicly accessible
-    pub created_at: u64,                          // creation timestamp (nanoseconds)
-    pub updated_at: u64,                          // last update timestamp (nanoseconds)
-    pub storage_location: GalleryStorageLocation, // where this gallery is stored
-    pub memory_entries: Vec<GalleryMemoryEntry>,  // minimal extra data for each memory
-    pub bound_to_neon: bool,                      // whether linked to Neon database
-}
-
-// Gallery creation result
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct GalleryCreationResult {
-    pub success: bool,
-    pub gallery_id: Option<String>,
-    pub message: String,
-}
-
-// Gallery data for storage operations
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct GalleryData {
-    pub gallery: Gallery,
-    pub owner_principal: Principal,
-}
-
-// Gallery update data
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct GalleryUpdateData {
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub is_public: Option<bool>,
-    pub memory_entries: Option<Vec<GalleryMemoryEntry>>,
-}
 
 // User principal management types - REMOVED: unused
 // #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
@@ -691,6 +515,12 @@ mod tests {
         );
     }
 }
+
+// ============================================================================
+// ACCESS CONTROL IMPLEMENTATION
+// ============================================================================
+
+// Gallery AccessControlled implementation moved to gallery/domain.rs
 
 // ============================================================================
 // ERROR CONVERSIONS - Bridge between storage layer and ICP layer

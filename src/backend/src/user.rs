@@ -14,6 +14,8 @@
 // ============================================================================
 
 use crate::auth;
+use crate::capsule::commands::capsules_create;
+use crate::capsule::util::{find_self_capsule, update_capsule_activity};
 use crate::types::{self, Error, PersonRef};
 use ic_cdk::api::time;
 
@@ -23,7 +25,10 @@ use ic_cdk::api::time;
 
 /// Store nonce proof for Internet Identity authentication
 /// This is a utility function used by both prove_nonce and register_with_nonce
-pub fn store_nonce_proof_utility(nonce: String, caller: &PersonRef) -> std::result::Result<(), Error> {
+pub fn store_nonce_proof_utility(
+    nonce: String,
+    caller: &PersonRef,
+) -> std::result::Result<(), Error> {
     let timestamp = time();
 
     let principal = match caller {
@@ -50,14 +55,14 @@ pub fn register_user_with_nonce(nonce: String) -> std::result::Result<(), Error>
 
     // Frontend perspective: "Register the user"
     // Backend reality: "Check if user already has a self-capsule"
-    if let Some(capsule) = crate::capsule::find_self_capsule(&caller) {
+    if let Some(capsule) = find_self_capsule(&caller) {
         // Frontend perspective: "Update user activity"
         // Backend reality: "Update capsule activity timestamp"
-        crate::capsule::update_capsule_activity(&capsule.id, &caller)?;
+        update_capsule_activity(&capsule.id, &caller)?;
     } else {
         // Frontend perspective: "Create new user"
         // Backend reality: "Create new self-capsule"
-        match crate::capsules_create(None) {
+        match capsules_create(None) {
             Ok(_) => {}
             Err(e) => {
                 return Err(types::Error::Internal(format!(
