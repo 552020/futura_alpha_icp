@@ -446,6 +446,42 @@ fn memories_update(
 }
 
 #[ic_cdk::update]
+fn memories_add_asset(
+    memory_id: String,
+    asset: crate::memories::types::InternalBlobAssetInput,
+    idem: String,
+) -> types::Result20 {
+    use crate::memories::core::memories_add_asset_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    match memories_add_asset_core(&env, &mut store, memory_id, asset, idem) {
+        Ok(asset_id) => types::Result20::Ok(asset_id),
+        Err(error) => types::Result20::Err(error),
+    }
+}
+
+#[ic_cdk::update]
+fn memories_add_inline_asset(
+    memory_id: String,
+    asset: crate::memories::types::InlineAssetInput,
+    idem: String,
+) -> types::Result20 {
+    use crate::memories::core::memories_add_inline_asset_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    match memories_add_inline_asset_core(&env, &mut store, memory_id, asset, idem) {
+        Ok(asset_id) => types::Result20::Ok(asset_id),
+        Err(error) => types::Result20::Err(error),
+    }
+}
+
+#[ic_cdk::update]
 fn memories_delete(memory_id: String, delete_assets: bool) -> std::result::Result<(), Error> {
     use crate::memories::core::memories_delete_core;
     use crate::memories::{CanisterEnv, StoreAdapter};

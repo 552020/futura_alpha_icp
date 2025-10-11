@@ -280,6 +280,7 @@ type ImageAssetMetadata = record {
   compression_ratio : opt float32;
   orientation : opt nat8;
 };
+type InlineAssetInput = record { metadata : AssetMetadata; bytes : blob };
 type InternalBlobAssetInput = record {
   metadata : AssetMetadata;
   blob_id : text;
@@ -339,6 +340,7 @@ type MemoryHeader = record {
   tags : vec text;
   has_thumbnails : bool;
   has_previews : bool;
+  database_storage_edges : vec DatabaseHosting;
   description : opt text;
   created_at : nat64;
   thumbnail_url : opt text;
@@ -551,6 +553,8 @@ service : {
   list_all_creation_states : () -> (Result_10) query;
   list_all_migration_states : () -> (Result_10) query;
   list_superadmins : () -> (vec principal) query;
+  memories_add_asset : (text, InternalBlobAssetInput, text) -> (Result6);
+  memories_add_inline_asset : (text, InlineAssetInput, text) -> (Result6);
   // Clean up all assets from a memory while preserving the memory record
   memories_cleanup_assets_all : (text) -> (Result_14);
   // Bulk cleanup assets from multiple memories
