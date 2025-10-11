@@ -187,3 +187,4 @@ This implementation is **optional** and should only be pursued if magic links ar
 If magic links are not needed, this task can be skipped entirely, and the access control system will work perfectly without it.
 
 
+
