@@ -358,6 +358,9 @@ impl Memory {
             primary_asset_url: self.metadata.primary_asset_url.clone(),
             has_thumbnails: self.metadata.has_thumbnails,
             has_previews: self.metadata.has_previews,
+            
+            // NEW: Storage location information
+            database_storage_edges: self.metadata.database_storage_edges.clone(),
         }
     }
     

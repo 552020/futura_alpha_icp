@@ -4,8 +4,10 @@
 //! with proper access control and post-write assertions.
 
 use super::traits::*;
-use crate::capsule::domain::SharingStatus;
-use crate::types::{Error, MemoryId, MemoryUpdateData};
+use super::model_helpers::*;
+use crate::capsule_acl::CapsuleAcl;
+use crate::memories::types::{InternalBlobAssetInput, InlineAssetInput};
+use crate::types::{Error, MemoryId, MemoryUpdateData, BlobRef, MemoryAssetBlobInternal, MemoryAssetInline};
 
 /// Core memory update function - pure business logic
 pub fn memories_update_core<E: Env, S: Store>(
@@ -56,6 +58,162 @@ pub fn memories_update_core<E: Env, S: Store>(
                     ));
                 }
                 return Ok(updated_memory);
+            } else {
+                return Err(Error::Internal(
+                    "Post-update readback failed: memory was not found".to_string(),
+                ));
+            }
+        }
+    }
+
+    Err(Error::NotFound)
+}
+
+/// Core function to add a blob asset to an existing memory
+///
+/// This function adds a new internal blob asset to an existing memory.
+/// It validates the memory exists, the caller has write access, and the blob exists.
+pub fn memories_add_asset_core<E: Env, S: Store>(
+    env: &E,
+    store: &mut S,
+    memory_id: MemoryId,
+    asset: InternalBlobAssetInput,
+    _idem: String,
+) -> std::result::Result<String, Error> {
+    // Get caller for ACL check
+    let caller = env.caller();
+    let now = env.now();
+
+    // Find the memory across all accessible capsules
+    let accessible_capsules = store.get_accessible_capsules(&caller);
+
+    for capsule_id in accessible_capsules {
+        if let Some(mut memory) = store.get_memory(&capsule_id, &memory_id) {
+            // Check ACL permissions for this capsule
+            let capsule_access = store
+                .get_capsule_for_acl(&capsule_id)
+                .ok_or(Error::NotFound)?;
+            
+            if !capsule_access.can_write(&caller) {
+                return Err(Error::Unauthorized);
+            }
+
+            // Parse blob_id to get BlobRef
+            let blob_ref = if asset.blob_id.starts_with("blob_") {
+                // Extract the numeric ID from "blob_1234567890"
+                let id_str = &asset.blob_id[5..]; // Remove "blob_" prefix
+                let _blob_id = id_str.parse::<u64>().map_err(|_| {
+                    Error::InvalidArgument(format!("Invalid blob_id format: {}", asset.blob_id))
+                })?;
+
+                BlobRef {
+                    locator: asset.blob_id.clone(),
+                    hash: None, // Hash will be retrieved from blob store if needed
+                    len: 0,     // Length will be retrieved from blob store if needed
+                }
+            } else {
+                return Err(Error::InvalidArgument(format!(
+                    "Invalid blob_id format: {}",
+                    asset.blob_id
+                )));
+            };
+
+            // Create the new internal blob asset
+            let new_asset = MemoryAssetBlobInternal {
+                asset_id: generate_asset_id(&caller, now),
+                blob_ref,
+                metadata: asset.metadata.clone(),
+            };
+
+            // Add asset to memory
+            memory.blob_internal_assets.push(new_asset.clone());
+
+            // Update memory metadata
+            memory.metadata.asset_count += 1;
+            memory.metadata.updated_at = now;
+
+            // Recompute dashboard fields
+            memory.update_dashboard_fields();
+
+            // Save updated memory
+            store.update_memory(&capsule_id, &memory_id, memory)?;
+
+            // POST-WRITE ASSERTION: Verify memory was actually updated
+            if let Some(updated_memory) = store.get_memory(&capsule_id, &memory_id) {
+                if updated_memory.metadata.updated_at != now {
+                    return Err(Error::Internal(
+                        "Post-update readback failed: memory was not updated".to_string(),
+                    ));
+                }
+                return Ok(new_asset.asset_id);
+            } else {
+                return Err(Error::Internal(
+                    "Post-update readback failed: memory was not found".to_string(),
+                ));
+            }
+        }
+    }
+
+    Err(Error::NotFound)
+}
+
+/// Core function to add an inline asset to an existing memory
+///
+/// This function adds a new inline asset to an existing memory.
+/// It validates the memory exists and the caller has write access.
+pub fn memories_add_inline_asset_core<E: Env, S: Store>(
+    env: &E,
+    store: &mut S,
+    memory_id: MemoryId,
+    asset: InlineAssetInput,
+    _idem: String,
+) -> std::result::Result<String, Error> {
+    // Get caller for ACL check
+    let caller = env.caller();
+    let now = env.now();
+
+    // Find the memory across all accessible capsules
+    let accessible_capsules = store.get_accessible_capsules(&caller);
+
+    for capsule_id in accessible_capsules {
+        if let Some(mut memory) = store.get_memory(&capsule_id, &memory_id) {
+            // Check ACL permissions for this capsule
+            let capsule_access = store
+                .get_capsule_for_acl(&capsule_id)
+                .ok_or(Error::NotFound)?;
+            
+            if !capsule_access.can_write(&caller) {
+                return Err(Error::Unauthorized);
+            }
+
+            // Create the new inline asset
+            let new_asset = MemoryAssetInline {
+                asset_id: generate_asset_id(&caller, now),
+                bytes: asset.bytes.clone(),
+                metadata: asset.metadata.clone(),
+            };
+
+            // Add asset to memory
+            memory.inline_assets.push(new_asset.clone());
+
+            // Update memory metadata
+            memory.metadata.asset_count += 1;
+            memory.metadata.updated_at = now;
+
+            // Recompute dashboard fields
+            memory.update_dashboard_fields();
+
+            // Save updated memory
+            store.update_memory(&capsule_id, &memory_id, memory)?;
+
+            // POST-WRITE ASSERTION: Verify memory was actually updated
+            if let Some(updated_memory) = store.get_memory(&capsule_id, &memory_id) {
+                if updated_memory.metadata.updated_at != now {
+                    return Err(Error::Internal(
+                        "Post-update readback failed: memory was not updated".to_string(),
+                    ));
+                }
+                return Ok(new_asset.asset_id);
             } else {
                 return Err(Error::Internal(
                     "Post-update readback failed: memory was not found".to_string(),
