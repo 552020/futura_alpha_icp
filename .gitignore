@@ -23,6 +23,9 @@ dist/
 # environment variables
 .env
 
+# Neon database configuration
+.neon
+
 # AI
 .kiro/
 .cursor/
