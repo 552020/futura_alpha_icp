@@ -20,7 +20,10 @@ import {
 } from "../../utils/index.js";
 
 // Parse command line arguments using shared utility
-const parsedArgs = parseTestArgs("test_lane_b_image_processing.mjs", "Tests Lane B: Image processing workflows with shared utilities");
+const parsedArgs = parseTestArgs(
+  "test_lane_b_image_processing.mjs",
+  "Tests Lane B: Image processing workflows with shared utilities"
+);
 
 // Import the backend interface
 import { idlFactory } from "../../declarations/backend/backend.did.js";
@@ -31,7 +34,7 @@ const TEST_IMAGE_PATH = "assets/input/orange_tiny.jpg";
 
 /**
  * Test Lane B: Image Processing Workflow
- * 
+ *
  * This test focuses on the image processing lane of the 2-lane + 4-asset system:
  * 1. Upload original image as blob
  * 2. Create memory with original image
@@ -64,11 +67,19 @@ async function testLaneBImageProcessing(backend, capsuleId) {
     const fileName = "orange_tiny.jpg";
     const fileSize = fileBuffer.length;
 
-    const memoryResult = await createMemoryFromBlob(backend, capsuleId, fileName, fileSize, originalBlobId, originalUploadResult, {
-      assetType: "image",
-      mimeType: "image/jpeg",
-      memoryType: { Image: null },
-    });
+    const memoryResult = await createMemoryFromBlob(
+      backend,
+      capsuleId,
+      fileName,
+      fileSize,
+      originalBlobId,
+      originalUploadResult,
+      {
+        assetType: "image",
+        mimeType: "image/jpeg",
+        memoryType: { Image: null },
+      }
+    );
 
     if (!memoryResult.success) {
       return { success: false, error: `Memory creation failed: ${memoryResult.error}` };
@@ -104,7 +115,7 @@ async function testLaneBImageProcessing(backend, capsuleId) {
     if (blobIds.display) {
       const displayResult = await addAssetToMemory(backend, memoryId, blobIds.display, {
         assetType: "display",
-      mimeType: "image/webp",
+        mimeType: "image/webp",
         idempotencyKey: `lane-b-display-${Date.now()}`,
       });
       addResults.push({ type: "display", result: displayResult });
@@ -114,7 +125,7 @@ async function testLaneBImageProcessing(backend, capsuleId) {
     if (blobIds.thumb) {
       const thumbResult = await addAssetToMemory(backend, memoryId, blobIds.thumb, {
         assetType: "thumb",
-      mimeType: "image/webp",
+        mimeType: "image/webp",
         idempotencyKey: `lane-b-thumb-${Date.now()}`,
       });
       addResults.push({ type: "thumb", result: thumbResult });
@@ -124,19 +135,22 @@ async function testLaneBImageProcessing(backend, capsuleId) {
     if (blobIds.placeholder) {
       const placeholderResult = await addAssetToMemory(backend, memoryId, blobIds.placeholder, {
         assetType: "placeholder",
-      mimeType: "image/webp",
+        mimeType: "image/webp",
         idempotencyKey: `lane-b-placeholder-${Date.now()}`,
       });
       addResults.push({ type: "placeholder", result: placeholderResult });
     }
 
     // Check if all additions were successful
-    const failedAdditions = addResults.filter(r => !r.result.success);
+    const failedAdditions = addResults.filter((r) => !r.result.success);
     if (failedAdditions.length > 0) {
-      return { success: false, error: `Failed to add derivatives: ${failedAdditions.map(f => f.type).join(", ")}` };
+      return { success: false, error: `Failed to add derivatives: ${failedAdditions.map((f) => f.type).join(", ")}` };
     }
 
-    console.log(`✅ All derivatives added to memory:`, addResults.map(r => r.type));
+    console.log(
+      `✅ All derivatives added to memory:`,
+      addResults.map((r) => r.type)
+    );
 
     // Step 6: Verify memory has 4 assets total (1 original + 3 derivatives)
     console.log("🔍 Step 6: Verifying memory integrity...");
@@ -146,16 +160,15 @@ async function testLaneBImageProcessing(backend, capsuleId) {
     }
 
     console.log("✅ Lane B image processing workflow completed successfully");
-    return { 
-      success: true, 
-      data: { 
-        memoryId, 
-        originalBlobId, 
+    return {
+      success: true,
+      data: {
+        memoryId,
+        originalBlobId,
         derivativeBlobIds: blobIds,
-        assetCount: 4 
-      } 
+        assetCount: 4,
+      },
     };
-
   } catch (error) {
     console.error(`❌ Lane B test failed: ${error.message}`);
     return { success: false, error: `Lane B test failed: ${error.message}` };
@@ -182,11 +195,19 @@ async function testImageProcessingQuality(backend, capsuleId) {
 
     // Create memory
     const fileBuffer = await readFileAsBuffer(TEST_IMAGE_PATH);
-    const memoryResult = await createMemoryFromBlob(backend, capsuleId, "quality_test.jpg", fileBuffer.length, originalBlobId, originalUploadResult, {
-      assetType: "image",
-      mimeType: "image/jpeg",
-      memoryType: { Image: null },
-    });
+    const memoryResult = await createMemoryFromBlob(
+      backend,
+      capsuleId,
+      "quality_test.jpg",
+      fileBuffer.length,
+      originalBlobId,
+      originalUploadResult,
+      {
+        assetType: "image",
+        mimeType: "image/jpeg",
+        memoryType: { Image: null },
+      }
+    );
 
     if (!memoryResult.success) {
       return { success: false, error: `Memory creation failed: ${memoryResult.error}` };
@@ -204,7 +225,7 @@ async function testImageProcessingQuality(backend, capsuleId) {
     const qualityResults = [];
     for (const test of qualityTests) {
       console.log(`🖼️ Testing ${test.name} quality (${test.quality}%)...`);
-      
+
       const derivatives = await processImageDerivativesPure(fileBuffer, "image/jpeg");
 
       const derivativeResults = await processImageDerivativesToICP(backend, derivatives, capsuleId, {
@@ -226,17 +247,16 @@ async function testImageProcessingQuality(backend, capsuleId) {
       }
     }
 
-    const successfulQualityTests = qualityResults.filter(r => r.success);
+    const successfulQualityTests = qualityResults.filter((r) => r.success);
     console.log(`✅ Quality tests completed: ${successfulQualityTests.length}/${qualityTests.length} successful`);
 
-    return { 
-      success: true, 
-      data: { 
-        memoryId, 
-        qualityResults: successfulQualityTests 
-      } 
+    return {
+      success: true,
+      data: {
+        memoryId,
+        qualityResults: successfulQualityTests,
+      },
     };
-
   } catch (error) {
     console.error(`❌ Quality test failed: ${error.message}`);
     return { success: false, error: `Quality test failed: ${error.message}` };
@@ -263,11 +283,19 @@ async function testImageProcessingSizes(backend, capsuleId) {
 
     // Create memory
     const fileBuffer = await readFileAsBuffer(TEST_IMAGE_PATH);
-    const memoryResult = await createMemoryFromBlob(backend, capsuleId, "size_test.jpg", fileBuffer.length, originalBlobId, originalUploadResult, {
-      assetType: "image",
-      mimeType: "image/jpeg",
-      memoryType: { Image: null },
-    });
+    const memoryResult = await createMemoryFromBlob(
+      backend,
+      capsuleId,
+      "size_test.jpg",
+      fileBuffer.length,
+      originalBlobId,
+      originalUploadResult,
+      {
+        assetType: "image",
+        mimeType: "image/jpeg",
+        memoryType: { Image: null },
+      }
+    );
 
     if (!memoryResult.success) {
       return { success: false, error: `Memory creation failed: ${memoryResult.error}` };
@@ -286,7 +314,7 @@ async function testImageProcessingSizes(backend, capsuleId) {
     const sizeResults = [];
     for (const test of sizeTests) {
       console.log(`🖼️ Testing ${test.name} size (${test.width}x${test.height})...`);
-      
+
       const derivatives = await processImageDerivativesPure(fileBuffer, "image/jpeg");
 
       const derivativeResults = await processImageDerivativesToICP(backend, derivatives, capsuleId, {
@@ -309,17 +337,16 @@ async function testImageProcessingSizes(backend, capsuleId) {
       }
     }
 
-    const successfulSizeTests = sizeResults.filter(r => r.success);
+    const successfulSizeTests = sizeResults.filter((r) => r.success);
     console.log(`✅ Size tests completed: ${successfulSizeTests.length}/${sizeTests.length} successful`);
 
-    return { 
-      success: true, 
-      data: { 
-        memoryId, 
-        sizeResults: successfulSizeTests 
-      } 
+    return {
+      success: true,
+      data: {
+        memoryId,
+        sizeResults: successfulSizeTests,
+      },
     };
-
   } catch (error) {
     console.error(`❌ Size test failed: ${error.message}`);
     return { success: false, error: `Size test failed: ${error.message}` };

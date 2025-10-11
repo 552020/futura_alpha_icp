@@ -162,15 +162,18 @@ async function testAddInlineAsset(backend, capsuleId) {
     if ("Err" in memoryReadResult) {
       return { success: false, error: `Failed to read memory: ${JSON.stringify(memoryReadResult.Err)}` };
     }
-    
+
     const memory = memoryReadResult.Ok;
     const blobAssetCount = memory.blob_internal_assets.length;
     const inlineAssetCount = memory.inline_assets.length;
-    
+
     console.log(`📦 Blob assets: ${blobAssetCount}, Inline assets: ${inlineAssetCount}`);
-    
+
     if (blobAssetCount !== 1 || inlineAssetCount !== 1) {
-      return { success: false, error: `Asset count mismatch: expected 1 blob + 1 inline, got ${blobAssetCount} blob + ${inlineAssetCount} inline` };
+      return {
+        success: false,
+        error: `Asset count mismatch: expected 1 blob + 1 inline, got ${blobAssetCount} blob + ${inlineAssetCount} inline`,
+      };
     }
 
     console.log(`✅ Successfully added inline asset ${addResult.assetId} to memory ${memoryId}`);

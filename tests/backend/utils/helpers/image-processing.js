@@ -224,7 +224,9 @@ export async function processImageDerivativesToICP(backend, derivatives, capsule
       uploadPromises.push(
         uploadBufferAsBlob(backend, derivatives.placeholder.buffer, capsuleId, {
           createMemory: false,
-          idempotencyKey: options.idempotencyKey ? `${options.idempotencyKey}-placeholder` : `placeholder-${Date.now()}`,
+          idempotencyKey: options.idempotencyKey
+            ? `${options.idempotencyKey}-placeholder`
+            : `placeholder-${Date.now()}`,
         }).then((uploadResult) => {
           if (uploadResult.success) {
             results.placeholder = uploadResult.blobId;
@@ -241,15 +243,13 @@ export async function processImageDerivativesToICP(backend, derivatives, capsule
     console.log(`✅ All derivatives uploaded successfully:`, Object.keys(results));
     return {
       success: true,
-      data: { blobIds: results }
+      data: { blobIds: results },
     };
-
   } catch (error) {
     console.error(`❌ Derivative upload failed: ${error.message}`);
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
-

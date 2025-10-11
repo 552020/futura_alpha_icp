@@ -89,7 +89,7 @@ export async function uploadBufferAsBlob(backend, buffer, capsuleId, options = {
   const { createMemory = false, idempotencyKey = `upload-${Date.now()}` } = options;
 
   // Calculate chunk count
-  const CHUNK_SIZE = 1_800_000; // 1.8MB - matches backend CHUNK_SIZE
+  const CHUNK_SIZE = options.chunkSize || 65536; // 64KB chunks - matches working uploadFileAsBlob
   const chunkCount = Math.ceil(buffer.length / CHUNK_SIZE);
 
   // Begin upload session
@@ -113,7 +113,9 @@ export async function uploadBufferAsBlob(backend, buffer, capsuleId, options = {
     const end = Math.min(start + CHUNK_SIZE, buffer.length);
     const chunk = buffer.slice(start, end);
 
-    const putChunkResult = await backend.uploads_put_chunk(sessionId, i, new Uint8Array(chunk));
+    const uint8Chunk = new Uint8Array(Array.from(chunk));
+    console.log(`📤 Uploading chunk ${i}: ${uint8Chunk.length} bytes, first byte: ${uint8Chunk[0]}`);
+    const putChunkResult = await backend.uploads_put_chunk(BigInt(sessionId), i, uint8Chunk);
 
     if (typeof putChunkResult === "object" && putChunkResult !== null) {
       if ("Err" in putChunkResult) {
@@ -125,7 +127,7 @@ export async function uploadBufferAsBlob(backend, buffer, capsuleId, options = {
   // Finish upload
   const hash = computeSHA256Hash(buffer);
   const totalLen = BigInt(buffer.length);
-  const finishResult = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
+  const finishResult = await backend.uploads_finish(BigInt(sessionId), Array.from(hash), totalLen);
 
   let blobId, size, memoryId;
   if (typeof finishResult === "string") {
