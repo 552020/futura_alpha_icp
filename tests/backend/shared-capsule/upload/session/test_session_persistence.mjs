@@ -6,7 +6,7 @@
 
 import { Actor, HttpAgent } from "@dfinity/agent";
 import { loadDfxIdentity } from "./ic-identity.js";
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "./declarations/backend/backend.did.js";
 
 const CHUNK_SIZE = 1_800_000; // 1.8MB
 

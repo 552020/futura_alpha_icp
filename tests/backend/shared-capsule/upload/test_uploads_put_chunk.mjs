@@ -1,103 +1,38 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
-import { HttpAgent, Actor } from "@dfinity/agent";
-import fetch from "node-fetch";
-import { loadDfxIdentity, makeMainnetAgent } from "./ic-identity.js";
+import {
+  createTestActor,
+  parseTestArgs,
+  createTestActorOptions,
+  logNetworkConfig,
+  getOrCreateTestCapsuleForUpload,
+  createTestRunner,
+} from "../../utils/index.js";
 
-// Adjust to your local replica or mainnet gateway
-const HOST = process.env.IC_HOST || "http://127.0.0.1:4943";
-const CANISTER_ID = process.env.BACKEND_CANISTER_ID || process.env.BACKEND_ID || "backend";
-const IS_MAINNET = process.env.IC_HOST === "https://ic0.app" || process.env.IC_HOST === "https://icp0.io";
+// Define available tests
+const AVAILABLE_TESTS = [
+  "Uploads put chunk (invalid session)",
+  "Uploads put chunk (malformed data)",
+  "Uploads put chunk (large chunk)",
+  "Uploads put chunk (negative index)",
+  "Uploads put chunk (empty data)",
+  "Uploads put chunk (committed session)",
+  "Uploads put chunk (1.8MB - at limit)",
+  "Uploads put chunk (1.9MB - exceeds limit)",
+];
+
+// Parse command line arguments using shared utility
+const parsedArgs = parseTestArgs(
+  "test_uploads_put_chunk.mjs",
+  "Tests the uploads_put_chunk API endpoint for chunked uploads",
+  AVAILABLE_TESTS
+);
 
 // Import the backend interface
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "../../declarations/backend/backend.did.js";
 
 // Test configuration
 const TEST_NAME = "Uploads Put Chunk Tests";
-let totalTests = 0;
-let passedTests = 0;
-let failedTests = 0;
-
-// Helper function to create the appropriate agent based on network
-async function createAgent() {
-  try {
-    // Load DFX identity for both local and mainnet
-    console.log("Loading DFX identity...");
-    const identity = loadDfxIdentity();
-    console.log(`Using DFX identity: ${identity.getPrincipal().toString()}`);
-
-    if (IS_MAINNET) {
-      return makeMainnetAgent(identity);
-    } else {
-      // Use DFX identity for local replica too
-      const agent = new HttpAgent({ host: HOST, identity, fetch });
-      // Fetch root key for local replica
-      await agent.fetchRootKey();
-      return agent;
-    }
-  } catch (error) {
-    console.error("Failed to load DFX identity:", error.message);
-    throw error;
-  }
-}
-
-// Helper function to get or create a test capsule
-async function getTestCapsuleId(backend) {
-  console.log("🔍 Getting test capsule...");
-  let capsuleResult = await backend.capsules_read_basic([]);
-  let actualCapsuleId;
-
-  if ("Ok" in capsuleResult && capsuleResult.Ok) {
-    actualCapsuleId = capsuleResult.Ok.capsule_id;
-    console.log(`✅ Using existing capsule: ${actualCapsuleId}`);
-  } else {
-    console.log("🆕 No capsule found, creating one...");
-    const createResult = await backend.capsules_create([]);
-    if (!("Ok" in createResult)) {
-      console.error("❌ Failed to create capsule:", createResult);
-      throw new Error("Failed to create capsule: " + JSON.stringify(createResult));
-    }
-    actualCapsuleId = createResult.Ok.id;
-    console.log(`✅ Created new capsule: ${actualCapsuleId}`);
-  }
-
-  return actualCapsuleId;
-}
-
-// Helper function to create asset metadata for Document type
-function createDocumentAssetMetadata(name, description, fileSize = 0) {
-  return {
-    Document: {
-      document_type: [],
-      base: {
-        url: [],
-        height: [],
-        updated_at: BigInt(Date.now() * 1000000), // Convert to nanoseconds
-        asset_type: { Original: null },
-        sha256: [],
-        name: name,
-        storage_key: [],
-        tags: ["test", "put-chunk"],
-        processing_error: [],
-        mime_type: "text/plain",
-        description: [description],
-        created_at: BigInt(Date.now() * 1000000),
-        deleted_at: [],
-        bytes: BigInt(fileSize),
-        asset_location: [],
-        width: [],
-        processing_status: [],
-        bucket: [],
-      },
-      language: [],
-      page_count: [],
-      word_count: [],
-    },
-  };
-}
 
 // Helper function to create test chunk data
 function createTestChunk(chunkIndex, chunkSize) {
@@ -110,23 +45,6 @@ function createTestChunk(chunkIndex, chunkSize) {
 
   // Convert to Uint8Array for binary data
   return new TextEncoder().encode(chunkData);
-}
-
-// Helper function to begin an upload session
-async function beginUploadSession(backend, capsuleId, chunkCount, idempotencyKey) {
-  const assetMetadata = createDocumentAssetMetadata("test-upload", "Test upload session");
-
-  console.log(`🚀 Starting upload session with ${chunkCount} chunks...`);
-  const begin = await backend.uploads_begin(capsuleId, assetMetadata, chunkCount, idempotencyKey);
-
-  if (!("Ok" in begin)) {
-    console.error("❌ uploads_begin failed:", begin);
-    throw new Error("uploads_begin failed: " + JSON.stringify(begin));
-  }
-
-  const sessionId = begin.Ok;
-  console.log(`✅ Upload session started: ${sessionId}`);
-  return sessionId;
 }
 
 // Test functions
@@ -265,42 +183,59 @@ async function testUploadsPutChunkCommittedSession(backend) {
   }
 }
 
-// Helper function to run a test
-async function runTest(testName, testFunction, ...args) {
-  console.log(`\n[INFO] Running: ${testName}`);
-  totalTests++;
+// Test: Uploads put chunk (1.8MB - at limit)
+async function testUploadsPutChunkAtLimit(backend, capsuleId) {
+  console.log("🧪 Testing: Uploads put chunk (1.8MB - at limit)");
 
   try {
-    const result = await testFunction(...args);
-    if (result.success) {
-      console.log(`[PASS] ${testName}`);
-      passedTests++;
+    // Create a valid session first with unique idempotency key
+    const session = await backend.uploads_begin(capsuleId, 1, `test-limit-${Date.now()}`);
+    if (!("Ok" in session)) {
+      return { success: false, error: `Failed to create session: ${JSON.stringify(session.Err)}` };
+    }
+
+    // Create a chunk exactly at the 1.8MB limit
+    const chunkAtLimit = new Uint8Array(1_800_000); // 1.8MB - exactly at limit
+    const result = await backend.uploads_put_chunk(session.Ok, 0, chunkAtLimit);
+
+    if ("Ok" in result) {
+      console.log(`✅ Uploads put chunk accepted 1.8MB chunk (at limit): ${JSON.stringify(result.Ok)}`);
+      return { success: true, result };
     } else {
-      console.log(`[FAIL] ${testName}`);
-      failedTests++;
+      console.log(`❌ Uploads put chunk rejected 1.8MB chunk: ${JSON.stringify(result.Err)}`);
+      return { success: false, result };
     }
   } catch (error) {
-    console.log(`[FAIL] ${testName} - Error: ${error.message}`);
-    failedTests++;
+    console.error(`❌ Uploads put chunk 1.8MB test failed: ${error.message}`);
+    return { success: false, error: error.message };
   }
 }
 
-// Helper function to print test summary
-function printTestSummary() {
-  console.log("\n=========================================");
-  console.log(`Test Summary for ${TEST_NAME}`);
-  console.log("=========================================");
-  console.log(`Total tests: ${totalTests}`);
-  console.log(`Passed: ${passedTests}`);
-  console.log(`Failed: ${failedTests}`);
-  console.log("");
+// Test: Uploads put chunk (1.9MB - exceeds limit)
+async function testUploadsPutChunkExceedsLimit(backend, capsuleId) {
+  console.log("🧪 Testing: Uploads put chunk (1.9MB - exceeds limit)");
 
-  if (failedTests === 0) {
-    console.log(`✅ All ${TEST_NAME} tests passed!`);
-    return true;
-  } else {
-    console.log(`❌ ${failedTests} ${TEST_NAME} test(s) failed`);
-    return false;
+  try {
+    // Create a valid session first with unique idempotency key
+    const session = await backend.uploads_begin(capsuleId, 1, `test-exceed-${Date.now()}`);
+    if (!("Ok" in session)) {
+      return { success: false, error: `Failed to create session: ${JSON.stringify(session.Err)}` };
+    }
+
+    // Create a chunk that exceeds the 1.8MB limit
+    const chunkExceedsLimit = new Uint8Array(1_900_000); // 1.9MB - exceeds limit
+    const result = await backend.uploads_put_chunk(session.Ok, 0, chunkExceedsLimit);
+
+    if ("Err" in result) {
+      console.log(`✅ Uploads put chunk correctly rejected 1.9MB chunk (exceeds limit): ${JSON.stringify(result.Err)}`);
+      return { success: true, result };
+    } else {
+      console.log(`❌ Uploads put chunk should have rejected 1.9MB chunk: ${JSON.stringify(result)}`);
+      return { success: false, result };
+    }
+  } catch (error) {
+    console.error(`❌ Uploads put chunk 1.9MB test failed: ${error.message}`);
+    return { success: false, error: error.message };
   }
 }
 
@@ -312,31 +247,58 @@ async function main() {
   console.log("");
 
   try {
-    // Create the appropriate agent for the network
-    const agent = await createAgent();
+    // Create test actor using shared utilities
+    console.log("Loading DFX identity...");
+    const options = createTestActorOptions(parsedArgs);
+    const { actor: backend, agent, canisterId } = await createTestActor(options);
 
-    console.log(`Using ${IS_MAINNET ? "MAINNET" : "LOCAL"} mode`);
-    console.log(`Host: ${HOST}`);
-    console.log(`Canister ID: ${CANISTER_ID}`);
+    // Log network configuration using shared utility
+    logNetworkConfig(parsedArgs, canisterId);
 
-    const backend = Actor.createActor(idlFactory, {
-      agent,
-      canisterId: CANISTER_ID,
-    });
+    // Get or create a test capsule using shared utility
+    const capsuleId = await getOrCreateTestCapsuleForUpload(backend);
 
-    // Get or create a test capsule
-    const capsuleId = await getTestCapsuleId(backend);
+    // Create test runner using shared utility
+    const runner = createTestRunner(TEST_NAME);
 
-    // Run all tests in order
-    await runTest("Uploads put chunk (invalid session)", testUploadsPutChunkInvalidSession, backend);
-    await runTest("Uploads put chunk (malformed data)", testUploadsPutChunkMalformedData, backend);
-    await runTest("Uploads put chunk (large chunk)", testUploadsPutChunkLargeChunk, backend);
-    await runTest("Uploads put chunk (negative index)", testUploadsPutChunkNegativeIndex, backend);
-    await runTest("Uploads put chunk (empty data)", testUploadsPutChunkEmptyData, backend);
-    await runTest("Uploads put chunk (committed session)", testUploadsPutChunkCommittedSession, backend);
+    // Define all tests with their functions
+    const allTests = [
+      { name: "Uploads put chunk (invalid session)", fn: testUploadsPutChunkInvalidSession, args: [backend] },
+      { name: "Uploads put chunk (malformed data)", fn: testUploadsPutChunkMalformedData, args: [backend] },
+      { name: "Uploads put chunk (large chunk)", fn: testUploadsPutChunkLargeChunk, args: [backend] },
+      { name: "Uploads put chunk (negative index)", fn: testUploadsPutChunkNegativeIndex, args: [backend] },
+      { name: "Uploads put chunk (empty data)", fn: testUploadsPutChunkEmptyData, args: [backend] },
+      { name: "Uploads put chunk (committed session)", fn: testUploadsPutChunkCommittedSession, args: [backend] },
+      { name: "Uploads put chunk (1.8MB - at limit)", fn: testUploadsPutChunkAtLimit, args: [backend, capsuleId] },
+      {
+        name: "Uploads put chunk (1.9MB - exceeds limit)",
+        fn: testUploadsPutChunkExceedsLimit,
+        args: [backend, capsuleId],
+      },
+    ];
 
-    // Print test summary
-    const allPassed = printTestSummary();
+    // Run tests based on selection
+    if (parsedArgs.selectedTest) {
+      // Run specific test
+      const selectedTest = allTests.find((test) => test.name === parsedArgs.selectedTest);
+      if (selectedTest) {
+        console.log(`🎯 Running selected test: ${parsedArgs.selectedTest}`);
+        await runner.runTest(selectedTest.name, selectedTest.fn, ...selectedTest.args);
+      } else {
+        console.error(`❌ Test not found: ${parsedArgs.selectedTest}`);
+        console.log("Available tests:");
+        AVAILABLE_TESTS.forEach((test) => console.log(`  - ${test}`));
+        process.exit(1);
+      }
+    } else {
+      // Run all tests
+      for (const test of allTests) {
+        await runner.runTest(test.name, test.fn, ...test.args);
+      }
+    }
+
+    // Print test summary using shared utility
+    const allPassed = runner.printTestSummary();
 
     if (allPassed) {
       process.exit(0);

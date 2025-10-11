@@ -3,245 +3,192 @@
 /**
  * Lane A: Original Upload Test
  *
- * Tests only the original file upload functionality (Lane A)
- * without image processing or memory creation.
+ * Tests the complete Lane A workflow:
+ * 1. Upload image file to ICP as a blob
+ * 2. Create memory from that blob
+ * 3. Verify both blob and memory were created correctly
+ *
+ * This is a focused test that validates the core upload + memory creation workflow
+ * using our shared utilities and a small test file for fast execution.
  */
 
-import { Actor, HttpAgent } from "@dfinity/agent";
-import { loadDfxIdentity, makeMainnetAgent } from "./ic-identity.js";
-import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
 import {
-  validateFileSize,
-  validateImageType,
-  calculateFileHash,
-  generateFileId,
-  calculateDerivativeDimensions,
-  calculateDerivativeSizes,
-  createFileChunks,
-  createProgressCallback,
-  createAssetMetadata,
-  createBlobReference,
-  handleUploadError,
-  validateUploadResponse,
-  formatFileSize,
-  formatUploadSpeed,
-  formatDuration,
-} from "./helpers.mjs";
+  parseTestArgs,
+  createTestActorOptions,
+  createTestActor,
+  logNetworkConfig,
+  getOrCreateTestCapsuleForUpload,
+  createTestRunner,
+  uploadFileAsBlob,
+  createMemoryFromBlob,
+  readFileAsBuffer,
+  getFileSize,
+  computeSHA256Hash,
+  verifyBlobIntegrity,
+  verifyMemoryIntegrity,
+} from "../../utils/index.js";
+import { formatFileSize } from "../../utils/helpers/logging.js";
+import path from "node:path";
 
 // Test configuration
 const TEST_NAME = "Lane A: Original Upload Test";
-const TEST_IMAGE_PATH = "./assets/input/avocado_big_21mb.jpg";
-const CHUNK_SIZE = 1_800_000; // 1.8MB - matches backend CHUNK_SIZE in types.rs
+const TEST_IMAGE_PATH = "./assets/input/orange_tiny.jpg"; // 44KB file for fast testing
 
-// Global backend instance
-let backend;
+// Test function for Lane A: Original Upload + Memory Creation
+async function testLaneAOriginalUpload(backend, capsuleId) {
+  console.log("🧪 Testing Lane A: Original Upload + Memory Creation");
 
-// Helper functions
-function echoInfo(message) {
-  console.log(`ℹ️  ${message}`);
-}
-
-function echoPass(message) {
-  console.log(`✅ ${message}`);
-}
-
-function echoFail(message) {
-  console.log(`❌ ${message}`);
-}
-
-// Lane A: Upload original file to ICP (matches frontend uploadOriginalToS3)
-async function uploadOriginalToICP(backend, fileBuffer, fileName) {
-  const startTime = Date.now();
-
-  echoInfo(`📤 Uploading: ${fileName} (${formatFileSize(fileBuffer.length)})`);
-
-  // Validate file size using helper
-  validateFileSize(fileBuffer.length);
-
-  // Create a new capsule for this test
-  const capsuleResult = await backend.capsules_create([]);
-  if ("Err" in capsuleResult) {
-    throw new Error(`Capsule creation failed: ${JSON.stringify(capsuleResult.Err)}`);
-  }
-  const capsuleId = capsuleResult.Ok.id;
-
-  // Calculate chunk count and create chunks using helpers
-  const chunkCount = Math.ceil(fileBuffer.length / CHUNK_SIZE);
-  const chunks = createFileChunks(fileBuffer, CHUNK_SIZE);
-  const idempotencyKey = generateFileId("upload");
-
-  // Begin upload session (no assetMetadata needed anymore)
-  const beginResult = await backend.uploads_begin(capsuleId, chunkCount, idempotencyKey);
-
-  // Handle different response formats
-  let sessionId;
-  if (typeof beginResult === "number" || typeof beginResult === "string") {
-    // Direct response (number or string) - this is the current backend behavior
-    sessionId = beginResult;
-    echoInfo(`✅ Upload session started: ${sessionId}`);
-  } else if (beginResult && typeof beginResult === "object") {
-    // Object response with Ok/Err structure
-    try {
-      validateUploadResponse(beginResult, ["Ok"]);
-      sessionId = beginResult.Ok;
-      echoInfo(`✅ Upload session started: ${sessionId}`);
-    } catch (error) {
-      throw handleUploadError(error, "Upload begin");
+  try {
+    // Check if test file exists
+    if (!(await import("node:fs").then((fs) => fs.existsSync(TEST_IMAGE_PATH)))) {
+      return { success: false, error: `Test file not found: ${TEST_IMAGE_PATH}` };
     }
-  } else {
-    throw new Error(`Unexpected response format: ${typeof beginResult} - ${JSON.stringify(beginResult)}`);
-  }
 
-  // Upload file in chunks with progress tracking
-  echoInfo(`📦 Uploading ${chunks.length} chunks (${formatFileSize(CHUNK_SIZE)} each)...`);
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
+    const fileName = path.basename(TEST_IMAGE_PATH);
+    const fileSize = fileBuffer.length;
+    const fileHash = computeSHA256Hash(fileBuffer);
 
-  const progressCallback = createProgressCallback(chunks.length, (progress, completed, total) => {
-    if (completed % 5 === 0 || completed === total) {
-      echoInfo(`  📈 ${progress}% (${completed}/${total} chunks)`);
+    console.log(`📁 Test file: ${fileName} (${formatFileSize(fileSize)})`);
+
+    // Step 1: Upload image file as blob
+    console.log("📤 Step 1: Uploading image file as blob...");
+    const uploadResult = await uploadFileAsBlob(backend, TEST_IMAGE_PATH, capsuleId, {
+      createMemory: false, // Just blob first, no memory
+      idempotencyKey: `lane-a-${Date.now()}`,
+    });
+
+    if (!uploadResult.success) {
+      return { success: false, error: `Blob upload failed: ${uploadResult.error}` };
     }
-  });
 
-  for (let i = 0; i < chunks.length; i++) {
-    const putChunkResult = await backend.uploads_put_chunk(sessionId, i, chunks[i]);
+    console.log(`✅ Blob uploaded successfully - Blob ID: ${uploadResult.blobId}`);
 
-    // Handle different response formats for put_chunk
-    if (typeof putChunkResult === "object" && putChunkResult !== null) {
-      try {
-        validateUploadResponse(putChunkResult);
-      } catch (error) {
-        throw handleUploadError(error, `Put chunk ${i}`);
+    // Step 2: Verify blob integrity
+    console.log("🔍 Step 2: Verifying blob integrity...");
+    const blobVerification = await verifyBlobIntegrity(backend, uploadResult.blobId, fileSize, fileHash);
+
+    if (!blobVerification) {
+      return { success: false, error: "Blob integrity verification failed" };
+    }
+
+    console.log("✅ Blob integrity verified");
+
+    // Step 3: Create memory from the blob
+    console.log("📝 Step 3: Creating memory from blob...");
+    const memoryResult = await createMemoryFromBlob(
+      backend,
+      capsuleId,
+      fileName,
+      fileSize,
+      uploadResult.blobId,
+      uploadResult, // upload result object
+      {
+        assetType: "image",
+        mimeType: "image/jpeg",
+        memoryType: { Image: null },
+      }
+    );
+
+    if (!memoryResult.success) {
+      return { success: false, error: `Memory creation failed: ${memoryResult.error}` };
+    }
+
+    console.log(`✅ Memory created successfully - Memory ID: ${memoryResult.memoryId}`);
+
+    // Step 4: Verify memory integrity
+    console.log("🔍 Step 4: Verifying memory integrity...");
+    const memoryVerification = await verifyMemoryIntegrity(
+      backend,
+      memoryResult.memoryId,
+      1 // expected 1 blob asset
+    );
+
+    if (!memoryVerification) {
+      return { success: false, error: "Memory integrity verification failed" };
+    }
+
+    console.log("✅ Memory integrity verified");
+
+    // Step 5: Verify complete workflow
+    console.log("🔍 Step 5: Verifying complete workflow...");
+
+    // Check that memory contains the correct blob
+    const memoryRead = await backend.memories_read(memoryResult.memoryId);
+    if ("Err" in memoryRead) {
+      return { success: false, error: `Failed to read memory: ${JSON.stringify(memoryRead.Err)}` };
+    }
+
+    const memory = memoryRead.Ok;
+
+    // Check if memory has blob_internal_assets (the correct property name)
+    if (memory.blob_internal_assets && memory.blob_internal_assets.length !== 1) {
+      return { success: false, error: `Expected 1 internal blob asset, got ${memory.blob_internal_assets.length}` };
+    }
+
+    if (memory.blob_internal_assets && memory.blob_internal_assets.length > 0) {
+      const blobAsset = memory.blob_internal_assets[0];
+      if (blobAsset.blob_ref.locator !== uploadResult.blobId) {
+        return { success: false, error: "Memory contains wrong blob ID" };
       }
     } else {
-      // Direct response (success) - no validation needed
-      echoInfo(`✅ Chunk ${i} uploaded successfully`);
+      return { success: false, error: "Memory has no internal blob assets" };
     }
 
-    progressCallback(i);
+    console.log("✅ Complete workflow verified");
+
+    return {
+      success: true,
+      blobId: uploadResult.blobId,
+      memoryId: memoryResult.memoryId,
+      fileSize: fileSize,
+      fileName: fileName,
+    };
+  } catch (error) {
+    console.log(`❌ Lane A test failed: ${error.message}`);
+    return { success: false, error: error.message };
   }
-
-  // Calculate hash and total length for finish using helpers
-  const hash = calculateFileHash(fileBuffer);
-  const totalLen = BigInt(fileBuffer.length);
-
-  // Finish upload
-  const finishResult = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
-
-  // Handle different response formats for finish
-  let blobId;
-  if (typeof finishResult === "string") {
-    // Direct response - blob ID only (new format after refactoring)
-    blobId = finishResult;
-    echoInfo(`✅ Upload finished successfully: blob_id=${blobId}`);
-  } else if (finishResult && typeof finishResult === "object") {
-    // Object response with Ok/Err structure
-    try {
-      validateUploadResponse(finishResult, ["Ok"]);
-      const result = finishResult.Ok;
-      if (result && typeof result === "object" && "blob_id" in result) {
-        // New format: UploadFinishResult with blob_id only
-        blobId = result.blob_id;
-        echoInfo(`✅ Upload finished successfully: blob_id=${blobId}`);
-      } else {
-        // Legacy format: direct string
-        blobId = result;
-        echoInfo(`✅ Upload finished successfully: blob_id=${blobId}`);
-      }
-    } catch (error) {
-      throw handleUploadError(error, "Upload finish");
-    }
-  } else {
-    throw new Error(`Unexpected finish response format: ${typeof finishResult} - ${JSON.stringify(finishResult)}`);
-  }
-
-  const duration = Date.now() - startTime;
-  const uploadSpeed = formatUploadSpeed(fileBuffer.length, duration);
-
-  echoInfo(
-    `✅ Upload completed: ${fileName} (${formatFileSize(fileBuffer.length)}) in ${formatDuration(
-      duration
-    )} (${uploadSpeed})`
-  );
-
-  return blobId;
-}
-
-// Test function
-async function testLaneAOriginalUpload() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const fileName = path.basename(TEST_IMAGE_PATH);
-
-  const blobId = await uploadOriginalToICP(backend, fileBuffer, fileName);
-
-  // Verify blob was created
-  const blobMeta = await backend.blob_get_meta(blobId);
-  if ("Err" in blobMeta) {
-    throw new Error(`Failed to get blob meta: ${JSON.stringify(blobMeta.Err)}`);
-  }
-
-  return blobMeta.Ok.size === BigInt(fileBuffer.length);
 }
 
 // Main test runner
 async function main() {
-  echoInfo(`Starting ${TEST_NAME}`);
+  console.log(`Starting ${TEST_NAME}`);
 
   // Parse command line arguments
-  const args = process.argv.slice(2);
-  const backendCanisterId = args[0];
-  const network = args[1] || "local"; // Default to local network
+  const parsedArgs = parseTestArgs(
+    "test_lane_a_original_upload.mjs",
+    "Tests Lane A: Original upload + memory creation workflow"
+  );
 
-  if (!backendCanisterId) {
-    echoFail("Usage: node test_lane_a_original_upload.mjs <CANISTER_ID> [mainnet|local]");
-    echoFail("Example: node test_lane_a_original_upload.mjs uxrrr-q7777-77774-qaaaq-cai local");
-    process.exit(1);
-  }
-
-  // Setup agent and backend based on network
-  const identity = loadDfxIdentity();
-  let agent;
-
-  if (network === "mainnet") {
-    echoInfo(`🌐 Connecting to mainnet (ic0.app)`);
-    agent = makeMainnetAgent(identity);
-  } else {
-    echoInfo(`🏠 Connecting to local network (127.0.0.1:4943)`);
-    agent = new HttpAgent({
-      host: "http://127.0.0.1:4943",
-      identity,
-      fetch: (await import("node-fetch")).default,
-    });
-  }
-
-  await agent.fetchRootKey();
-
-  backend = Actor.createActor(idlFactory, {
-    agent,
-    canisterId: backendCanisterId,
-  });
-
-  // Run test
   try {
-    echoInfo(`Running: ${TEST_NAME}`);
-    const result = await testLaneAOriginalUpload();
-    if (result) {
-      echoPass(TEST_NAME);
-    } else {
-      echoFail(TEST_NAME);
-      process.exit(1);
-    }
+    // Create test actor
+    const options = createTestActorOptions(parsedArgs);
+    const { actor: backend, canisterId } = await createTestActor(options);
+
+    // Log network configuration
+    logNetworkConfig(parsedArgs, canisterId);
+
+    // Get or create test capsule
+    const capsuleId = await getOrCreateTestCapsuleForUpload(backend);
+    console.log(`Using capsule: ${capsuleId}`);
+
+    // Create test runner
+    const runner = createTestRunner(TEST_NAME);
+
+    // Run the test
+    await runner.runTest("Lane A: Original Upload + Memory Creation", testLaneAOriginalUpload, backend, capsuleId);
+
+    // Print summary and exit
+    const allPassed = runner.printTestSummary();
+    process.exit(allPassed ? 0 : 1);
   } catch (error) {
-    echoFail(`${TEST_NAME}: ${error.message}`);
+    console.error(`❌ Test execution failed: ${error.message}`);
     process.exit(1);
   }
-
-  echoPass("Test completed successfully! ✅");
 }
 
 // Run the test
 main().catch((error) => {
-  echoFail(`Test execution failed: ${error.message}`);
+  console.error(`❌ Test execution failed: ${error.message}`);
   process.exit(1);
 });

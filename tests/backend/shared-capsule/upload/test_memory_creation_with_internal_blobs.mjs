@@ -1,240 +1,184 @@
 #!/usr/bin/env node
 
-import { Actor, HttpAgent } from "@dfinity/agent";
-import { readFileSync } from "fs";
-import { loadDfxIdentity } from "./ic-identity.js";
+/**
+ * Memory Creation with Internal Blobs Test
+ *
+ * This test performs a complete workflow:
+ * 1. Upload a blob using chunked upload
+ * 2. Create a memory with that blob as an internal asset
+ * 3. Verify the memory was created correctly
+ */
 
-const BACKEND_CANISTER_ID = process.argv[2];
-const FILE_PATH = process.argv[3];
+import path from "node:path";
+import {
+  createTestActor,
+  parseTestArgs,
+  createTestActorOptions,
+  logNetworkConfig,
+  getOrCreateTestCapsuleForUpload,
+  createTestRunner,
+  uploadFileAsBlob,
+  createMemoryFromBlob,
+  getFileSize,
+  fileExists,
+  verifyCompleteUploadWorkflow,
+} from "../../utils/index.js";
 
-if (!BACKEND_CANISTER_ID || !FILE_PATH) {
-  console.error("💥 Usage: node test_memory_creation_with_internal_blobs.mjs <BACKEND_CANISTER_ID> <FILE_PATH>");
-  process.exit(1);
+// Import the backend interface
+import { idlFactory } from "../../declarations/backend/backend.did.js";
+
+// Test configuration
+const TEST_NAME = "Memory Creation with Internal Blobs Test";
+
+// Parse command line arguments using shared utility
+const parsedArgs = parseTestArgs(
+  "test_memory_creation_with_internal_blobs.mjs",
+  "Tests memory creation with internal blob assets"
+);
+
+// Override canister ID to use the one from command line
+const args = process.argv.slice(2);
+const canisterIdArg = args.find((arg) => !arg.startsWith("--") && !arg.includes("/"));
+if (canisterIdArg) {
+  parsedArgs.canisterId = canisterIdArg;
 }
 
-console.log("ℹ️  Starting Memory Creation with Internal Blobs Test");
-console.log(`ℹ️  Testing memory creation with file: ${FILE_PATH}`);
+// Main test function
+async function testMemoryCreationWithInternalBlobs(backend, filePath, capsuleId) {
+  const fileName = path.basename(filePath);
+  console.log(`🧪 Testing memory creation with internal blobs`);
+  console.log(`📁 File: ${fileName}`);
+  console.log(`📁 Path: ${filePath}`);
 
-try {
-  // Load identity and create agent
-  const identity = loadDfxIdentity();
-  const agent = new HttpAgent({
-    host: "http://127.0.0.1:4943",
-    identity,
-    fetch: (await import("node-fetch")).default,
-  });
-  await agent.fetchRootKey();
-
-  const backend = Actor.createActor(
-    (await import("../../../../src/nextjs/src/ic/declarations/backend/backend.did.js")).idlFactory,
-    {
-      agent,
-      canisterId: BACKEND_CANISTER_ID,
+  try {
+    // Check if file exists
+    if (!fileExists(filePath)) {
+      return { success: false, error: `File not found: ${filePath}` };
     }
-  );
 
-  // Read file
-  const fileBuffer = readFileSync(FILE_PATH);
-  const fileSize = fileBuffer.length;
-  console.log(`ℹ️  File: ${FILE_PATH.split("/").pop()} (${fileSize} bytes)`);
+    // Get file size
+    const fileSize = getFileSize(filePath);
+    console.log(`📏 Size: ${fileSize} bytes`);
 
-  // Create new capsule for test
-  console.log(`ℹ️  Creating new capsule for test...`);
+    // Step 1: Upload blob using helper function
+    console.log("🚀 Step 1: Uploading blob...");
+    const uploadResult = await uploadFileAsBlob(backend, filePath, capsuleId, {
+      createMemory: false,
+      idempotencyKey: `memory-test-${Date.now()}`,
+    });
 
-  const capsuleResult = await backend.capsules_create([]); // No subject
-  if (capsuleResult.Err) {
-    throw new Error(`Capsule creation failed: ${JSON.stringify(capsuleResult.Err)}`);
-  }
-  const capsuleId = capsuleResult.Ok.id;
-  console.log(`ℹ️  Created new capsule: ${capsuleId}`);
-
-  // Step 1: Upload blob using pure blob upload
-  console.log("ℹ️  Step 1: Uploading blob...");
-
-  const chunkSize = 1_800_000; // 1.8MB backend chunk size
-  const chunkCount = Math.ceil(fileSize / chunkSize);
-  const idempotencyKey = `memory-test-${Date.now()}`;
-
-  console.log(`ℹ️  Chunk count: ${chunkCount}, Idempotency key: ${idempotencyKey}`);
-
-  // Begin upload
-  console.log("ℹ️  Calling uploads_begin...");
-  const beginResult = await backend.uploads_begin(capsuleId, chunkCount, idempotencyKey);
-  if (beginResult.Err) {
-    throw new Error(`Upload begin failed: ${JSON.stringify(beginResult.Err)}`);
-  }
-  const sessionId = beginResult.Ok;
-  console.log(`ℹ️  Upload session started: ${sessionId}`);
-
-  // Upload chunks
-  console.log("ℹ️  Uploading chunks...");
-  for (let i = 0; i < chunkCount; i++) {
-    const start = i * chunkSize;
-    const end = Math.min(start + chunkSize, fileSize);
-    const chunk = fileBuffer.slice(start, end);
-
-    console.log(`ℹ️  Uploading chunk ${i + 1}/${chunkCount} (${chunk.length} bytes)`);
-
-    const chunkResult = await backend.uploads_put_chunk(sessionId, i, Array.from(chunk));
-    if (chunkResult.Err) {
-      throw new Error(`Chunk upload failed: ${JSON.stringify(chunkResult.Err)}`);
+    if (!uploadResult.success) {
+      return { success: false, error: uploadResult.error };
     }
-  }
-  console.log("ℹ️  All chunks uploaded successfully");
 
-  // Compute expected hash
-  const crypto = await import("crypto");
-  const expectedHash = crypto.createHash("sha256").update(fileBuffer).digest();
-  console.log(`ℹ️  Expected hash: ${expectedHash.toString("hex")}`);
+    const blobId = uploadResult.blobId;
+    console.log(`✅ Blob upload successful!`);
+    console.log(`📦 Blob ID: ${blobId}`);
 
-  // Finish upload
-  console.log("ℹ️  Calling uploads_finish...");
-  const finishResult = await backend.uploads_finish(sessionId, expectedHash, fileSize);
-  if (finishResult.Err) {
-    throw new Error(`Upload finish failed: ${JSON.stringify(finishResult.Err)}`);
-  }
+    // Step 2: Create memory with internal blob using helper function
+    console.log("🧠 Step 2: Creating memory with internal blob...");
+    const memoryResult = await createMemoryFromBlob(backend, capsuleId, fileName, fileSize, blobId, uploadResult, {
+      assetType: "image",
+      mimeType: "image/jpeg",
+      memoryType: { Image: null },
+      idempotencyKey: `memory-${Date.now()}`,
+    });
 
-  const result = finishResult.Ok;
-  const blobId = result.blob_id;
-  console.log(`ℹ️  Upload finished successfully!`);
-  console.log(`ℹ️  Blob ID: ${blobId}`);
+    if (!memoryResult.success) {
+      return { success: false, error: memoryResult.error };
+    }
 
-  // Step 2: Create memory with internal blob
-  console.log("ℹ️  Step 2: Creating memory with internal blob...");
+    const memoryId = memoryResult.memoryId;
+    console.log(`✅ Memory created successfully!`);
+    console.log(`🧠 Memory ID: ${memoryId}`);
 
-  const memoryMetadata = {
-    memory_type: { Image: null },
-    title: ["Test Memory with Internal Blob"],
-    description: ["A test memory created with internal blob storage"],
-    content_type: "image/jpeg",
-    created_at: BigInt(Date.now() * 1000000), // nanoseconds
-    updated_at: BigInt(Date.now() * 1000000),
-    uploaded_at: BigInt(Date.now() * 1000000),
-    date_of_memory: [],
-    file_created_at: [],
-    parent_folder_id: [],
-    tags: ["test", "internal-blob"],
-    deleted_at: [],
-    people_in_memory: [],
-    location: [],
-    memory_notes: [],
-    created_by: [],
-    database_storage_edges: [],
-  };
+    // Step 3: Verify complete workflow using verification helpers
+    console.log("🔍 Step 3: Verifying complete workflow...");
+    const workflowVerified = await verifyCompleteUploadWorkflow(backend, capsuleId, filePath, uploadResult, memoryId);
 
-  const internalBlobAsset = {
-    blob_id: blobId,
-    metadata: {
-      Image: {
-        base: {
-          name: "Test Internal Blob Asset",
-          description: ["Asset stored as internal blob"],
-          tags: ["test", "internal"],
-          asset_type: { Original: null },
-          bytes: BigInt(fileSize),
-          mime_type: "image/jpeg",
-          sha256: [],
-          width: [],
-          height: [],
-          url: [],
-          storage_key: [],
-          bucket: [],
-          asset_location: [],
-          processing_status: [],
-          processing_error: [],
-          created_at: BigInt(Date.now() * 1000000),
-          updated_at: BigInt(Date.now() * 1000000),
-          deleted_at: [],
-        },
-        color_space: [],
-        exif_data: [],
-        compression_ratio: [],
-        dpi: [],
-        orientation: [],
+    if (!workflowVerified) {
+      return { success: false, error: "Complete workflow verification failed" };
+    }
+
+    console.log("🎉 Memory creation with internal blobs test PASSED!");
+    console.log("✅ Blob upload works correctly");
+    console.log("✅ Memory creation with internal blob works");
+    console.log("✅ Memory can be read and verified");
+    console.log("✅ Blob data integrity verified");
+
+    return {
+      success: true,
+      result: {
+        memoryId,
+        blobId,
+        fileSize,
+        fileName,
       },
-    },
-  };
+    };
+  } catch (error) {
+    console.error(`❌ Memory creation test failed: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
 
-  const memoryIdempotencyKey = `memory-${Date.now()}`;
+// Main test execution
+async function main() {
+  console.log("=========================================");
+  console.log(`Starting ${TEST_NAME}`);
+  console.log("=========================================");
+  console.log("");
 
-  const memoryResult = await backend.memories_create_with_internal_blobs(
-    capsuleId,
-    memoryMetadata,
-    [internalBlobAsset],
-    memoryIdempotencyKey
-  );
+  // Get file path from command line arguments (after flags)
+  const args = process.argv.slice(2);
+  const filePath = args.find((arg) => !arg.startsWith("--") && arg.includes("/"));
 
-  if (memoryResult.Err) {
-    throw new Error(`Memory creation failed: ${JSON.stringify(memoryResult.Err)}`);
+  if (!filePath) {
+    console.error("Usage: node test_memory_creation_with_internal_blobs.mjs [OPTIONS] <CANISTER_ID> <FILE_PATH>");
+    console.error(
+      "Example: node test_memory_creation_with_internal_blobs.mjs --local uxrrr-q7777-77774-qaaaq-cai assets/input/avocado.jpg"
+    );
+    process.exit(1);
   }
 
-  const memoryId = memoryResult.Ok;
-  console.log(`ℹ️  Memory created successfully!`);
-  console.log(`ℹ️  Memory ID: ${memoryId}`);
+  try {
+    // Create test actor using shared utilities
+    console.log("Loading DFX identity...");
+    const options = createTestActorOptions(parsedArgs);
+    const { actor: backend, agent, canisterId } = await createTestActor(options);
 
-  // Step 3: Verify memory was created correctly
-  console.log("ℹ️  Step 3: Verifying memory...");
+    // Log network configuration using shared utility
+    logNetworkConfig(parsedArgs, canisterId);
 
-  // List memories
-  const listResult = await backend.memories_list(capsuleId, [], [10]);
-  if (listResult.Err) {
-    throw new Error(`Memory list failed: ${JSON.stringify(listResult.Err)}`);
+    // Get or create a test capsule using shared utility
+    const capsuleId = await getOrCreateTestCapsuleForUpload(backend);
+
+    // Create test runner using shared utility
+    const runner = createTestRunner(TEST_NAME);
+
+    // Run the memory creation test
+    await runner.runTest(
+      "Memory creation with internal blobs",
+      testMemoryCreationWithInternalBlobs,
+      backend,
+      filePath,
+      capsuleId
+    );
+
+    // Print test summary using shared utility
+    const allPassed = runner.printTestSummary();
+
+    if (allPassed) {
+      process.exit(0);
+    } else {
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error("❌ Test execution failed:", error.message);
+    process.exit(1);
   }
+}
 
-  const memories = listResult.Ok.items;
-  console.log(`ℹ️  Found ${memories.length} memories in list`);
-  console.log(`ℹ️  Looking for memory ID: ${memoryId}`);
-  console.log(`ℹ️  Available memory IDs: ${memories.map((m) => m.id).join(", ")}`);
-
-  // Try to read the memory directly first to confirm it exists
-  console.log("ℹ️  Attempting to read memory directly...");
-  const readResult = await backend.memories_read(memoryId);
-  if (readResult.Err) {
-    throw new Error(`Memory read failed: ${JSON.stringify(readResult.Err)}`);
-  }
-
-  const fullMemory = readResult.Ok;
-  console.log(`✅ Memory read successful`);
-  console.log(`ℹ️  Memory title: ${fullMemory.metadata.title[0] || "No title"}`);
-  console.log(`ℹ️  Internal blob assets: ${fullMemory.blob_internal_assets.length}`);
-
-  if (fullMemory.blob_internal_assets.length === 0) {
-    throw new Error("No internal blob assets found in memory");
-  }
-
-  const blobAsset = fullMemory.blob_internal_assets[0];
-  console.log(`✅ Internal blob asset found: ${blobAsset.asset_id}`);
-
-  // Now check if it's in the list
-  const createdMemory = memories.find((m) => m.id === memoryId);
-  if (createdMemory) {
-    console.log(`✅ Memory also found in list: ${createdMemory.id}`);
-  } else {
-    console.log(`⚠️  Memory exists but not found in list (this might be a listing/indexing issue)`);
-  }
-  console.log(`ℹ️  Blob locator: ${blobAsset.blob_ref.locator}`);
-  console.log(`ℹ️  Blob size: ${blobAsset.blob_ref.len} bytes`);
-
-  // Verify blob is readable
-  console.log("ℹ️  Verifying blob is readable...");
-  const blobReadResult = await backend.blob_read(blobAsset.blob_ref.locator);
-  if (blobReadResult.Err) {
-    throw new Error(`Blob read failed: ${JSON.stringify(blobReadResult.Err)}`);
-  }
-
-  const blobData = blobReadResult.Ok;
-  console.log(`✅ Blob read successful - size: ${blobData.length} bytes`);
-
-  if (blobData.length !== fileSize) {
-    throw new Error(`Size mismatch: expected ${fileSize}, got ${blobData.length}`);
-  }
-
-  console.log("✅ Memory creation with internal blobs test PASSED!");
-  console.log("ℹ️  ✅ Blob upload works correctly");
-  console.log("ℹ️  ✅ Memory creation with internal blob works");
-  console.log("ℹ️  ✅ Memory can be read and verified");
-  console.log("ℹ️  ✅ Blob is accessible through memory");
-} catch (error) {
-  console.error("💥 Test failed:", error.message);
-  process.exit(1);
+// Run main function if script is executed directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
 }

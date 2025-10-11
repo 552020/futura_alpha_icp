@@ -25,8 +25,16 @@ export * from "./validation/errors.js";
 export * from "./helpers/logging.js";
 export * from "./helpers/timing.js";
 export * from "./helpers/cleanup.js";
+export * from "./helpers/args.js";
+export * from "./helpers/test-runner.js";
+export * from "./helpers/asset-metadata.js";
+export * from "./helpers/file-operations.js";
+export * from "./helpers/memory-creation.js";
+export * from "./helpers/upload-download.js";
+export * from "./helpers/verification.js";
+export * from "./helpers/image-processing.js";
+export * from "./helpers/asset-addition.js";
 
 // Re-export existing utilities for backward compatibility
 export * from "../shared-capsule/upload/helpers.mjs";
 export * from "../shared-capsule/upload/ic-identity.js";
-

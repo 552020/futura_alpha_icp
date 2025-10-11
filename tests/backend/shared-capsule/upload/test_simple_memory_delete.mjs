@@ -37,7 +37,7 @@ async function testSimpleMemoryDelete() {
 
     // Create backend actor
     const backend = Actor.createActor(
-      (await import("../../../../src/nextjs/src/ic/declarations/backend/backend.did.js")).idlFactory,
+      (await import("./declarations/backend/backend.did.js")).idlFactory,
       {
         agent,
         canisterId: Principal.fromText(BACKEND_CANISTER_ID),

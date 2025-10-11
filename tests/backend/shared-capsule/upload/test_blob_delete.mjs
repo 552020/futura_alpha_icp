@@ -26,7 +26,7 @@ async function testBlobDelete() {
   await agent.fetchRootKey();
 
   const backend = Actor.createActor(
-    (await import("../../../../src/nextjs/src/ic/declarations/backend/backend.did.js")).idlFactory,
+    (await import("./declarations/backend/backend.did.js")).idlFactory,
     {
       agent,
       canisterId: Principal.fromText(process.argv[2]),

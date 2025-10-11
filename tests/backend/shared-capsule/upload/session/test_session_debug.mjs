@@ -9,7 +9,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { Actor, HttpAgent } from "@dfinity/agent";
 import { Principal } from "@dfinity/principal";
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "./declarations/backend/backend.did.js";
 import { createAssetMetadata, createFileChunks, generateFileId } from "./helpers.mjs";
 
 // Test configuration

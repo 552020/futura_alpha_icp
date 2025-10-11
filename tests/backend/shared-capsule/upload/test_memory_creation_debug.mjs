@@ -12,7 +12,7 @@ import { loadDfxIdentity, makeMainnetAgent } from "./ic-identity.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "./declarations/backend/backend.did.js";
 import {
   validateFileSize,
   validateImageType,

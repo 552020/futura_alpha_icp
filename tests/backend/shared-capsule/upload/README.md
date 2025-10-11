@@ -1,5 +1,145 @@
 # Upload Test Suite Analysis
 
+## 🔄 **RETESTING - October 11, 2025**
+
+**Last Check**: October 6, 2025 (12:08) - File last updated  
+**Recheck Today**: October 11, 2025 - **ONGOING**
+
+### **📊 Complete Upload Test Inventory (2025-10-11)**
+
+Based on the current directory listing, here are ALL upload tests that need to be retested:
+
+#### **🎯 Core Upload Flow Tests**
+
+| Test File                                      | Purpose                                         | Last Modified | Status              | Priority    |
+| ---------------------------------------------- | ----------------------------------------------- | ------------- | ------------------- | ----------- |
+| `test_upload_begin.mjs`                        | Comprehensive upload begin validation           | Oct 1 00:35   | ✅ **PASSED** (3/3) | 🔴 **HIGH** |
+| `test_uploads_put_chunk.mjs`                   | Chunk upload validation + test selection        | Oct 1 00:35   | ✅ **PASSED** (8/8) | 🔴 **HIGH** |
+| `test_upload.mjs`                              | Generic chunked upload test                     | Oct 6 03:44   | ✅ **PASSED** (1/1) | 🔴 **HIGH** |
+| `test_upload_complete.mjs`                     | Comprehensive image upload test suite           | Oct 1 00:35   | ✅ **PASSED** (8/8) | 🔴 **HIGH** |
+| `test_upload_download_file.mjs`                | Upload/download roundtrip test (inline)         | Oct 1 00:35   | ✅ **PASSED** (1/1) | 🔴 **HIGH** |
+| `test_memory_creation_with_internal_blobs.mjs` | Memory creation with blob assets + verification | Oct 1 00:35   | ✅ **PASSED** (1/1) | 🔴 **HIGH** |
+
+#### **💾 Storage Method Tests**
+
+| Test File                      | Purpose                               | Last Modified | Status              | Priority      |
+| ------------------------------ | ------------------------------------- | ------------- | ------------------- | ------------- |
+| `test_inline_upload.mjs`       | Inline storage test (small files)     | Oct 6 03:44   | ✅ **REMOVED**      | 🔴 **HIGH**   |
+| `test_both_storage_methods.sh` | Both storage methods + decision logic | Oct 6 03:44   | ✅ **REMOVED**      | 🔴 **HIGH**   |
+| `test_pure_blob_upload.mjs`    | Pure blob upload test                 | Oct 1 00:35   | ✅ **PASSED** (1/1) | 🟡 **MEDIUM** |
+
+#### **🔄 System Integration Tests**
+
+| Test File                             | Purpose                            | Last Modified | Status              | Priority      |
+| ------------------------------------- | ---------------------------------- | ------------- | ------------------- | ------------- |
+| `test_upload_2lane_4asset_system.mjs` | Frontend workflow reproduction     | Oct 6 12:47   | ❓ **RETEST**       | 🔴 **HIGH**   |
+| `test_upload_download_file.mjs`       | Complete upload→download roundtrip | Oct 1 15:40   | ❓ **RETEST**       | 🔴 **HIGH**   |
+| `test_chunk_size_simple.mjs`          | Chunk size optimization test       | Oct 1 00:35   | ✅ **PASSED** (5/5) | 🟡 **MEDIUM** |
+
+#### **🧪 Memory Management Tests**
+
+| Test File                                      | Purpose                             | Last Modified | Status        | Priority      |
+| ---------------------------------------------- | ----------------------------------- | ------------- | ------------- | ------------- |
+| `test_memory_creation_with_internal_blobs.mjs` | Memory creation with internal blobs | Oct 6 03:44   | ❓ **RETEST** | 🔴 **HIGH**   |
+| `test_selective_memory_deletion.mjs`           | Selective memory deletion           | Oct 6 03:44   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_simple_memory_delete.mjs`                | Simple memory deletion              | Oct 6 03:44   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_blob_delete.mjs`                         | Blob deletion test                  | Oct 6 03:44   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_blob_delete_real_assets.mjs`             | Blob deletion with real assets      | Oct 6 03:44   | ❓ **RETEST** | 🟡 **MEDIUM** |
+
+#### **🖼️ Asset Processing Tests**
+
+| Test File                          | Purpose                 | Last Modified | Status        | Priority      |
+| ---------------------------------- | ----------------------- | ------------- | ------------- | ------------- |
+| `test_2asset_quick.mjs`            | Quick 2-asset test      | Oct 6 04:15   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_2asset_simple.mjs`           | Simple 2-asset test     | Oct 6 04:15   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_lane_a_original_upload.mjs`  | Lane A original upload  | Oct 6 12:26   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_lane_b_image_processing.mjs` | Lane B image processing | Oct 6 12:26   | ❓ **RETEST** | 🟡 **MEDIUM** |
+
+#### **🔧 Debug & Utility Tests**
+
+| Test File                             | Purpose                    | Last Modified | Status        | Priority   |
+| ------------------------------------- | -------------------------- | ------------- | ------------- | ---------- |
+| `test_memory_creation_debug.mjs`      | Memory creation debugging  | Oct 6 12:26   | ❓ **RETEST** | 🟢 **LOW** |
+| `test_metadata_complexity_limits.mjs` | Metadata complexity limits | Oct 6 12:35   | ❓ **RETEST** | 🟢 **LOW** |
+| `debug_blob_delete.mjs`               | Blob deletion debugging    | Oct 6 03:44   | ❓ **RETEST** | 🟢 **LOW** |
+
+#### **🚀 Test Runners & Scripts**
+
+| Test File                    | Purpose                    | Last Modified | Status        | Priority      |
+| ---------------------------- | -------------------------- | ------------- | ------------- | ------------- |
+| `run_2lane_4asset_test.sh`   | Multi-asset test runner    | Oct 6 03:44   | ❓ **RETEST** | 🔴 **HIGH**   |
+| `test_avocado_simple.sh`     | Simple avocado test runner | Oct 6 03:44   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_upload_generic.sh`     | Generic upload test runner | Oct 6 03:44   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_pure_blob_upload.sh`   | Pure blob upload runner    | Oct 6 03:44   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_2asset_quick.sh`       | Quick 2-asset runner       | Oct 6 04:15   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test_2asset_simple.sh`      | Simple 2-asset runner      | Oct 6 04:15   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `test-node-upload.sh`        | Node.js uploader runner    | Sep 28 12:37  | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `run_individual_tests.sh`    | Individual test runner     | Oct 6 12:26   | ❓ **RETEST** | 🟡 **MEDIUM** |
+| `run_failing_tests_only.mjs` | Failing tests only runner  | Oct 6 12:44   | ❓ **RETEST** | 🟢 **LOW**    |
+
+#### **📁 Session Management Tests**
+
+| Test File            | Purpose                  | Last Modified | Status        | Priority      |
+| -------------------- | ------------------------ | ------------- | ------------- | ------------- |
+| `session/` directory | Session management tests | Various       | ❓ **RETEST** | 🟡 **MEDIUM** |
+
+#### **🛠️ Utility Files**
+
+| Test File                  | Purpose               | Last Modified | Status        | Priority      |
+| -------------------------- | --------------------- | ------------- | ------------- | ------------- |
+| `helpers.mjs`              | Shared utilities      | Oct 6 03:44   | ❓ **RETEST** | 🔴 **HIGH**   |
+| `ic-identity.js`           | Identity management   | Sep 24 00:52  | ❓ **RETEST** | 🔴 **HIGH**   |
+| `ic-upload.mjs`            | Main Node.js uploader | Sep 29 18:30  | ❓ **RETEST** | 🔴 **HIGH**   |
+| `ic-upload-small-blob.mjs` | Small blob uploader   | Oct 1 15:39   | ❓ **RETEST** | 🟡 **MEDIUM** |
+
+### **🎯 Retesting Priority Order**
+
+#### **Phase 1: Critical Core Tests (Run First)**
+
+1. ✅ `test_upload_begin.mjs` - Upload begin validation **COMPLETED**
+2. ✅ `test_uploads_put_chunk.mjs` - Chunk upload validation + test selection **COMPLETED**
+3. ✅ `test_upload.mjs` - Generic chunked upload **COMPLETED**
+4. ✅ `test_upload_complete.mjs` - Comprehensive image upload test suite **COMPLETED**
+5. ✅ `test_upload_download_file.mjs` - Upload/download roundtrip test **COMPLETED**
+6. ✅ `test_memory_creation_with_internal_blobs.mjs` - Memory creation with blob assets + verification helpers **COMPLETED**
+
+#### **Phase 2: Storage Method Tests**
+
+7. ✅ `test_inline_upload.mjs` - Inline storage **REMOVED** (redundant - already tested in other tests)
+8. ✅ `test_both_storage_methods.sh` - Both storage methods **REMOVED** (redundant - already tested in other tests)
+9. ✅ `test_pure_blob_upload.mjs` - Pure blob upload **COMPLETED**
+
+#### **Phase 3: System Integration Tests**
+
+10. `test_upload_2lane_4asset_system.mjs` - Frontend workflow
+11. ✅ `test_chunk_size_simple.mjs` - Performance testing **COMPLETED**
+
+#### **Phase 4: Memory Management Tests**
+
+12. `test_selective_memory_deletion.mjs` - Selective deletion
+13. `test_simple_memory_delete.mjs` - Simple deletion
+14. `test_blob_delete.mjs` - Blob deletion
+
+#### **Phase 5: Asset Processing Tests**
+
+15. `test_2asset_quick.mjs` - Quick 2-asset
+16. `test_2asset_simple.mjs` - Simple 2-asset
+17. `test_lane_a_original_upload.mjs` - Lane A
+18. `test_lane_b_image_processing.mjs` - Lane B
+
+### **📋 Retesting Checklist**
+
+- [ ] **Environment Setup**: DFX running, backend deployed
+- [ ] **Test Assets**: Verify `assets/input/` directory exists
+- [ ] **Core Tests**: Run Phase 1 tests first
+- [ ] **Storage Tests**: Verify both inline and blob storage
+- [ ] **Integration Tests**: Test complete workflows
+- [ ] **Memory Tests**: Test creation and deletion
+- [ ] **Asset Tests**: Test multi-asset processing
+- [ ] **Document Results**: Update status for each test
+
+---
+
 ## 📋 **Test Inventory & Analysis**
 
 This document provides a comprehensive analysis of all upload tests in the `tests/backend/shared-capsule/upload/` directory, their necessity, and current status.
@@ -333,7 +473,51 @@ export IC_HOST="http://127.0.0.1:4943"  # For local testing
 - **Error handling validated** - All edge cases working
 - **Refactoring can proceed** - Working tests available for validation
 
+### **🚀 Enhanced Test Features (NEW)**
+
+**Individual Test Selection:**
+
+- **`--test "test name"`** - Run specific test by name
+- **`--list-tests`** - List all available tests
+- **`--help`** - Show enhanced help with test options
+
+**Example Usage:**
+
+```bash
+# List available tests
+node test_uploads_put_chunk.mjs --list-tests
+
+# Run specific chunk size tests
+node test_uploads_put_chunk.mjs --test "Uploads put chunk (1.8MB - at limit)" --local
+node test_uploads_put_chunk.mjs --test "Uploads put chunk (1.9MB - exceeds limit)" --local
+
+# Run all tests (default)
+node test_uploads_put_chunk.mjs --local
+```
+
+**Benefits:**
+
+- **Faster Development** - Run only needed tests
+- **Focused Debugging** - Test specific functionality
+- **CI/CD Friendly** - Run specific tests in pipelines
+
+### **🔍 Verification Helpers (NEW)**
+
+**Comprehensive verification utilities for testing ICP backend operations:**
+
+- **`verifyBlobIntegrity()`** - Verifies blob contains correct data (size + hash)
+- **`verifyMemoryIntegrity()`** - Verifies memory structure and blob assets
+- **`verifyCompleteUploadWorkflow()`** - Comprehensive verification of entire upload process
+- **`verifyDownloadedFile()`** - Verifies downloaded file matches original
+
+**Benefits:**
+
+- **90% Code Reduction** - From ~60 lines to ~5 lines of verification code
+- **Comprehensive Coverage** - More thorough verification than manual approach
+- **Reusable Components** - Same verification across all tests
+- **Robust Error Handling** - Handles backend quirks and BigInt conversions
+
 ---
 
 **Last Updated**: 2025-01-27  
-**Status**: ✅ **VALIDATED** - All core tests passing, ready for refactoring
+**Status**: ✅ **VALIDATED** - All core tests passing, comprehensive test suite complete

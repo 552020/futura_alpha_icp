@@ -13,7 +13,7 @@ const CANISTER_ID = process.env.BACKEND_CANISTER_ID || process.env.BACKEND_ID ||
 const IS_MAINNET = process.env.IC_HOST === "https://ic0.app" || process.env.IC_HOST === "https://icp0.io";
 
 // Import the backend interface
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "./declarations/backend/backend.did.js";
 
 // Function to create the appropriate agent based on network
 async function createAgent() {

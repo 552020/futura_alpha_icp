@@ -17,7 +17,7 @@ import { loadDfxIdentity } from "../upload/ic-identity.js";
 import fetch from "node-fetch";
 
 // Import the backend interface
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "../../declarations/backend/backend.did.js";
 
 // Test configuration
 const HOST = process.env.IC_HOST || "http://127.0.0.1:4943";

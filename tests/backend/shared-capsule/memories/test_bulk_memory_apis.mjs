@@ -32,7 +32,7 @@ import crypto from "crypto";
 import { createAssetMetadata } from "../upload/helpers.mjs";
 
 // Import the backend interface
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "../../declarations/backend/backend.did.js";
 
 // Test configuration
 const TEST_NAME = "Bulk Memory APIs Test Suite";

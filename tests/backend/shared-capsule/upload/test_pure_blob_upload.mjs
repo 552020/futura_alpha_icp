@@ -1,247 +1,159 @@
 #!/usr/bin/env node
 
-import { Actor, HttpAgent } from "@dfinity/agent";
-import { Principal } from "@dfinity/principal";
-import { readFileSync } from "fs";
-import crypto from "crypto";
-import { loadDfxIdentity, makeMainnetAgent } from "./ic-identity.js";
+import {
+  parseTestArgs,
+  createTestActorOptions,
+  createTestActor,
+  logNetworkConfig,
+  getOrCreateTestCapsuleForUpload,
+  createTestRunner,
+  uploadFileAsBlob,
+  verifyBlobIntegrity,
+  readFileAsBuffer,
+  computeSHA256Hash,
+} from "../../utils/index.js";
 
 // Test configuration
 const TEST_NAME = "Pure Blob Upload Test";
-const CHUNK_SIZE = 1_800_000; // 1.8MB (matches backend)
-
-// Helper functions
-function echoInfo(msg) {
-  console.log(`ℹ️  ${msg}`);
-}
-
-function echoPass(msg) {
-  console.log(`✅ ${msg}`);
-}
-
-function echoFail(msg) {
-  console.log(`❌ ${msg}`);
-}
-
-function echoError(msg) {
-  console.log(`💥 ${msg}`);
-}
 
 // Main test function
-async function testPureBlobUpload(backendCanisterId, filePath) {
-  echoInfo(`Starting ${TEST_NAME}`);
-  echoInfo(`Testing pure blob upload with file: ${filePath}`);
+async function testPureBlobUpload(backend, capsuleId, filePath) {
+  console.log(`Starting ${TEST_NAME}`);
+  console.log(`Testing pure blob upload with file: ${filePath}`);
 
-  // Read file
-  const fileBuffer = readFileSync(filePath);
+  // Read file and compute hash
+  const fileBuffer = readFileAsBuffer(filePath);
   const fileSize = fileBuffer.length;
-  echoInfo(`File: ${filePath.split("/").pop()} (${fileSize} bytes)`);
+  const expectedHash = computeSHA256Hash(fileBuffer);
 
-  // Setup agent and actor with proper authentication
-  const identity = loadDfxIdentity();
-  const agent = new HttpAgent({
-    host: "http://127.0.0.1:4943",
-    identity,
-    fetch: (await import("node-fetch")).default,
+  console.log(`File: ${filePath.split("/").pop()} (${fileSize} bytes)`);
+  console.log(`Expected hash: ${expectedHash.toString("hex")}`);
+
+  // Upload file as pure blob (no memory creation)
+  console.log("Uploading file as pure blob...");
+  const uploadResult = await uploadFileAsBlob(backend, filePath, capsuleId, {
+    createMemory: false,
+    idempotencyKey: `pure-blob-test-${Date.now()}`,
   });
-  await agent.fetchRootKey();
 
-  const backend = Actor.createActor(
-    (await import("../../../../src/nextjs/src/ic/declarations/backend/backend.did.js")).idlFactory,
-    {
-      agent,
-      canisterId: Principal.fromText(backendCanisterId),
-    }
-  );
-
-  // Create a new capsule for this test
-  echoInfo("Creating new capsule for test...");
-  const capsuleResult = await backend.capsules_create([]);
-
-  if ("Err" in capsuleResult) {
-    throw new Error(`Capsule creation failed: ${JSON.stringify(capsuleResult.Err)}`);
+  if (!uploadResult.success) {
+    console.log(`❌ Pure blob upload failed: ${uploadResult.error}`);
+    return { success: false, error: uploadResult.error };
   }
 
-  const capsule = capsuleResult.Ok;
-  const capsuleId = capsule.id;
-  echoInfo(`Created new capsule: ${capsuleId}`);
-
-  // Calculate chunk count
-  const chunkCount = Math.ceil(fileSize / CHUNK_SIZE);
-  const idempotencyKey = `pure-blob-test-${Date.now()}`;
-
-  echoInfo(`Chunk count: ${chunkCount}, Idempotency key: ${idempotencyKey}`);
-
-  // Begin upload session
-  echoInfo("Calling uploads_begin...");
-  const beginResult = await backend.uploads_begin(capsuleId, chunkCount, idempotencyKey);
-
-  if ("Err" in beginResult) {
-    throw new Error(`Upload begin failed: ${JSON.stringify(beginResult.Err)}`);
-  }
-
-  const sessionId = beginResult.Ok;
-  echoInfo(`Upload session started: ${sessionId}`);
-
-  // Upload chunks
-  echoInfo("Uploading chunks...");
-  for (let i = 0; i < chunkCount; i++) {
-    const start = i * CHUNK_SIZE;
-    const end = Math.min(start + CHUNK_SIZE, fileSize);
-    const chunkData = fileBuffer.slice(start, end);
-
-    echoInfo(`Uploading chunk ${i + 1}/${chunkCount} (${chunkData.length} bytes)`);
-
-    const chunkResult = await backend.uploads_put_chunk(sessionId, i, chunkData);
-    if ("Err" in chunkResult) {
-      throw new Error(`Chunk upload failed: ${JSON.stringify(chunkResult.Err)}`);
-    }
-  }
-
-  echoInfo("All chunks uploaded successfully");
-
-  // Compute expected hash
-  const expectedHash = crypto.createHash("sha256").update(fileBuffer).digest();
-  echoInfo(`Expected hash: ${expectedHash.toString("hex")}`);
-
-  // Finish upload
-  echoInfo("Calling uploads_finish...");
-  const finishResult = await backend.uploads_finish(sessionId, expectedHash, fileSize);
-
-  if ("Err" in finishResult) {
-    throw new Error(`Upload finish failed: ${JSON.stringify(finishResult.Err)}`);
-  }
-
-  const result = finishResult.Ok;
-  echoInfo(`Upload finished successfully!`);
-  echoInfo(`Blob ID: ${result.blob_id}`);
-  echoInfo(`Memory ID: ${result.memory_id}`);
-  echoInfo(`Storage Location: ${result.storage_location}`);
-  echoInfo(`Size: ${result.size} bytes`);
+  const { blobId, size, memoryId } = uploadResult;
+  console.log(`✅ Upload finished successfully!`);
+  console.log(`Blob ID: ${blobId}`);
+  console.log(`Memory ID: ${memoryId}`);
+  console.log(`Size: ${size} bytes`);
 
   // Verify pure blob upload results
-  echoInfo("Verifying pure blob upload...");
+  console.log("Verifying pure blob upload...");
 
   // 1. Check that memory_id is empty (no memory created)
-  if (result.memory_id === "") {
-    echoPass("Memory ID is empty - no memory created (correct for pure blob upload)");
+  if (memoryId === "" || memoryId === null) {
+    console.log("✅ Memory ID is empty - no memory created (correct for pure blob upload)");
   } else {
-    echoFail(`Memory ID should be empty but got: ${result.memory_id}`);
-    return false;
+    console.log(`❌ Memory ID should be empty but got: ${memoryId}`);
+    return { success: false, error: "Memory ID should be empty for pure blob upload" };
   }
 
   // 2. Check that blob_id is not empty
-  if (result.blob_id && result.blob_id.startsWith("blob_")) {
-    echoPass("Blob ID is valid");
+  if (blobId && blobId.startsWith("blob_")) {
+    console.log("✅ Blob ID is valid");
   } else {
-    echoFail(`Invalid blob ID: ${result.blob_id}`);
-    return false;
+    console.log(`❌ Invalid blob ID: ${blobId}`);
+    return { success: false, error: "Invalid blob ID" };
   }
 
   // 3. Check that size matches
-  if (Number(result.size) === fileSize) {
-    echoPass("File size matches uploaded size");
+  if (Number(size) === fileSize) {
+    console.log("✅ File size matches uploaded size");
   } else {
-    echoFail(`Size mismatch: expected ${fileSize}, got ${result.size}`);
-    return false;
+    console.log(`❌ Size mismatch: expected ${fileSize}, got ${size}`);
+    return { success: false, error: "Size mismatch" };
   }
 
-  // 4. Try to read the blob back (use chunked read for large files)
-  echoInfo("Testing blob read...");
+  // 4. Verify blob integrity using shared utility
+  console.log("Testing blob integrity...");
+  const integrityPassed = await verifyBlobIntegrity(backend, blobId, fileSize, expectedHash);
 
-  if (fileSize > 2 * 1024 * 1024) {
-    // If file > 2MB, use chunked read
-    echoInfo("File is large, using chunked blob read...");
-
-    // Read first chunk to verify blob exists
-    const blobReadResult = await backend.blob_read_chunk(result.blob_id, 0);
-
-    if ("Ok" in blobReadResult) {
-      const chunkData = blobReadResult.Ok;
-      echoPass(`Blob read successful - first chunk size: ${chunkData.length} bytes`);
-      echoInfo("Large blob exists and is readable (chunked read works)");
-    } else {
-      echoFail(`Blob chunk read failed: ${JSON.stringify(blobReadResult.Err)}`);
-      return false;
-    }
-  } else {
-    // For small files, read the entire blob
-    const blobReadResult = await backend.blob_read(result.blob_id);
-
-    if ("Ok" in blobReadResult) {
-      const blobData = blobReadResult.Ok;
-      if (blobData.length === fileSize) {
-        echoPass("Blob read successful - size matches");
-
-        // Verify hash matches
-        const blobHash = crypto.createHash("sha256").update(blobData).digest();
-        const expectedHashHex = expectedHash.toString("hex");
-        const blobHashHex = blobHash.toString("hex");
-
-        if (blobHashHex === expectedHashHex) {
-          echoPass("Blob hash matches expected hash");
-        } else {
-          echoFail(`Hash mismatch: expected ${expectedHashHex}, got ${blobHashHex}`);
-          return false;
-        }
-      } else {
-        echoFail(`Blob size mismatch: expected ${fileSize}, got ${blobData.length}`);
-        return false;
-      }
-    } else {
-      echoFail(`Blob read failed: ${JSON.stringify(blobReadResult.Err)}`);
-      return false;
-    }
+  if (!integrityPassed) {
+    console.log(`❌ Blob integrity verification failed`);
+    return { success: false, error: "Blob integrity verification failed" };
   }
+
+  console.log("✅ Blob integrity verified successfully");
 
   // 5. Verify no memory was created in capsule
-  echoInfo("Verifying no memory was created...");
+  console.log("Verifying no memory was created...");
   const memoriesResult = await backend.memories_list(capsuleId, [], []);
 
   if ("Ok" in memoriesResult) {
     const page = memoriesResult.Ok;
     const memories = page.items;
-
-    // Check that no new memory was created (we can't easily track this without knowing the exact count before)
-    // For now, just verify the API call works
-    echoPass("Memory list API works (no new memory should be created)");
+    console.log("✅ Memory list API works (no new memory should be created)");
   } else {
-    echoFail(`Memory list failed: ${JSON.stringify(memoriesResult.Err)}`);
-    return false;
+    console.log(`❌ Memory list failed: ${JSON.stringify(memoriesResult.Err)}`);
+    return { success: false, error: "Memory list API failed" };
   }
 
-  echoPass("Pure blob upload test PASSED!");
-  echoInfo("✅ Blob upload, creation, and readback all work correctly");
-  echoInfo("✅ No memory was created (pure blob storage)");
-  echoInfo("✅ Ready for separate memory creation endpoints");
+  console.log("✅ Pure blob upload test PASSED!");
+  console.log("✅ Blob upload, creation, and readback all work correctly");
+  console.log("✅ No memory was created (pure blob storage)");
+  console.log("✅ Ready for separate memory creation endpoints");
 
-  return true;
+  return { success: true };
 }
 
 // Main execution
 async function main() {
-  const backendCanisterId = process.argv[2];
-  const filePath = process.argv[3];
+  // Parse command line arguments
+  const parsedArgs = parseTestArgs("test_pure_blob_upload.mjs", "Tests pure blob upload without memory creation");
 
-  if (!backendCanisterId) {
-    echoError("Usage: node test_pure_blob_upload.mjs <BACKEND_CANISTER_ID> <FILE_PATH>");
+  // Extract file path from arguments (look for argument that contains a path and is not a flag)
+  // Skip the first argument (script name) and look for a path that's not the node binary
+  const filePath = process.argv
+    .slice(2)
+    .find((arg) => arg.includes("/") && !arg.startsWith("--") && !arg.includes("node") && !arg.includes("bin"));
+
+  if (!filePath) {
+    console.error("❌ Usage: node test_pure_blob_upload.mjs [--local|--mainnet] <CANISTER_ID> <FILE_PATH>");
+    console.error(
+      "Example: node test_pure_blob_upload.mjs --local uxrrr-q7777-77774-qaaaq-cai assets/input/avocado.jpg"
+    );
     process.exit(1);
   }
 
-  if (!filePath) {
-    echoError("Usage: node test_pure_blob_upload.mjs <BACKEND_CANISTER_ID> <FILE_PATH>");
-    process.exit(1);
+  // Override canisterId if it was incorrectly parsed from file path
+  if (parsedArgs.canisterId && parsedArgs.canisterId.includes("/")) {
+    // Use default canister ID
+    parsedArgs.canisterId = "uxrrr-q7777-77774-qaaaq-cai";
   }
 
   try {
-    const success = await testPureBlobUpload(backendCanisterId, filePath);
-    if (success) {
-      process.exit(0);
-    } else {
-      process.exit(1);
-    }
+    // Create test actor
+    const options = createTestActorOptions(parsedArgs);
+    const { actor: backend, canisterId } = await createTestActor(options);
+
+    // Log network configuration
+    logNetworkConfig(parsedArgs, canisterId);
+
+    // Get or create test capsule
+    const capsuleId = await getOrCreateTestCapsuleForUpload(backend);
+    console.log(`Using capsule: ${capsuleId}`);
+
+    // Create test runner
+    const runner = createTestRunner(TEST_NAME);
+
+    // Run the test
+    await runner.runTest("Pure blob upload test", testPureBlobUpload, backend, capsuleId, filePath);
+
+    // Print summary and exit
+    const allPassed = runner.printTestSummary();
+    process.exit(allPassed ? 0 : 1);
   } catch (error) {
-    echoError(`Test failed: ${error.message}`);
+    console.error(`❌ Test execution failed: ${error.message}`);
     process.exit(1);
   }
 }

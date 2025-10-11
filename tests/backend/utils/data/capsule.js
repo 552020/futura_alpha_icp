@@ -61,6 +61,41 @@ export async function getOrCreateTestCapsule(actor, options = {}) {
 }
 
 /**
+ * Get or create a test capsule using capsules_read_basic (for upload tests)
+ * @param {Object} actor - Backend actor
+ * @param {Object} options - Options
+ * @returns {Promise<string>} Capsule ID
+ */
+export async function getOrCreateTestCapsuleForUpload(actor, options = {}) {
+  try {
+    console.log("🔍 Getting test capsule...");
+
+    // First, try to get existing capsule using capsules_read_basic
+    const capsuleResult = await actor.capsules_read_basic([]);
+
+    if ("Ok" in capsuleResult && capsuleResult.Ok) {
+      const actualCapsuleId = capsuleResult.Ok.capsule_id;
+      console.log(`✅ Using existing capsule: ${actualCapsuleId}`);
+      return actualCapsuleId;
+    } else {
+      console.log("🆕 No capsule found, creating one...");
+      const createResult = await actor.capsules_create([]);
+
+      if (!("Ok" in createResult)) {
+        console.error("❌ Failed to create capsule:", createResult);
+        throw new Error("Failed to create capsule: " + JSON.stringify(createResult));
+      }
+
+      const actualCapsuleId = createResult.Ok.id;
+      console.log(`✅ Created new capsule: ${actualCapsuleId}`);
+      return actualCapsuleId;
+    }
+  } catch (error) {
+    throw new Error(`Failed to get or create test capsule for upload: ${error.message}`);
+  }
+}
+
+/**
  * Create multiple test capsules
  * @param {Object} actor - Backend actor
  * @param {number} count - Number of capsules to create
@@ -155,4 +190,3 @@ export async function cleanupTestCapsules(actor, capsuleIds) {
 
   return deletedCount;
 }
-

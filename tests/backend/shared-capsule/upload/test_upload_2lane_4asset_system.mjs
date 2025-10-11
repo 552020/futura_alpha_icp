@@ -22,33 +22,33 @@
  * - Utility functions for file handling and validation
  */
 
-import { Actor, HttpAgent } from "@dfinity/agent";
-import { loadDfxIdentity, makeMainnetAgent } from "./ic-identity.js";
+import {
+  parseTestArgs,
+  createTestActorOptions,
+  createTestActor,
+  logNetworkConfig,
+  getOrCreateTestCapsuleForUpload,
+  createTestRunner,
+  uploadFileAsBlob,
+  uploadBufferAsBlob,
+  createMemoryFromBlob,
+  readFileAsBuffer,
+  getFileSize,
+  computeSHA256Hash,
+  createImageAssetMetadata,
+  verifyBlobIntegrity,
+  verifyMemoryIntegrity,
+  processImageDerivativesPure,
+} from "../../utils/index.js";
+import { formatFileSize } from "../../utils/helpers/logging.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
-import {
-  validateFileSize,
-  validateImageType,
-  calculateFileHash,
-  generateFileId,
-  calculateDerivativeDimensions,
-  calculateDerivativeSizes,
-  createFileChunks,
-  createProgressCallback,
-  createAssetMetadata,
-  createBlobReference,
-  handleUploadError,
-  validateUploadResponse,
-  formatFileSize,
-  formatUploadSpeed,
-  formatDuration,
-} from "./helpers.mjs";
 
 // Test configuration
 const TEST_NAME = "2-Lane + 4-Asset Upload System Test";
 const TEST_IMAGE_PATH = "./assets/input/avocado_big_21mb.jpg";
+const TEST_IMAGE_PATH_SMALL = "./assets/input/orange_tiny.jpg"; // 44KB for Lane A tests
 // Constants - Aligned with backend configuration
 const CHUNK_SIZE = 1_800_000; // 1.8MB - matches backend CHUNK_SIZE in types.rs
 const INLINE_MAX = 32 * 1024; // 32KB - matches backend INLINE_MAX in types.rs
@@ -78,219 +78,65 @@ function echoWarning(message) {
   console.log(`⚠️  ${message}`);
 }
 
-// Real image processing (Node.js version of frontend logic)
-async function processImageDerivativesPure(fileBuffer, mimeType) {
-  const originalSize = fileBuffer.length;
-
-  echoInfo(`🖼️ Processing derivatives for ${formatFileSize(originalSize)} file`);
-
-  // Validate file type using helper
-  validateImageType(mimeType);
-
-  // Get derivative size limits from helper
-  const sizeLimits = calculateDerivativeSizes(originalSize);
-
-  // Calculate realistic dimensions
-  const aspectRatio = 16 / 9;
-  const originalWidth = Math.floor(Math.sqrt(originalSize / 3));
-  const originalHeight = Math.floor(originalWidth / aspectRatio);
-
-  // Calculate derivative dimensions using helper
-  const displayDims = calculateDerivativeDimensions(
-    originalWidth,
-    originalHeight,
-    sizeLimits.display.maxWidth,
-    sizeLimits.display.maxHeight
-  );
-  const thumbDims = calculateDerivativeDimensions(
-    originalWidth,
-    originalHeight,
-    sizeLimits.thumb.maxWidth,
-    sizeLimits.thumb.maxHeight
-  );
-
-  // Create derivative buffers (simulation - in real implementation, use Sharp/Jimp)
-  const displaySize = Math.min(sizeLimits.display.maxSize, Math.floor(originalSize * 0.1));
-  const displayBuffer = Buffer.alloc(displaySize);
-  fileBuffer.copy(displayBuffer, 0, 0, displaySize);
-
-  const thumbSize = Math.min(sizeLimits.thumb.maxSize, Math.floor(originalSize * 0.05));
-  const thumbBuffer = Buffer.alloc(thumbSize);
-  fileBuffer.copy(thumbBuffer, 0, 0, thumbSize);
-
-  const placeholderSize = Math.min(sizeLimits.placeholder.maxSize, 1024);
-  const placeholderBuffer = Buffer.alloc(placeholderSize, 0x42);
-
-  // Log precise sizes using helper
-  echoInfo(`📊 Derivative sizes:`);
-  echoInfo(`  Display: ${formatFileSize(displaySize)} (${displayDims.width}x${displayDims.height})`);
-  echoInfo(`  Thumb: ${formatFileSize(thumbSize)} (${thumbDims.width}x${thumbDims.height})`);
-  echoInfo(`  Placeholder: ${formatFileSize(placeholderSize)} (32x18)`);
-
-  return {
-    original: {
-      buffer: fileBuffer,
-      size: originalSize,
-      width: originalWidth,
-      height: originalHeight,
-      mimeType: mimeType,
-    },
-    display: {
-      buffer: displayBuffer,
-      size: displaySize,
-      width: displayDims.width,
-      height: displayDims.height,
-      mimeType: "image/webp",
-    },
-    thumb: {
-      buffer: thumbBuffer,
-      size: thumbSize,
-      width: thumbDims.width,
-      height: thumbDims.height,
-      mimeType: "image/webp",
-    },
-    placeholder: {
-      buffer: placeholderBuffer,
-      size: placeholderSize,
-      width: 32,
-      height: 18,
-      mimeType: "image/webp",
-    },
-  };
-}
+// Image processing function moved to shared utilities: processImageDerivativesPure
 
 // Lane A: Upload original file to ICP (matches frontend uploadOriginalToS3)
-async function uploadOriginalToICP(backend, fileBuffer, fileName) {
+async function uploadOriginalToICP(backend, fileBuffer, fileName, capsuleId) {
   const startTime = Date.now();
 
   echoInfo(`📤 Uploading: ${fileName} (${formatFileSize(fileBuffer.length)})`);
 
-  // Validate file size using helper
-  validateFileSize(fileBuffer.length);
-
-  // Create a new capsule for this test
-  const capsuleResult = await backend.capsules_create([]);
-  if ("Err" in capsuleResult) {
-    throw new Error(`Capsule creation failed: ${JSON.stringify(capsuleResult.Err)}`);
-  }
-  const capsuleId = capsuleResult.Ok.id;
-
-  // Calculate chunk count and create chunks using helpers
-  const chunkCount = Math.ceil(fileBuffer.length / CHUNK_SIZE);
-  const chunks = createFileChunks(fileBuffer, CHUNK_SIZE);
-  const idempotencyKey = generateFileId("upload");
-
-  // Begin upload session (no assetMetadata needed anymore)
-  const beginResult = await backend.uploads_begin(capsuleId, chunkCount, idempotencyKey);
-
-  // Handle different response formats
-  let sessionId;
-  if (typeof beginResult === "number" || typeof beginResult === "string") {
-    // Direct response (number or string) - this is the current backend behavior
-    sessionId = beginResult;
-    echoInfo(`✅ Upload session started: ${sessionId}`);
-  } else if (beginResult && typeof beginResult === "object") {
-    // Object response with Ok/Err structure
-    try {
-      validateUploadResponse(beginResult, ["Ok"]);
-      sessionId = beginResult.Ok;
-      echoInfo(`✅ Upload session started: ${sessionId}`);
-    } catch (error) {
-      throw handleUploadError(error, "Upload begin");
-    }
-  } else {
-    throw new Error(`Unexpected response format: ${typeof beginResult} - ${JSON.stringify(beginResult)}`);
+  // Validate file size (basic check)
+  if (fileBuffer.length === 0) {
+    throw new Error("File is empty");
   }
 
-  // Upload file in chunks with progress tracking
-  echoInfo(`📦 Uploading ${chunks.length} chunks (${formatFileSize(CHUNK_SIZE)} each)...`);
-
-  const progressCallback = createProgressCallback(chunks.length, (progress, completed, total) => {
-    if (completed % 5 === 0 || completed === total) {
-      echoInfo(`  📈 ${progress}% (${completed}/${total} chunks)`);
-    }
+  // Use shared buffer upload helper
+  const uploadResult = await uploadBufferAsBlob(backend, fileBuffer, capsuleId, {
+    createMemory: false, // Just blob, no memory
+    idempotencyKey: `upload-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
   });
 
-  for (let i = 0; i < chunks.length; i++) {
-    const putChunkResult = await backend.uploads_put_chunk(sessionId, i, chunks[i]);
-
-    // Handle different response formats for put_chunk
-    if (typeof putChunkResult === "object" && putChunkResult !== null) {
-      try {
-        validateUploadResponse(putChunkResult);
-      } catch (error) {
-        throw handleUploadError(error, `Put chunk ${i}`);
-      }
-    } else {
-      // Direct response (success) - no validation needed
-      echoInfo(`✅ Chunk ${i} uploaded successfully`);
-    }
-
-    progressCallback(i);
-  }
-
-  // Calculate hash and total length for finish using helpers
-  const hash = calculateFileHash(fileBuffer);
-  const totalLen = BigInt(fileBuffer.length);
-
-  // Finish upload
-  const finishResult = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
-
-  // Handle different response formats for finish
-  let blobId;
-  if (typeof finishResult === "string") {
-    // Direct response - blob ID only (new format after refactoring)
-    blobId = finishResult;
-    echoInfo(`✅ Upload finished successfully: blob_id=${blobId}`);
-  } else if (finishResult && typeof finishResult === "object") {
-    // Object response with Ok/Err structure
-    try {
-      validateUploadResponse(finishResult, ["Ok"]);
-      const result = finishResult.Ok;
-      if (result && typeof result === "object" && "blob_id" in result) {
-        // New format: UploadFinishResult with blob_id only
-        blobId = result.blob_id;
-        echoInfo(`✅ Upload finished successfully: blob_id=${blobId}`);
-      } else {
-        // Legacy format: direct string
-        blobId = result;
-        echoInfo(`✅ Upload finished successfully: blob_id=${blobId}`);
-      }
-    } catch (error) {
-      throw handleUploadError(error, "Upload finish");
-    }
-  } else {
-    throw new Error(`Unexpected finish response format: ${typeof finishResult} - ${JSON.stringify(finishResult)}`);
+  if (!uploadResult.success) {
+    throw new Error(`Upload failed: ${uploadResult.error}`);
   }
 
   const duration = Date.now() - startTime;
-  const uploadSpeed = formatUploadSpeed(fileBuffer.length, duration);
+  const uploadSpeed = (fileBuffer.length / (duration / 1000) / 1024 / 1024).toFixed(2);
+  const durationSeconds = (duration / 1000).toFixed(1);
 
   echoInfo(
-    `✅ Upload completed: ${fileName} (${formatFileSize(fileBuffer.length)}) in ${formatDuration(
-      duration
-    )} (${uploadSpeed})`
+    `✅ Upload completed: ${fileName} (${formatFileSize(
+      fileBuffer.length
+    )}) in ${durationSeconds}s (${uploadSpeed} MB/s)`
   );
 
-  return blobId;
+  return uploadResult.blobId;
 }
 
 // Lane B: Process image derivatives (matches frontend processImageDerivativesPure)
-async function processImageDerivativesToICP(backend, fileBuffer, mimeType) {
+async function processImageDerivativesToICP(backend, fileBuffer, mimeType, capsuleId) {
   const laneBStartTime = Date.now();
   echoInfo(`🖼️ Starting Lane B: Processing derivatives`);
 
   const processedAssets = await processImageDerivativesPure(fileBuffer, mimeType);
 
-  // Upload each derivative to ICP
+  // Upload each derivative to ICP using shared helper
   const results = {};
   const uploadPromises = [];
 
   if (processedAssets.display) {
     echoInfo(`📤 Uploading display derivative...`);
     uploadPromises.push(
-      uploadOriginalToICP(backend, processedAssets.display.buffer, "display").then((blobId) => {
-        results.display = blobId;
+      uploadBufferAsBlob(backend, processedAssets.display.buffer, capsuleId, {
+        createMemory: false,
+        idempotencyKey: `display-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      }).then((uploadResult) => {
+        if (uploadResult.success) {
+          results.display = uploadResult.blobId;
+        } else {
+          throw new Error(`Display upload failed: ${uploadResult.error}`);
+        }
       })
     );
   }
@@ -298,8 +144,15 @@ async function processImageDerivativesToICP(backend, fileBuffer, mimeType) {
   if (processedAssets.thumb) {
     echoInfo(`📤 Uploading thumb derivative...`);
     uploadPromises.push(
-      uploadOriginalToICP(backend, processedAssets.thumb.buffer, "thumb").then((blobId) => {
-        results.thumb = blobId;
+      uploadBufferAsBlob(backend, processedAssets.thumb.buffer, capsuleId, {
+        createMemory: false,
+        idempotencyKey: `thumb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      }).then((uploadResult) => {
+        if (uploadResult.success) {
+          results.thumb = uploadResult.blobId;
+        } else {
+          throw new Error(`Thumb upload failed: ${uploadResult.error}`);
+        }
       })
     );
   }
@@ -307,8 +160,15 @@ async function processImageDerivativesToICP(backend, fileBuffer, mimeType) {
   if (processedAssets.placeholder) {
     echoInfo(`📤 Uploading placeholder derivative...`);
     uploadPromises.push(
-      uploadOriginalToICP(backend, processedAssets.placeholder.buffer, "placeholder").then((blobId) => {
-        results.placeholder = blobId;
+      uploadBufferAsBlob(backend, processedAssets.placeholder.buffer, capsuleId, {
+        createMemory: false,
+        idempotencyKey: `placeholder-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      }).then((uploadResult) => {
+        if (uploadResult.success) {
+          results.placeholder = uploadResult.blobId;
+        } else {
+          throw new Error(`Placeholder upload failed: ${uploadResult.error}`);
+        }
       })
     );
   }
@@ -324,14 +184,8 @@ async function processImageDerivativesToICP(backend, fileBuffer, mimeType) {
 }
 
 // Finalize all assets (matches frontend finalizeAllAssets)
-async function finalizeAllAssets(backend, originalBlobId, results, fileName) {
-  // Create a new capsule for this test
-  const capsuleResult = await backend.capsules_create([]);
-  if ("Err" in capsuleResult) {
-    throw new Error(`Capsule creation failed: ${JSON.stringify(capsuleResult.Err)}`);
-  }
-  const capsuleId = capsuleResult.Ok.id;
-
+// Creates a complete memory with all assets (original + derivatives)
+async function finalizeAllAssets(backend, originalBlobId, results, fileName, capsuleId) {
   // Create memory metadata
   const memoryMetadata = {
     title: [fileName], // opt text - wrapped in array for Some(value)
@@ -453,16 +307,23 @@ async function finalizeAllAssets(backend, originalBlobId, results, fileName) {
 // Main upload function (matches frontend uploadToS3WithProcessing)
 async function uploadToICPWithProcessing(backend, fileBuffer, fileName, mimeType) {
   try {
-    // Start both lanes simultaneously
-    const laneAPromise = uploadOriginalToICP(backend, fileBuffer, fileName);
-    const laneBPromise = processImageDerivativesToICP(backend, fileBuffer, mimeType);
+    // Create a capsule for this upload session
+    const capsuleResult = await backend.capsules_create([]);
+    if ("Err" in capsuleResult) {
+      throw new Error(`Capsule creation failed: ${JSON.stringify(capsuleResult.Err)}`);
+    }
+    const capsuleId = capsuleResult.Ok.id;
+
+    // Start both lanes simultaneously with shared capsule
+    const laneAPromise = uploadOriginalToICP(backend, fileBuffer, fileName, capsuleId);
+    const laneBPromise = processImageDerivativesToICP(backend, fileBuffer, mimeType, capsuleId);
 
     // Wait for both lanes to complete
     const [laneAResult, laneBResult] = await Promise.allSettled([laneAPromise, laneBPromise]);
 
     // Finalize all assets
     if (laneAResult.status === "fulfilled" && laneBResult.status === "fulfilled") {
-      const finalResult = await finalizeAllAssets(backend, laneAResult.value, laneBResult.value, fileName);
+      const finalResult = await finalizeAllAssets(backend, laneAResult.value, laneBResult.value, fileName, capsuleId);
       return finalResult;
     } else {
       throw new Error(`Lane failed: A=${laneAResult.status}, B=${laneBResult.status}`);
@@ -473,370 +334,465 @@ async function uploadToICPWithProcessing(backend, fileBuffer, fileName, mimeType
 }
 
 // Test functions
-async function testLaneAOriginalUpload() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const fileName = path.basename(TEST_IMAGE_PATH);
+async function testLaneAOriginalUpload(backend, capsuleId) {
+  try {
+    console.log("🧪 Testing Lane A: Original Upload + Memory Creation");
 
-  const blobId = await uploadOriginalToICP(backend, fileBuffer, fileName);
+    // Step 1: Upload image file as blob using our shared utility (use small file for verification)
+    const uploadResult = await uploadFileAsBlob(backend, TEST_IMAGE_PATH_SMALL, capsuleId, {
+      createMemory: false, // Just blob first, no memory
+      idempotencyKey: `lane-a-${Date.now()}`,
+    });
 
-  // Verify blob was created
-  const blobMeta = await backend.blob_get_meta(blobId);
-  if ("Err" in blobMeta) {
-    throw new Error(`Failed to get blob meta: ${JSON.stringify(blobMeta.Err)}`);
+    if (!uploadResult.success) {
+      return { success: false, error: `Blob upload failed: ${uploadResult.error}` };
+    }
+
+    console.log(`✅ Blob uploaded successfully - Blob ID: ${uploadResult.blobId}`);
+
+    // Step 2: Verify blob integrity using our shared utility
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH_SMALL);
+    const fileSize = fileBuffer.length;
+    const fileHash = computeSHA256Hash(fileBuffer);
+
+    const blobVerification = await verifyBlobIntegrity(backend, uploadResult.blobId, fileSize, fileHash);
+    if (!blobVerification) {
+      return { success: false, error: "Blob integrity verification failed" };
+    }
+
+    console.log("✅ Blob integrity verified");
+
+    // Step 3: Create memory from the blob using our shared utility
+    const fileName = path.basename(TEST_IMAGE_PATH_SMALL);
+    const memoryResult = await createMemoryFromBlob(
+      backend,
+      capsuleId,
+      fileName,
+      fileSize,
+      uploadResult.blobId,
+      uploadResult, // upload result object
+      {
+        assetType: "image",
+        mimeType: "image/jpeg",
+        memoryType: { Image: null },
+      }
+    );
+
+    if (!memoryResult.success) {
+      return { success: false, error: `Memory creation failed: ${memoryResult.error}` };
+    }
+
+    console.log(`✅ Memory created successfully - Memory ID: ${memoryResult.memoryId}`);
+
+    // Step 4: Verify memory integrity using our shared utility
+    const memoryVerification = await verifyMemoryIntegrity(backend, memoryResult.memoryId, 1);
+    if (!memoryVerification) {
+      return { success: false, error: "Memory integrity verification failed" };
+    }
+
+    console.log("✅ Memory integrity verified");
+
+    return {
+      success: true,
+      blobId: uploadResult.blobId,
+      memoryId: memoryResult.memoryId,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
   }
-
-  return blobMeta.Ok.size === BigInt(fileBuffer.length);
 }
 
-async function testLaneBImageProcessing() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
+async function testLaneBImageProcessing(backend, capsuleId) {
+  try {
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
 
-  const processedAssets = await processImageDerivativesPure(fileBuffer, "image/jpeg");
+    const processedAssets = await processImageDerivativesPure(fileBuffer, "image/jpeg");
 
-  // Verify all derivatives were created
-  return processedAssets.original && processedAssets.display && processedAssets.thumb && processedAssets.placeholder;
+    // Verify all derivatives were created
+    const success =
+      processedAssets.original && processedAssets.display && processedAssets.thumb && processedAssets.placeholder;
+    return { success };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
-async function testParallelLanes() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const fileName = path.basename(TEST_IMAGE_PATH);
+async function testParallelLanes(backend, capsuleId) {
+  try {
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
+    const fileName = path.basename(TEST_IMAGE_PATH);
 
-  // Start both lanes simultaneously
-  const laneAPromise = uploadOriginalToICP(backend, fileBuffer, fileName);
-  const laneBPromise = processImageDerivativesToICP(backend, fileBuffer, "image/jpeg");
+    // Create a capsule for this test
+    const capsuleResult = await backend.capsules_create([]);
+    if ("Err" in capsuleResult) {
+      throw new Error(`Capsule creation failed: ${JSON.stringify(capsuleResult.Err)}`);
+    }
+    const testCapsuleId = capsuleResult.Ok.id;
 
-  // Wait for both lanes to complete
-  const [laneAResult, laneBResult] = await Promise.allSettled([laneAPromise, laneBPromise]);
+    // Start both lanes simultaneously with shared capsule
+    const laneAPromise = uploadOriginalToICP(backend, fileBuffer, fileName, testCapsuleId);
+    const laneBPromise = processImageDerivativesToICP(backend, fileBuffer, "image/jpeg", testCapsuleId);
 
-  return laneAResult.status === "fulfilled" && laneBResult.status === "fulfilled";
+    // Wait for both lanes to complete
+    const [laneAResult, laneBResult] = await Promise.allSettled([laneAPromise, laneBPromise]);
+
+    const success = laneAResult.status === "fulfilled" && laneBResult.status === "fulfilled";
+    return { success };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
-async function testCompleteSystem() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const fileName = path.basename(TEST_IMAGE_PATH);
+async function testCompleteSystem(backend, capsuleId) {
+  try {
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
+    const fileName = path.basename(TEST_IMAGE_PATH);
 
-  const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
+    const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
 
-  // Verify all assets were created
-  const hasOriginal = result.originalBlobId !== null;
-  const hasDisplay = result.processedAssets.display !== null;
-  const hasThumb = result.processedAssets.thumb !== null;
-  const hasPlaceholder = result.processedAssets.placeholder !== null;
+    // Verify all assets were created
+    const hasOriginal = result.originalBlobId !== null;
+    const hasDisplay = result.processedAssets.display !== null;
+    const hasThumb = result.processedAssets.thumb !== null;
+    const hasPlaceholder = result.processedAssets.placeholder !== null;
 
-  return hasOriginal && hasDisplay && hasThumb && hasPlaceholder;
+    const success = hasOriginal && hasDisplay && hasThumb && hasPlaceholder;
+    return { success };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
-async function testAssetRetrieval() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const fileName = path.basename(TEST_IMAGE_PATH);
+async function testAssetRetrieval(backend, capsuleId) {
+  try {
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
+    const fileName = path.basename(TEST_IMAGE_PATH);
 
-  const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
+    const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
 
-  // Test retrieval of original asset
-  const originalMeta = await backend.blob_get_meta(result.originalBlobId);
-  if ("Err" in originalMeta) {
-    throw new Error(`Failed to get original meta: ${JSON.stringify(originalMeta.Err)}`);
-  }
-
-  // Test retrieval of display asset
-  if (result.processedAssets.display) {
-    const displayMeta = await backend.blob_get_meta(result.processedAssets.display);
-    if ("Err" in displayMeta) {
-      throw new Error(`Failed to get display meta: ${JSON.stringify(displayMeta.Err)}`);
+    // Test retrieval of original asset
+    const originalMeta = await backend.blob_get_meta(result.originalBlobId);
+    if ("Err" in originalMeta) {
+      throw new Error(`Failed to get original meta: ${JSON.stringify(originalMeta.Err)}`);
     }
-  }
 
-  return true;
+    // Test retrieval of display asset
+    if (result.processedAssets.display) {
+      const displayMeta = await backend.blob_get_meta(result.processedAssets.display);
+      if ("Err" in displayMeta) {
+        throw new Error(`Failed to get display meta: ${JSON.stringify(displayMeta.Err)}`);
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
-async function testFullDeletionWorkflow() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const fileName = path.basename(TEST_IMAGE_PATH);
+async function testFullDeletionWorkflow(backend, capsuleId) {
+  try {
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
+    const fileName = path.basename(TEST_IMAGE_PATH);
 
-  echoInfo(`🧪 Testing full deletion workflow with ${fileName}`);
+    echoInfo(`🧪 Testing full deletion workflow with ${fileName}`);
 
-  // Step 1: Create memory with all assets
-  const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
-  echoInfo(`✅ Created memory: ${result.memoryId}`);
-  echoInfo(
-    `✅ Created assets: original=${result.originalBlobId}, display=${result.processedAssets.display}, thumb=${result.processedAssets.thumb}, placeholder=${result.processedAssets.placeholder}`
-  );
+    // Step 1: Create memory with all assets
+    const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
+    echoInfo(`✅ Created memory: ${result.memoryId}`);
+    echoInfo(
+      `✅ Created assets: original=${result.originalBlobId}, display=${result.processedAssets.display}, thumb=${result.processedAssets.thumb}, placeholder=${result.processedAssets.placeholder}`
+    );
 
-  // Step 2: Verify all assets exist before deletion
-  const allBlobIds = [
-    result.originalBlobId,
-    result.processedAssets.display,
-    result.processedAssets.thumb,
-    result.processedAssets.placeholder,
-  ].filter(Boolean);
+    // Step 2: Verify all assets exist before deletion
+    const allBlobIds = [
+      result.originalBlobId,
+      result.processedAssets.display,
+      result.processedAssets.thumb,
+      result.processedAssets.placeholder,
+    ].filter(Boolean);
 
-  echoInfo(`🔍 Verifying ${allBlobIds.length} assets exist before deletion...`);
-  for (const blobId of allBlobIds) {
-    const meta = await backend.blob_get_meta(blobId);
-    if ("Err" in meta) {
-      throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
+    echoInfo(`🔍 Verifying ${allBlobIds.length} assets exist before deletion...`);
+    for (const blobId of allBlobIds) {
+      const meta = await backend.blob_get_meta(blobId);
+      if ("Err" in meta) {
+        throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
+      }
+      echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
     }
-    echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
-  }
 
-  // Step 3: Verify memory exists
-  const memoryRead = await backend.memories_read(result.memoryId);
-  if ("Err" in memoryRead) {
-    throw new Error(`Memory not found before deletion: ${JSON.stringify(memoryRead.Err)}`);
-  }
-  echoInfo(`✅ Memory exists with ${memoryRead.Ok.blob_internal_assets.length} internal assets`);
-
-  // Step 4: Delete memory with assets (full deletion)
-  echoInfo(`🗑️ Deleting memory with assets (delete_assets: true)...`);
-  const deleteResult = await backend.memories_delete(result.memoryId, true);
-  if ("Err" in deleteResult) {
-    throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
-  }
-  echoInfo(`✅ Memory deleted successfully`);
-
-  // Step 5: Verify memory is gone
-  const memoryReadAfter = await backend.memories_read(result.memoryId);
-  if ("Ok" in memoryReadAfter) {
-    throw new Error(`Memory still exists after deletion: ${result.memoryId}`);
-  }
-  echoInfo(`✅ Memory confirmed deleted`);
-
-  // Step 6: Verify all assets are gone
-  echoInfo(`🔍 Verifying all assets are deleted...`);
-  for (const blobId of allBlobIds) {
-    const meta = await backend.blob_get_meta(blobId);
-    if ("Ok" in meta) {
-      throw new Error(`Asset ${blobId} still exists after deletion`);
+    // Step 3: Verify memory exists
+    const memoryRead = await backend.memories_read(result.memoryId);
+    if ("Err" in memoryRead) {
+      throw new Error(`Memory not found before deletion: ${JSON.stringify(memoryRead.Err)}`);
     }
-    if ("Err" in meta && "NotFound" in meta.Err) {
-      echoInfo(`  ✅ Asset ${blobId} confirmed deleted`);
-    } else {
-      throw new Error(`Unexpected error for asset ${blobId}: ${JSON.stringify(meta.Err)}`);
-    }
-  }
+    echoInfo(`✅ Memory exists with ${memoryRead.Ok.blob_internal_assets.length} internal assets`);
 
-  echoInfo(`✅ Full deletion workflow completed successfully - memory and all assets deleted`);
-  return true;
+    // Step 4: Delete memory with assets (full deletion)
+    echoInfo(`🗑️ Deleting memory with assets (delete_assets: true)...`);
+    const deleteResult = await backend.memories_delete(result.memoryId, true);
+    if ("Err" in deleteResult) {
+      throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
+    }
+    echoInfo(`✅ Memory deleted successfully`);
+
+    // Step 5: Verify memory is gone
+    const memoryReadAfter = await backend.memories_read(result.memoryId);
+    if ("Ok" in memoryReadAfter) {
+      throw new Error(`Memory still exists after deletion: ${result.memoryId}`);
+    }
+    echoInfo(`✅ Memory confirmed deleted`);
+
+    // Step 6: Verify all assets are gone
+    echoInfo(`🔍 Verifying all assets are deleted...`);
+    for (const blobId of allBlobIds) {
+      const meta = await backend.blob_get_meta(blobId);
+      if ("Ok" in meta) {
+        throw new Error(`Asset ${blobId} still exists after deletion`);
+      }
+      if ("Err" in meta && "NotFound" in meta.Err) {
+        echoInfo(`  ✅ Asset ${blobId} confirmed deleted`);
+      } else {
+        throw new Error(`Unexpected error for asset ${blobId}: ${JSON.stringify(meta.Err)}`);
+      }
+    }
+
+    echoInfo(`✅ Full deletion workflow completed successfully - memory and all assets deleted`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
-async function testSelectiveDeletionWorkflow() {
-  const fileBuffer = fs.readFileSync(TEST_IMAGE_PATH);
-  const fileName = path.basename(TEST_IMAGE_PATH);
+async function testSelectiveDeletionWorkflow(backend, capsuleId) {
+  try {
+    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
+    const fileName = path.basename(TEST_IMAGE_PATH);
 
-  echoInfo(`🧪 Testing selective deletion workflow with ${fileName}`);
+    echoInfo(`🧪 Testing selective deletion workflow with ${fileName}`);
 
-  // Step 1: Create memory with all assets
-  const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
-  echoInfo(`✅ Created memory: ${result.memoryId}`);
+    // Step 1: Create memory with all assets
+    const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
+    echoInfo(`✅ Created memory: ${result.memoryId}`);
 
-  // Step 2: Verify all assets exist before deletion
-  const allBlobIds = [
-    result.originalBlobId,
-    result.processedAssets.display,
-    result.processedAssets.thumb,
-    result.processedAssets.placeholder,
-  ].filter(Boolean);
+    // Step 2: Verify all assets exist before deletion
+    const allBlobIds = [
+      result.originalBlobId,
+      result.processedAssets.display,
+      result.processedAssets.thumb,
+      result.processedAssets.placeholder,
+    ].filter(Boolean);
 
-  echoInfo(`🔍 Verifying ${allBlobIds.length} assets exist before selective deletion...`);
-  for (const blobId of allBlobIds) {
-    const meta = await backend.blob_get_meta(blobId);
-    if ("Err" in meta) {
-      throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
+    echoInfo(`🔍 Verifying ${allBlobIds.length} assets exist before selective deletion...`);
+    for (const blobId of allBlobIds) {
+      const meta = await backend.blob_get_meta(blobId);
+      if ("Err" in meta) {
+        throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
+      }
+      echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
     }
-    echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
-  }
 
-  // Step 3: Delete memory without assets (metadata-only deletion)
-  echoInfo(`🗑️ Deleting memory without assets (delete_assets: false)...`);
-  const deleteResult = await backend.memories_delete(result.memoryId, false);
-  if ("Err" in deleteResult) {
-    throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
-  }
-  echoInfo(`✅ Memory metadata deleted successfully`);
-
-  // Step 4: Verify memory is gone
-  const memoryReadAfter = await backend.memories_read(result.memoryId);
-  if ("Ok" in memoryReadAfter) {
-    throw new Error(`Memory still exists after deletion: ${result.memoryId}`);
-  }
-  echoInfo(`✅ Memory confirmed deleted`);
-
-  // Step 5: Verify all assets are preserved
-  echoInfo(`🔍 Verifying all assets are preserved...`);
-  for (const blobId of allBlobIds) {
-    const meta = await backend.blob_get_meta(blobId);
-    if ("Err" in meta) {
-      throw new Error(`Asset ${blobId} was deleted when it should be preserved: ${JSON.stringify(meta.Err)}`);
+    // Step 3: Delete memory without assets (metadata-only deletion)
+    echoInfo(`🗑️ Deleting memory without assets (delete_assets: false)...`);
+    const deleteResult = await backend.memories_delete(result.memoryId, false);
+    if ("Err" in deleteResult) {
+      throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
     }
-    echoInfo(`  ✅ Asset ${blobId} preserved (${meta.Ok.size} bytes)`);
-  }
+    echoInfo(`✅ Memory metadata deleted successfully`);
 
-  echoInfo(`✅ Selective deletion workflow completed successfully - memory deleted, assets preserved`);
-  return true;
+    // Step 4: Verify memory is gone
+    const memoryReadAfter = await backend.memories_read(result.memoryId);
+    if ("Ok" in memoryReadAfter) {
+      throw new Error(`Memory still exists after deletion: ${result.memoryId}`);
+    }
+    echoInfo(`✅ Memory confirmed deleted`);
+
+    // Step 5: Verify all assets are preserved
+    echoInfo(`🔍 Verifying all assets are preserved...`);
+    for (const blobId of allBlobIds) {
+      const meta = await backend.blob_get_meta(blobId);
+      if ("Err" in meta) {
+        throw new Error(`Asset ${blobId} was deleted when it should be preserved: ${JSON.stringify(meta.Err)}`);
+      }
+      echoInfo(`  ✅ Asset ${blobId} preserved (${meta.Ok.size} bytes)`);
+    }
+
+    echoInfo(`✅ Selective deletion workflow completed successfully - memory deleted, assets preserved`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 // Focused unit test for delete function with multiple assets
-async function testDeleteFunctionUnit() {
-  echoInfo(`🧪 Testing delete function unit test with multiple assets`);
+async function testDeleteFunctionUnit(backend, capsuleId) {
+  try {
+    echoInfo(`🧪 Testing delete function unit test with multiple assets`);
 
-  // Step 1: Create a memory with multiple internal blob assets
-  echoInfo(`📤 Creating memory with 4 internal blob assets...`);
+    // Step 1: Create a memory with multiple internal blob assets
+    echoInfo(`📤 Creating memory with 4 internal blob assets...`);
 
-  // Upload original file
-  const filePath = "assets/input/avocado_big_21mb.jpg";
-  const fileBuffer = readFileSync(filePath);
-  const fileSize = fileBuffer.length;
+    // Upload original file
+    const filePath = "assets/input/avocado_big_21mb.jpg";
+    const fileBuffer = readFileAsBuffer(filePath);
+    const fileSize = fileBuffer.length;
 
-  // Create upload session
-  const beginResult = await backend.uploads_begin("test-delete-unit", fileSize);
-  const sessionId = beginResult.Ok;
+    // Create upload session
+    const beginResult = await backend.uploads_begin("test-delete-unit", fileSize);
+    const sessionId = beginResult.Ok;
 
-  // Upload in chunks
-  const chunks = createChunks(fileBuffer, CHUNK_SIZE);
-  for (let i = 0; i < chunks.length; i++) {
-    await backend.uploads_put_chunk(sessionId, i, chunks[i]);
-  }
+    // Upload in chunks
+    const chunks = [];
+    for (let i = 0; i < fileBuffer.length; i += CHUNK_SIZE) {
+      chunks.push(fileBuffer.slice(i, i + CHUNK_SIZE));
+    }
+    for (let i = 0; i < chunks.length; i++) {
+      await backend.uploads_put_chunk(sessionId, i, chunks[i]);
+    }
 
-  // Finish upload
-  const hash = calculateFileHash(fileBuffer);
-  const totalLen = BigInt(fileBuffer.length);
-  const originalBlobId = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
+    // Finish upload
+    const hash = computeSHA256Hash(fileBuffer);
+    const totalLen = BigInt(fileBuffer.length);
+    const originalBlobId = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
 
-  // Create 3 additional blob assets (simulating derivatives)
-  const derivativeBlobIds = [];
-  for (let i = 0; i < 3; i++) {
-    const derivativeSessionId = (await backend.uploads_begin(`derivative-${i}`, 1000)).Ok;
-    const derivativeChunk = new Uint8Array(1000).fill(i + 1);
-    await backend.uploads_put_chunk(derivativeSessionId, 0, derivativeChunk);
-    const derivativeHash = Array.from(crypto.createHash("sha256").update(derivativeChunk).digest());
-    const derivativeBlobId = await backend.uploads_finish(derivativeSessionId, derivativeHash, BigInt(1000));
-    derivativeBlobIds.push(derivativeBlobId);
-  }
+    // Create 3 additional blob assets (simulating derivatives)
+    const derivativeBlobIds = [];
+    for (let i = 0; i < 3; i++) {
+      const derivativeSessionId = (await backend.uploads_begin(`derivative-${i}`, 1000)).Ok;
+      const derivativeChunk = new Uint8Array(1000).fill(i + 1);
+      await backend.uploads_put_chunk(derivativeSessionId, 0, derivativeChunk);
+      const derivativeHash = Array.from(crypto.createHash("sha256").update(derivativeChunk).digest());
+      const derivativeBlobId = await backend.uploads_finish(derivativeSessionId, derivativeHash, BigInt(1000));
+      derivativeBlobIds.push(derivativeBlobId);
+    }
 
-  // Create memory with all 4 blob assets
-  const memoryMetadata = {
-    title: ["Delete Unit Test"],
-    description: ["Testing delete function with multiple assets"],
-    tags: [],
-    created_at: BigInt(Date.now() * 1000000),
-    updated_at: BigInt(Date.now() * 1000000),
-  };
+    // Create memory with all 4 blob assets
+    const memoryMetadata = {
+      title: ["Delete Unit Test"],
+      description: ["Testing delete function with multiple assets"],
+      tags: [],
+      created_at: BigInt(Date.now() * 1000000),
+      updated_at: BigInt(Date.now() * 1000000),
+    };
 
-  const internalBlobAssets = [
-    {
-      blob_id: originalBlobId,
-      metadata: {
-        Image: {
-          base: {
-            name: "original",
-            description: ["Original file"],
-            tags: [],
-            asset_type: { Original: null },
-            bytes: BigInt(fileSize),
-            mime_type: "image/jpeg",
-            sha256: null,
-            width: null,
-            height: null,
-            url: null,
-            storage_key: null,
-            bucket: null,
-            asset_location: null,
-            processing_status: null,
-            processing_error: null,
-            created_at: BigInt(Date.now() * 1000000),
-            updated_at: BigInt(Date.now() * 1000000),
-            deleted_at: null,
+    const internalBlobAssets = [
+      {
+        blob_id: originalBlobId,
+        metadata: {
+          Image: {
+            base: {
+              name: "original",
+              description: ["Original file"],
+              tags: [],
+              asset_type: { Original: null },
+              bytes: BigInt(fileSize),
+              mime_type: "image/jpeg",
+              sha256: null,
+              width: null,
+              height: null,
+              url: null,
+              storage_key: null,
+              bucket: null,
+              asset_location: null,
+              processing_status: null,
+              processing_error: null,
+              created_at: BigInt(Date.now() * 1000000),
+              updated_at: BigInt(Date.now() * 1000000),
+              deleted_at: null,
+            },
           },
         },
       },
-    },
-    ...derivativeBlobIds.map((blobId, i) => ({
-      blob_id: blobId,
-      metadata: {
-        Image: {
-          base: {
-            name: `derivative-${i}`,
-            description: [`Derivative ${i}`],
-            tags: [],
-            asset_type: { Derivative: null },
-            bytes: BigInt(1000),
-            mime_type: "image/jpeg",
-            sha256: null,
-            width: null,
-            height: null,
-            url: null,
-            storage_key: null,
-            bucket: null,
-            asset_location: null,
-            processing_status: null,
-            processing_error: null,
-            created_at: BigInt(Date.now() * 1000000),
-            updated_at: BigInt(Date.now() * 1000000),
-            deleted_at: null,
+      ...derivativeBlobIds.map((blobId, i) => ({
+        blob_id: blobId,
+        metadata: {
+          Image: {
+            base: {
+              name: `derivative-${i}`,
+              description: [`Derivative ${i}`],
+              tags: [],
+              asset_type: { Derivative: null },
+              bytes: BigInt(1000),
+              mime_type: "image/jpeg",
+              sha256: null,
+              width: null,
+              height: null,
+              url: null,
+              storage_key: null,
+              bucket: null,
+              asset_location: null,
+              processing_status: null,
+              processing_error: null,
+              created_at: BigInt(Date.now() * 1000000),
+              updated_at: BigInt(Date.now() * 1000000),
+              deleted_at: null,
+            },
           },
         },
-      },
-    })),
-  ];
+      })),
+    ];
 
-  const createResult = await backend.memories_create_with_internal_blobs(
-    "capsule_1759713283267064000",
-    memoryMetadata,
-    internalBlobAssets,
-    `delete-unit-test-${Date.now()}`
-  );
+    const createResult = await backend.memories_create_with_internal_blobs(
+      "capsule_1759713283267064000",
+      memoryMetadata,
+      internalBlobAssets,
+      `delete-unit-test-${Date.now()}`
+    );
 
-  if ("Err" in createResult) {
-    throw new Error(`Memory creation failed: ${JSON.stringify(createResult.Err)}`);
-  }
-
-  const memoryId = createResult.Ok;
-  echoInfo(`✅ Created memory: ${memoryId}`);
-
-  const allBlobIds = [originalBlobId, ...derivativeBlobIds];
-  echoInfo(`✅ Created ${allBlobIds.length} assets: ${allBlobIds.join(", ")}`);
-
-  // Step 2: Verify all assets exist
-  echoInfo(`🔍 Verifying all ${allBlobIds.length} assets exist before deletion...`);
-  for (const blobId of allBlobIds) {
-    const meta = await backend.blob_get_meta(blobId);
-    if ("Err" in meta) {
-      throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
+    if ("Err" in createResult) {
+      throw new Error(`Memory creation failed: ${JSON.stringify(createResult.Err)}`);
     }
-    echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
-  }
 
-  // Step 3: Test full deletion (delete_assets: true)
-  echoInfo(`🗑️ Testing full deletion (delete_assets: true)...`);
-  const deleteResult = await backend.memories_delete(memoryId, true);
-  if ("Err" in deleteResult) {
-    throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
-  }
-  echoInfo(`✅ Memory deleted successfully`);
+    const memoryId = createResult.Ok;
+    echoInfo(`✅ Created memory: ${memoryId}`);
 
-  // Step 4: Verify memory is gone
-  const memoryReadAfter = await backend.memories_read(memoryId);
-  if ("Ok" in memoryReadAfter) {
-    throw new Error(`Memory still exists after deletion: ${memoryId}`);
-  }
-  echoInfo(`✅ Memory confirmed deleted`);
+    const allBlobIds = [originalBlobId, ...derivativeBlobIds];
+    echoInfo(`✅ Created ${allBlobIds.length} assets: ${allBlobIds.join(", ")}`);
 
-  // Step 5: Verify ALL assets are deleted
-  echoInfo(`🔍 Verifying all ${allBlobIds.length} assets are deleted...`);
-  for (const blobId of allBlobIds) {
-    const meta = await backend.blob_get_meta(blobId);
-    if ("Ok" in meta) {
-      throw new Error(`Asset ${blobId} still exists after deletion - should be deleted!`);
+    // Step 2: Verify all assets exist
+    echoInfo(`🔍 Verifying all ${allBlobIds.length} assets exist before deletion...`);
+    for (const blobId of allBlobIds) {
+      const meta = await backend.blob_get_meta(blobId);
+      if ("Err" in meta) {
+        throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
+      }
+      echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
     }
-    if ("Err" in meta && "NotFound" in meta.Err) {
-      echoInfo(`  ✅ Asset ${blobId} confirmed deleted`);
-    } else {
-      throw new Error(`Asset ${blobId} deletion check failed: ${JSON.stringify(meta)}`);
-    }
-  }
 
-  echoInfo(`✅ Delete function unit test completed successfully - all ${allBlobIds.length} assets deleted`);
-  return true;
+    // Step 3: Test full deletion (delete_assets: true)
+    echoInfo(`🗑️ Testing full deletion (delete_assets: true)...`);
+    const deleteResult = await backend.memories_delete(memoryId, true);
+    if ("Err" in deleteResult) {
+      throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
+    }
+    echoInfo(`✅ Memory deleted successfully`);
+
+    // Step 4: Verify memory is gone
+    const memoryReadAfter = await backend.memories_read(memoryId);
+    if ("Ok" in memoryReadAfter) {
+      throw new Error(`Memory still exists after deletion: ${memoryId}`);
+    }
+    echoInfo(`✅ Memory confirmed deleted`);
+
+    // Step 5: Verify ALL assets are deleted
+    echoInfo(`🔍 Verifying all ${allBlobIds.length} assets are deleted...`);
+    for (const blobId of allBlobIds) {
+      const meta = await backend.blob_get_meta(blobId);
+      if ("Ok" in meta) {
+        throw new Error(`Asset ${blobId} still exists after deletion - should be deleted!`);
+      }
+      if ("Err" in meta && "NotFound" in meta.Err) {
+        echoInfo(`  ✅ Asset ${blobId} confirmed deleted`);
+      } else {
+        throw new Error(`Asset ${blobId} deletion check failed: ${JSON.stringify(meta)}`);
+      }
+    }
+
+    echoInfo(`✅ Delete function unit test completed successfully - all ${allBlobIds.length} assets deleted`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 // Main test runner
@@ -844,111 +800,79 @@ async function main() {
   echoInfo(`Starting ${TEST_NAME}`);
 
   // Parse command line arguments
-  const args = process.argv.slice(2);
-  const backendCanisterId = args[0];
-  const network = args[1] || "local"; // Default to local network
-  const testFilter = args[2]; // Optional test filter
+  const parsedArgs = parseTestArgs(
+    "test_upload_2lane_4asset_system.mjs",
+    "Tests the complete 2-lane + 4-asset upload system"
+  );
 
-  if (!backendCanisterId) {
-    echoFail("Usage: node test_upload_2lane_4asset_system.mjs <CANISTER_ID> [mainnet|local] [test_name]");
-    echoFail("Example: node test_upload_2lane_4asset_system.mjs uxrrr-q7777-77774-qaaaq-cai local");
-    echoFail("Example: node test_upload_2lane_4asset_system.mjs uxrrr-q7777-77774-qaaaq-cai mainnet");
-    echoFail(
-      "Example: node test_upload_2lane_4asset_system.mjs uxrrr-q7777-77774-qaaaq-cai local 'Complete 2-Lane + 4-Asset System'"
-    );
-    echoFail("");
-    echoFail("Available tests:");
-    echoFail("  - 'Lane A: Original Upload'");
-    echoFail("  - 'Lane B: Image Processing'");
-    echoFail("  - 'Parallel Lanes Execution'");
-    echoFail("  - 'Complete 2-Lane + 4-Asset System'");
-    echoFail("  - 'Asset Retrieval'");
-    echoFail("  - 'Full Deletion Workflow'");
-    echoFail("  - 'Selective Deletion Workflow'");
-    process.exit(1);
-  }
-
-  // Setup agent and backend based on network
-  const identity = loadDfxIdentity();
-  let agent;
-
-  if (network === "mainnet") {
-    echoInfo(`🌐 Connecting to mainnet (ic0.app)`);
-    agent = makeMainnetAgent(identity);
+  // Extract test filter from arguments (look for quoted test name or unquoted test name)
+  let testFilter = null;
+  const testNameArg = process.argv.find((arg) => arg.startsWith("'") || arg.startsWith('"'));
+  if (testNameArg) {
+    testFilter = testNameArg.slice(1, -1);
   } else {
-    echoInfo(`🏠 Connecting to local network (127.0.0.1:4943)`);
-    agent = new HttpAgent({
-      host: "http://127.0.0.1:4943",
-      identity,
-      fetch: (await import("node-fetch")).default,
-    });
-  }
-
-  await agent.fetchRootKey();
-
-  backend = Actor.createActor(idlFactory, {
-    agent,
-    canisterId: backendCanisterId,
-  });
-
-  // Run tests
-  const allTests = [
-    { name: "Lane A: Original Upload", fn: testLaneAOriginalUpload },
-    { name: "Lane B: Image Processing", fn: testLaneBImageProcessing },
-    { name: "Parallel Lanes Execution", fn: testParallelLanes },
-    { name: "Complete 2-Lane + 4-Asset System", fn: testCompleteSystem },
-    { name: "Asset Retrieval", fn: testAssetRetrieval },
-    { name: "Full Deletion Workflow", fn: testFullDeletionWorkflow },
-    { name: "Selective Deletion Workflow", fn: testSelectiveDeletionWorkflow },
-  ];
-
-  // Filter tests if test name is provided
-  const tests = testFilter ? allTests.filter((test) => test.name === testFilter) : allTests;
-
-  if (testFilter && tests.length === 0) {
-    echoFail(`Test not found: "${testFilter}"`);
-    echoFail("Available tests:");
-    allTests.forEach((test) => echoFail(`  - "${test.name}"`));
-    process.exit(1);
-  }
-
-  if (testFilter) {
-    echoInfo(`Running single test: "${testFilter}"`);
-  } else {
-    echoInfo(`Running all ${tests.length} tests`);
-  }
-
-  let passed = 0;
-  let failed = 0;
-
-  for (const test of tests) {
-    try {
-      echoInfo(`Running: ${test.name}`);
-      const result = await test.fn();
-      if (result) {
-        echoPass(test.name);
-        passed++;
-      } else {
-        echoFail(test.name);
-        failed++;
-      }
-    } catch (error) {
-      echoFail(`${test.name}: ${error.message}`);
-      failed++;
+    // Look for test name without quotes (everything after the canister ID)
+    const args = process.argv.slice(2);
+    const canisterIdIndex = args.findIndex((arg) => !arg.startsWith("--"));
+    if (canisterIdIndex !== -1 && args.length > canisterIdIndex + 1) {
+      testFilter = args[canisterIdIndex + 1];
     }
   }
 
-  // Summary
-  echoInfo(`\n${TEST_NAME} Summary:`);
-  echoInfo(`Total tests: ${tests.length}`);
-  echoInfo(`Passed: ${passed}`);
-  echoInfo(`Failed: ${failed}`);
+  try {
+    // Create test actor
+    const options = createTestActorOptions(parsedArgs);
+    const { actor: backend, canisterId } = await createTestActor(options);
 
-  if (failed > 0) {
-    echoFail("Some tests failed! ❌");
+    // Log network configuration
+    logNetworkConfig(parsedArgs, canisterId);
+
+    // Get or create test capsule
+    const capsuleId = await getOrCreateTestCapsuleForUpload(backend);
+    echoInfo(`Using capsule: ${capsuleId}`);
+
+    // Create test runner
+    const runner = createTestRunner(TEST_NAME);
+
+    // Run tests
+    const allTests = [
+      { name: "Lane A: Original Upload", fn: testLaneAOriginalUpload },
+      { name: "Lane B: Image Processing", fn: testLaneBImageProcessing },
+      { name: "Parallel Lanes Execution", fn: testParallelLanes },
+      { name: "Complete 2-Lane + 4-Asset System", fn: testCompleteSystem },
+      { name: "Asset Retrieval", fn: testAssetRetrieval },
+      { name: "Full Deletion Workflow", fn: testFullDeletionWorkflow },
+      { name: "Selective Deletion Workflow", fn: testSelectiveDeletionWorkflow },
+      { name: "Delete Function Unit Test", fn: testDeleteFunctionUnit },
+    ];
+
+    // Filter tests if test name is provided
+    const tests = testFilter ? allTests.filter((test) => test.name === testFilter) : allTests;
+
+    if (testFilter && tests.length === 0) {
+      echoFail(`Test not found: "${testFilter}"`);
+      echoFail("Available tests:");
+      allTests.forEach((test) => echoFail(`  - "${test.name}"`));
+      process.exit(1);
+    }
+
+    if (testFilter) {
+      echoInfo(`Running single test: "${testFilter}"`);
+    } else {
+      echoInfo(`Running all ${tests.length} tests`);
+    }
+
+    // Run all tests
+    for (const test of tests) {
+      await runner.runTest(test.name, test.fn, backend, capsuleId);
+    }
+
+    // Print summary and exit
+    const allPassed = runner.printTestSummary();
+    process.exit(allPassed ? 0 : 1);
+  } catch (error) {
+    echoFail(`Test execution failed: ${error.message}`);
     process.exit(1);
-  } else {
-    echoPass("All tests passed! ✅");
   }
 }
 

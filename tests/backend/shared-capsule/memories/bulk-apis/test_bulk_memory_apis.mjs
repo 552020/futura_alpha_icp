@@ -21,7 +21,7 @@ import { loadDfxIdentity, makeMainnetAgent } from "../../upload/ic-identity.js";
 import { sleep, retryWithBackoff, formatFileSize, formatDuration } from "../../upload/helpers.mjs";
 
 // Import the backend interface
-import { idlFactory } from "../../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "../../../../declarations/backend/backend.did.js";
 
 // Configuration
 const CANISTER_ID = process.env.BACKEND_CANISTER_ID || process.env.BACKEND_ID || "uxrrr-q7777-77774-qaaaq-cai";

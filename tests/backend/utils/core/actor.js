@@ -7,7 +7,7 @@
 
 import { Actor } from "@dfinity/agent";
 import { createTestAgent, getEnvironmentInfo } from "./agent.js";
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "../../declarations/backend/backend.did.js";
 
 /**
  * Create a test actor with proper configuration

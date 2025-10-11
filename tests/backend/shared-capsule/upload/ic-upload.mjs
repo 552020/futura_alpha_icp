@@ -13,7 +13,7 @@ const CANISTER_ID = process.env.BACKEND_CANISTER_ID || process.env.BACKEND_ID ||
 const IS_MAINNET = process.env.IC_HOST === "https://ic0.app" || process.env.IC_HOST === "https://icp0.io";
 
 // Import the backend interface
-import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+import { idlFactory } from "./declarations/backend/backend.did.js";
 
 const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE || "65536", 10); // 64KiB default
 
