@@ -113,7 +113,7 @@ export async function uploadBufferAsBlob(backend, buffer, capsuleId, options = {
     const end = Math.min(start + CHUNK_SIZE, buffer.length);
     const chunk = buffer.slice(start, end);
 
-    const putChunkResult = await backend.uploads_put_chunk(sessionId, i, chunk);
+    const putChunkResult = await backend.uploads_put_chunk(sessionId, i, new Uint8Array(chunk));
 
     if (typeof putChunkResult === "object" && putChunkResult !== null) {
       if ("Err" in putChunkResult) {
