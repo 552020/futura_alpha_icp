@@ -266,6 +266,9 @@ pub struct MemoryHeader {
     pub primary_asset_url: Option<String>, // Primary asset URL for display
     pub has_thumbnails: bool,              // Whether thumbnails exist
     pub has_previews: bool,                // Whether previews exist
+    
+    // NEW: Storage location information
+    pub database_storage_edges: Vec<StorageEdgeDatabaseType>, // Where the memory is stored: ['Icp'], ['Neon'], ['Icp', 'Neon']
 }
 
 /// Memory operation response
