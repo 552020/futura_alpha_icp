@@ -1,0 +1,14 @@
+{
+  "type": "module",
+  "name": "upload-tests",
+  "version": "1.0.0",
+  "description": "ICP Upload Tests Environment",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@dfinity/agent": "^3.2.6",
+    "@dfinity/identity": "^3.2.6",
+    "node-fetch": "^3.3.2"
+  }
+}
