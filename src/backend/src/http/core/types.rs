@@ -25,6 +25,7 @@ pub struct TokenScope {
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct TokenPayload {
     pub ver: u8,
+    pub kid: u32, // Key version for secret rotation
     pub exp_ns: u64,
     pub nonce: [u8; 12],
     pub scope: TokenScope,
@@ -71,6 +72,7 @@ pub trait AssetStore {
     fn get_inline(&self, memory_id: &str, asset_id: &str) -> Option<InlineAsset>;
     fn get_blob_len(&self, memory_id: &str, asset_id: &str) -> Option<(u64, String)>;
     fn read_blob_chunk(&self, memory_id: &str, asset_id: &str, offset: u64, len: u64) -> Option<Vec<u8>>;
+    fn exists(&self, memory_id: &str, asset_id: &str) -> bool;
 }
 
 /// ACL trait for authorization - avoids domain imports in HTTP layer

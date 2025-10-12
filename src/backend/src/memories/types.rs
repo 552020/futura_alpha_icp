@@ -241,6 +241,7 @@ pub struct Memory {
     pub blob_external_assets: Vec<MemoryAssetBlobExternal>,       // 0 or more external blob assets
 }
 
+
 /// Memory header for listings
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct MemoryHeader {

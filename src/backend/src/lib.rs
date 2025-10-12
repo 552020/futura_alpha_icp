@@ -54,7 +54,7 @@ fn greet(name: String) -> String {
 
 #[ic_cdk::query]
 fn whoami() -> Principal {
-    ic_cdk::api::msg_caller()
+    ic_cdk::caller()
 }
 
 #[ic_cdk::query]
@@ -846,7 +846,7 @@ fn sessions_cleanup_expired() -> std::result::Result<String, Error> {
 #[ic_cdk::update]
 fn clear_all_stable_memory() -> std::result::Result<(), Error> {
     // Only allow admin to call this
-    let caller = ic_cdk::api::msg_caller();
+    let caller = ic_cdk::caller();
     if !admin::is_admin(&caller) {
         return Err(types::Error::Unauthorized);
     }
@@ -1458,21 +1458,30 @@ use ic_cdk::api::time;
 use rand::{RngCore, SeedableRng};
 
 use crate::http::{
-    core_types::{TokenScope, TokenPayload, Acl},
+    core_types::{TokenScope, TokenPayload, Acl, AssetStore},
     auth_core::{sign_token_core, encode_token_url},
     canister_env::CanisterClock, secret_store::StableSecretStore, acl::FuturaAclAdapter,
+    asset_store::FuturaAssetStore,
 };
 
 #[query]
 fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<Vec<String>>, ttl_secs: u32) -> String {
-    let caller = ic_cdk::api::msg_caller();
+    let caller = ic_cdk::caller();
     let acl = FuturaAclAdapter;
     
     // ✅ Enhanced: Use ACL adapter for authorization (no domain imports in HTTP layer)
     assert!(acl.can_view(&memory_id, caller), "forbidden");
 
-    // ✅ Enhanced: Default TTL to 180 seconds if not specified
-    let ttl = if ttl_secs == 0 { 180 } else { ttl_secs };
+    // ✅ Enhanced: Validate asset existence if asset_ids are specified
+    if let Some(ids) = &asset_ids {
+        let store = FuturaAssetStore;
+        for id in ids {
+            assert!(store.exists(&memory_id, id), "asset not found");
+        }
+    }
+
+    // ✅ Enhanced: Default TTL to 180 seconds if not specified, cap at 180s
+    let ttl = if ttl_secs == 0 { 180 } else { ttl_secs.min(180) };
 
     // build payload
     let mut nonce = [0u8; 12];
@@ -1482,6 +1491,7 @@ fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<V
 
     let payload = TokenPayload {
         ver: 1,
+        kid: 1, // ✅ Enhanced: Key version for secret rotation
         exp_ns: time() + (ttl as u64) * 1_000_000_000,
         nonce,
         scope: TokenScope { memory_id, variants, asset_ids },

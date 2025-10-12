@@ -83,7 +83,7 @@ pub async fn rotate_secret() {
         s.previous = s.current;
         // We can't await here; do an outer async helper that calls set()
         // So: provide a separate async API to do set() after you fetch randomness
-        ic_cdk::spawn(async move {
+        ic_cdk::futures::spawn_017_compat(async move {
             let new_key = random_32().await;
             s.current = new_key;
             s.version = s.version.wrapping_add(1);
