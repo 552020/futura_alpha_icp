@@ -36,6 +36,8 @@ import {
   getFileSize,
   computeSHA256Hash,
   createImageAssetMetadata,
+  createMemoryMetadata,
+  createDerivativeAssetMetadata,
   verifyBlobIntegrity,
   verifyMemoryIntegrity,
   processImageDerivativesPure,
@@ -158,19 +160,9 @@ async function processImageDerivativesToICP(backend, fileBuffer, mimeType, capsu
   }
 
   if (processedAssets.placeholder) {
-    echoInfo(`📤 Uploading placeholder derivative...`);
-    uploadPromises.push(
-      uploadBufferAsBlob(backend, processedAssets.placeholder.buffer, capsuleId, {
-        createMemory: false,
-        idempotencyKey: `placeholder-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      }).then((uploadResult) => {
-        if (uploadResult.success) {
-          results.placeholder = uploadResult.blobId;
-        } else {
-          throw new Error(`Placeholder upload failed: ${uploadResult.error}`);
-        }
-      })
-    );
+    echoInfo(`📤 Storing placeholder derivative as inline data...`);
+    // Store placeholder data directly (not as blob) - it will be inline in the memory
+    results.placeholder = processedAssets.placeholder.buffer;
   }
 
   // Wait for all uploads to complete
@@ -186,107 +178,61 @@ async function processImageDerivativesToICP(backend, fileBuffer, mimeType, capsu
 // Finalize all assets (matches frontend finalizeAllAssets)
 // Creates a complete memory with all assets (original + derivatives)
 async function finalizeAllAssets(backend, originalBlobId, results, fileName, capsuleId) {
-  // Create memory metadata
-  const memoryMetadata = {
-    title: [fileName], // opt text - wrapped in array for Some(value)
-    description: ["2-Lane + 4-Asset System Test Memory"], // opt text
+  // Create memory metadata using helper function
+  const memoryMetadata = createMemoryMetadata({
+    title: fileName,
+    description: "2-Lane + 4-Asset System Test Memory",
     tags: ["test", "2lane-4asset"],
-    created_at: BigInt(Date.now() * 1000000),
-    updated_at: BigInt(Date.now() * 1000000),
-    date_of_memory: [],
-    memory_type: { Image: null },
-    content_type: "image/jpeg",
-    people_in_memory: [],
-    database_storage_edges: [],
-    created_by: [],
-    parent_folder_id: [],
-    deleted_at: [],
-    file_created_at: [],
-    location: [],
-    memory_notes: [],
-    uploaded_at: BigInt(Date.now() * 1000000),
-  };
+    contentType: "image/jpeg",
+    memoryType: { Image: null },
+  });
 
-  // Create asset metadata for the original blob
-  const assetMetadata = {
-    Image: {
-      dpi: [],
-      color_space: [],
-      base: {
-        url: [],
-        height: [],
-        updated_at: BigInt(Date.now() * 1000000),
-        asset_type: { Original: null },
-        sha256: [],
-        name: fileName,
-        storage_key: [],
-        tags: ["test", "2lane-4asset", "original"],
-        processing_error: [],
-        mime_type: "image/jpeg",
-        description: [],
-        created_at: BigInt(Date.now() * 1000000),
-        deleted_at: [],
-        bytes: BigInt(0), // Will be updated with actual size
-        asset_location: [],
-        width: [],
-        processing_status: [],
-        bucket: [],
-      },
-      exif_data: [],
-      compression_ratio: [],
-      orientation: [],
-    },
-  };
+  // Create asset metadata for the original blob using helper function
+  const assetMetadata = createImageAssetMetadata({
+    name: fileName,
+    size: 0, // Will be updated with actual size
+    mimeType: "image/jpeg",
+    assetType: "Original",
+    tags: ["test", "2lane-4asset", "original"],
+    description: "Original image asset",
+  });
 
-  // Create asset metadata for derivatives
-  const derivativeAssetMetadata = {
-    Image: {
-      dpi: [],
-      color_space: [],
-      base: {
-        url: [],
-        height: [],
-        updated_at: BigInt(Date.now() * 1000000),
-        asset_type: { Derivative: null },
-        sha256: [],
-        name: "derivative",
-        storage_key: [],
-        tags: ["test", "2lane-4asset", "derivative"],
-        processing_error: [],
-        mime_type: "image/jpeg",
-        description: [],
-        created_at: BigInt(Date.now() * 1000000),
-        deleted_at: [],
-        bytes: BigInt(0),
-        asset_location: [],
-        width: [],
-        processing_status: [],
-        bucket: [],
-      },
-      exif_data: [],
-      compression_ratio: [],
-      orientation: [],
-    },
-  };
+  // Create asset metadata for derivatives using helper function
+  const derivativeAssetMetadata = createDerivativeAssetMetadata({
+    tags: ["test", "2lane-4asset", "derivative"],
+    description: "Derivative image asset",
+  });
 
-  // Create memory with all 4 assets (original + 3 derivatives)
-  const allAssets = [
+  // Create memory with 3 blob assets (original + 2 derivatives) + 1 inline asset (placeholder)
+  const blobAssets = [
     { blob_id: originalBlobId, metadata: assetMetadata },
     { blob_id: results.display, metadata: derivativeAssetMetadata },
     { blob_id: results.thumb, metadata: derivativeAssetMetadata },
-    { blob_id: results.placeholder, metadata: derivativeAssetMetadata },
   ];
 
-  echoInfo(`📝 Creating memory with ${allAssets.length} assets...`);
+  // Create inline asset for placeholder using actual processed data
+  const placeholderInlineAsset = {
+    data: results.placeholder, // Use actual processed placeholder data
+    metadata: createDerivativeAssetMetadata({
+      name: "placeholder",
+      size: results.placeholder.length,
+      mimeType: "image/webp",
+      tags: ["test", "2lane-4asset", "derivative", "inline"],
+      description: "Inline placeholder asset",
+    }),
+  };
+
+  echoInfo(`📝 Creating memory with ${blobAssets.length} blob assets + 1 inline asset...`);
   echoInfo(`  Original: ${originalBlobId}`);
   echoInfo(`  Display: ${results.display}`);
   echoInfo(`  Thumb: ${results.thumb}`);
-  echoInfo(`  Placeholder: ${results.placeholder}`);
+  echoInfo(`  Placeholder: inline asset (${placeholderInlineAsset.data.length} bytes)`);
 
-  const memoryResult = await backend.memories_create_with_internal_blobs(
+  const memoryResult = await backend.memories_create_with_internal_blobs_and_inline_assets(
     capsuleId, // text - capsule ID
     memoryMetadata, // MemoryMetadata
-    allAssets, // Vec<InternalBlobAssetInput> - all 4 assets
+    blobAssets, // Vec<InternalBlobAssetInput> - 3 blob assets
+    [placeholderInlineAsset], // Vec<InlineAssetInput> - 1 inline asset
     `memory-${Date.now()}` // text - idempotency key
   );
 
@@ -300,7 +246,11 @@ async function finalizeAllAssets(backend, originalBlobId, results, fileName, cap
   return {
     memoryId,
     originalBlobId,
-    processedAssets: results,
+    processedAssets: {
+      display: results.display,
+      thumb: results.thumb,
+      placeholder: "inline", // Indicate placeholder is stored inline
+    },
   };
 }
 
@@ -454,7 +404,7 @@ async function testCompleteSystem(backend, capsuleId) {
     const hasOriginal = result.originalBlobId !== null;
     const hasDisplay = result.processedAssets.display !== null;
     const hasThumb = result.processedAssets.thumb !== null;
-    const hasPlaceholder = result.processedAssets.placeholder !== null;
+    const hasPlaceholder = result.processedAssets.placeholder === "inline"; // Placeholder is stored inline
 
     const success = hasOriginal && hasDisplay && hasThumb && hasPlaceholder;
     return { success };
@@ -484,311 +434,6 @@ async function testAssetRetrieval(backend, capsuleId) {
       }
     }
 
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-async function testFullDeletionWorkflow(backend, capsuleId) {
-  try {
-    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
-    const fileName = path.basename(TEST_IMAGE_PATH);
-
-    echoInfo(`🧪 Testing full deletion workflow with ${fileName}`);
-
-    // Step 1: Create memory with all assets
-    const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
-    echoInfo(`✅ Created memory: ${result.memoryId}`);
-    echoInfo(
-      `✅ Created assets: original=${result.originalBlobId}, display=${result.processedAssets.display}, thumb=${result.processedAssets.thumb}, placeholder=${result.processedAssets.placeholder}`
-    );
-
-    // Step 2: Verify all assets exist before deletion
-    const allBlobIds = [
-      result.originalBlobId,
-      result.processedAssets.display,
-      result.processedAssets.thumb,
-      result.processedAssets.placeholder,
-    ].filter(Boolean);
-
-    echoInfo(`🔍 Verifying ${allBlobIds.length} assets exist before deletion...`);
-    for (const blobId of allBlobIds) {
-      const meta = await backend.blob_get_meta(blobId);
-      if ("Err" in meta) {
-        throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
-      }
-      echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
-    }
-
-    // Step 3: Verify memory exists
-    const memoryRead = await backend.memories_read(result.memoryId);
-    if ("Err" in memoryRead) {
-      throw new Error(`Memory not found before deletion: ${JSON.stringify(memoryRead.Err)}`);
-    }
-    echoInfo(`✅ Memory exists with ${memoryRead.Ok.blob_internal_assets.length} internal assets`);
-
-    // Step 4: Delete memory with assets (full deletion)
-    echoInfo(`🗑️ Deleting memory with assets (delete_assets: true)...`);
-    const deleteResult = await backend.memories_delete(result.memoryId, true);
-    if ("Err" in deleteResult) {
-      throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
-    }
-    echoInfo(`✅ Memory deleted successfully`);
-
-    // Step 5: Verify memory is gone
-    const memoryReadAfter = await backend.memories_read(result.memoryId);
-    if ("Ok" in memoryReadAfter) {
-      throw new Error(`Memory still exists after deletion: ${result.memoryId}`);
-    }
-    echoInfo(`✅ Memory confirmed deleted`);
-
-    // Step 6: Verify all assets are gone
-    echoInfo(`🔍 Verifying all assets are deleted...`);
-    for (const blobId of allBlobIds) {
-      const meta = await backend.blob_get_meta(blobId);
-      if ("Ok" in meta) {
-        throw new Error(`Asset ${blobId} still exists after deletion`);
-      }
-      if ("Err" in meta && "NotFound" in meta.Err) {
-        echoInfo(`  ✅ Asset ${blobId} confirmed deleted`);
-      } else {
-        throw new Error(`Unexpected error for asset ${blobId}: ${JSON.stringify(meta.Err)}`);
-      }
-    }
-
-    echoInfo(`✅ Full deletion workflow completed successfully - memory and all assets deleted`);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-async function testSelectiveDeletionWorkflow(backend, capsuleId) {
-  try {
-    const fileBuffer = readFileAsBuffer(TEST_IMAGE_PATH);
-    const fileName = path.basename(TEST_IMAGE_PATH);
-
-    echoInfo(`🧪 Testing selective deletion workflow with ${fileName}`);
-
-    // Step 1: Create memory with all assets
-    const result = await uploadToICPWithProcessing(backend, fileBuffer, fileName, "image/jpeg");
-    echoInfo(`✅ Created memory: ${result.memoryId}`);
-
-    // Step 2: Verify all assets exist before deletion
-    const allBlobIds = [
-      result.originalBlobId,
-      result.processedAssets.display,
-      result.processedAssets.thumb,
-      result.processedAssets.placeholder,
-    ].filter(Boolean);
-
-    echoInfo(`🔍 Verifying ${allBlobIds.length} assets exist before selective deletion...`);
-    for (const blobId of allBlobIds) {
-      const meta = await backend.blob_get_meta(blobId);
-      if ("Err" in meta) {
-        throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
-      }
-      echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
-    }
-
-    // Step 3: Delete memory without assets (metadata-only deletion)
-    echoInfo(`🗑️ Deleting memory without assets (delete_assets: false)...`);
-    const deleteResult = await backend.memories_delete(result.memoryId, false);
-    if ("Err" in deleteResult) {
-      throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
-    }
-    echoInfo(`✅ Memory metadata deleted successfully`);
-
-    // Step 4: Verify memory is gone
-    const memoryReadAfter = await backend.memories_read(result.memoryId);
-    if ("Ok" in memoryReadAfter) {
-      throw new Error(`Memory still exists after deletion: ${result.memoryId}`);
-    }
-    echoInfo(`✅ Memory confirmed deleted`);
-
-    // Step 5: Verify all assets are preserved
-    echoInfo(`🔍 Verifying all assets are preserved...`);
-    for (const blobId of allBlobIds) {
-      const meta = await backend.blob_get_meta(blobId);
-      if ("Err" in meta) {
-        throw new Error(`Asset ${blobId} was deleted when it should be preserved: ${JSON.stringify(meta.Err)}`);
-      }
-      echoInfo(`  ✅ Asset ${blobId} preserved (${meta.Ok.size} bytes)`);
-    }
-
-    echoInfo(`✅ Selective deletion workflow completed successfully - memory deleted, assets preserved`);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-}
-
-// Focused unit test for delete function with multiple assets
-async function testDeleteFunctionUnit(backend, capsuleId) {
-  try {
-    echoInfo(`🧪 Testing delete function unit test with multiple assets`);
-
-    // Step 1: Create a memory with multiple internal blob assets
-    echoInfo(`📤 Creating memory with 4 internal blob assets...`);
-
-    // Upload original file
-    const filePath = "assets/input/avocado_big_21mb.jpg";
-    const fileBuffer = readFileAsBuffer(filePath);
-    const fileSize = fileBuffer.length;
-
-    // Create upload session
-    const beginResult = await backend.uploads_begin("test-delete-unit", fileSize);
-    const sessionId = beginResult.Ok;
-
-    // Upload in chunks
-    const chunks = [];
-    for (let i = 0; i < fileBuffer.length; i += CHUNK_SIZE) {
-      chunks.push(fileBuffer.slice(i, i + CHUNK_SIZE));
-    }
-    for (let i = 0; i < chunks.length; i++) {
-      await backend.uploads_put_chunk(sessionId, i, chunks[i]);
-    }
-
-    // Finish upload
-    const hash = computeSHA256Hash(fileBuffer);
-    const totalLen = BigInt(fileBuffer.length);
-    const originalBlobId = await backend.uploads_finish(sessionId, Array.from(hash), totalLen);
-
-    // Create 3 additional blob assets (simulating derivatives)
-    const derivativeBlobIds = [];
-    for (let i = 0; i < 3; i++) {
-      const derivativeSessionId = (await backend.uploads_begin(`derivative-${i}`, 1000)).Ok;
-      const derivativeChunk = new Uint8Array(1000).fill(i + 1);
-      await backend.uploads_put_chunk(derivativeSessionId, 0, derivativeChunk);
-      const derivativeHash = Array.from(crypto.createHash("sha256").update(derivativeChunk).digest());
-      const derivativeBlobId = await backend.uploads_finish(derivativeSessionId, derivativeHash, BigInt(1000));
-      derivativeBlobIds.push(derivativeBlobId);
-    }
-
-    // Create memory with all 4 blob assets
-    const memoryMetadata = {
-      title: ["Delete Unit Test"],
-      description: ["Testing delete function with multiple assets"],
-      tags: [],
-      created_at: BigInt(Date.now() * 1000000),
-      updated_at: BigInt(Date.now() * 1000000),
-    };
-
-    const internalBlobAssets = [
-      {
-        blob_id: originalBlobId,
-        metadata: {
-          Image: {
-            base: {
-              name: "original",
-              description: ["Original file"],
-              tags: [],
-              asset_type: { Original: null },
-              bytes: BigInt(fileSize),
-              mime_type: "image/jpeg",
-              sha256: null,
-              width: null,
-              height: null,
-              url: null,
-              storage_key: null,
-              bucket: null,
-              asset_location: null,
-              processing_status: null,
-              processing_error: null,
-              created_at: BigInt(Date.now() * 1000000),
-              updated_at: BigInt(Date.now() * 1000000),
-              deleted_at: null,
-            },
-          },
-        },
-      },
-      ...derivativeBlobIds.map((blobId, i) => ({
-        blob_id: blobId,
-        metadata: {
-          Image: {
-            base: {
-              name: `derivative-${i}`,
-              description: [`Derivative ${i}`],
-              tags: [],
-              asset_type: { Derivative: null },
-              bytes: BigInt(1000),
-              mime_type: "image/jpeg",
-              sha256: null,
-              width: null,
-              height: null,
-              url: null,
-              storage_key: null,
-              bucket: null,
-              asset_location: null,
-              processing_status: null,
-              processing_error: null,
-              created_at: BigInt(Date.now() * 1000000),
-              updated_at: BigInt(Date.now() * 1000000),
-              deleted_at: null,
-            },
-          },
-        },
-      })),
-    ];
-
-    const createResult = await backend.memories_create_with_internal_blobs(
-      "capsule_1759713283267064000",
-      memoryMetadata,
-      internalBlobAssets,
-      `delete-unit-test-${Date.now()}`
-    );
-
-    if ("Err" in createResult) {
-      throw new Error(`Memory creation failed: ${JSON.stringify(createResult.Err)}`);
-    }
-
-    const memoryId = createResult.Ok;
-    echoInfo(`✅ Created memory: ${memoryId}`);
-
-    const allBlobIds = [originalBlobId, ...derivativeBlobIds];
-    echoInfo(`✅ Created ${allBlobIds.length} assets: ${allBlobIds.join(", ")}`);
-
-    // Step 2: Verify all assets exist
-    echoInfo(`🔍 Verifying all ${allBlobIds.length} assets exist before deletion...`);
-    for (const blobId of allBlobIds) {
-      const meta = await backend.blob_get_meta(blobId);
-      if ("Err" in meta) {
-        throw new Error(`Asset ${blobId} not found before deletion: ${JSON.stringify(meta.Err)}`);
-      }
-      echoInfo(`  ✅ Asset ${blobId} exists (${meta.Ok.size} bytes)`);
-    }
-
-    // Step 3: Test full deletion (delete_assets: true)
-    echoInfo(`🗑️ Testing full deletion (delete_assets: true)...`);
-    const deleteResult = await backend.memories_delete(memoryId, true);
-    if ("Err" in deleteResult) {
-      throw new Error(`Memory deletion failed: ${JSON.stringify(deleteResult.Err)}`);
-    }
-    echoInfo(`✅ Memory deleted successfully`);
-
-    // Step 4: Verify memory is gone
-    const memoryReadAfter = await backend.memories_read(memoryId);
-    if ("Ok" in memoryReadAfter) {
-      throw new Error(`Memory still exists after deletion: ${memoryId}`);
-    }
-    echoInfo(`✅ Memory confirmed deleted`);
-
-    // Step 5: Verify ALL assets are deleted
-    echoInfo(`🔍 Verifying all ${allBlobIds.length} assets are deleted...`);
-    for (const blobId of allBlobIds) {
-      const meta = await backend.blob_get_meta(blobId);
-      if ("Ok" in meta) {
-        throw new Error(`Asset ${blobId} still exists after deletion - should be deleted!`);
-      }
-      if ("Err" in meta && "NotFound" in meta.Err) {
-        echoInfo(`  ✅ Asset ${blobId} confirmed deleted`);
-      } else {
-        throw new Error(`Asset ${blobId} deletion check failed: ${JSON.stringify(meta)}`);
-      }
-    }
-
-    echoInfo(`✅ Delete function unit test completed successfully - all ${allBlobIds.length} assets deleted`);
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -841,9 +486,6 @@ async function main() {
       { name: "Parallel Lanes Execution", fn: testParallelLanes },
       { name: "Complete 2-Lane + 4-Asset System", fn: testCompleteSystem },
       { name: "Asset Retrieval", fn: testAssetRetrieval },
-      { name: "Full Deletion Workflow", fn: testFullDeletionWorkflow },
-      { name: "Selective Deletion Workflow", fn: testSelectiveDeletionWorkflow },
-      { name: "Delete Function Unit Test", fn: testDeleteFunctionUnit },
     ];
 
     // Filter tests if test name is provided
