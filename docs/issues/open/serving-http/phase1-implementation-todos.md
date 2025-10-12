@@ -96,6 +96,7 @@
 **📋 Integration Analysis:** See `domain-integration-analysis.md` for detailed implementation plan
 
 **🎉 Domain Integration Summary:**
+
 - **ACL Integration**: HTTP module now uses existing `effective_perm_mask()` logic for permission checking
 - **Asset Store Integration**: Connected to existing `memories` and `blob_store` APIs with proper error handling
 - **Enhanced Token Minting**: Added asset existence validation and TTL capping (180s max)

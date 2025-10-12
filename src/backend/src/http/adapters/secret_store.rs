@@ -41,8 +41,9 @@ pub async fn init() {
     let mm = MemoryManager::init(DefaultMemoryImpl::default());
     let mem = mm.get(MemoryId::new(42));
 
+    // Use deterministic initialization during init (system calls not allowed)
     let seeded = Secrets { 
-        current: random_32().await, 
+        current: deterministic_key(), 
         previous: [0; 32], 
         version: 1 
     };
@@ -99,6 +100,23 @@ async fn random_32() -> [u8; 32] {
     let mut out = [0u8; 32];
     out.copy_from_slice(&r[..32]);
     out
+}
+
+fn deterministic_key() -> [u8; 32] {
+    // Generate deterministic key based on canister ID and time
+    // This is used during initialization when system calls are not allowed
+    let canister_id = ic_cdk::api::id();
+    let time = ic_cdk::api::time();
+    
+    let mut key = [0u8; 32];
+    let canister_bytes = canister_id.as_slice();
+    let time_bytes = time.to_le_bytes();
+    
+    for i in 0..32 {
+        key[i] = canister_bytes[i % canister_bytes.len()] ^ time_bytes[i % 8];
+    }
+    
+    key
 }
 
 pub struct StableSecretStore;

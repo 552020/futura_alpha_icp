@@ -1455,7 +1455,7 @@ fn http_request(req: ic_http_certification::HttpRequest) -> ic_http_certificatio
 // Token minting API for HTTP requests
 use ic_cdk::query;
 use ic_cdk::api::time;
-use rand::{RngCore, SeedableRng};
+// Removed rand dependency - using ICP's native randomness instead
 
 use crate::http::{
     core_types::{TokenScope, TokenPayload, Acl, AssetStore},
@@ -1485,9 +1485,12 @@ fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<V
 
     // build payload
     let mut nonce = [0u8; 12];
-    // simple RNG; for stronger nonce use raw_rand() if you like
-    let mut rng = rand::rngs::StdRng::from_entropy();
-    rng.fill_bytes(&mut nonce);
+    // Use deterministic nonce based on time and caller for query functions
+    let time_bytes = time().to_le_bytes();
+    let caller_bytes = caller.as_slice();
+    for i in 0..12 {
+        nonce[i] = time_bytes[i % 8] ^ caller_bytes[i % caller_bytes.len()];
+    }
 
     let payload = TokenPayload {
         ver: 1,

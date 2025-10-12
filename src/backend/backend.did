@@ -272,6 +272,19 @@ type HostingPreferences = record {
   blob_hosting : BlobHosting;
   frontend_hosting : BackendHosting;
 };
+type HttpRequest = record {
+  url : text;
+  method : text;
+  body : blob;
+  headers : vec record { text; text };
+  certificate_version : opt nat16;
+};
+type HttpResponse = record {
+  body : blob;
+  headers : vec record { text; text };
+  upgrade : opt bool;
+  status_code : nat16;
+};
 type ImageAssetMetadata = record {
   dpi : opt nat32;
   color_space : opt text;
@@ -469,7 +482,7 @@ type VideoAssetMetadata = record {
   bitrate : opt nat64;
   aspect_ratio : opt float32;
 };
-service : {
+service : () -> {
   _probe_inline_len : (opt blob) -> (nat64, blob);
   add_admin : (principal) -> (Result);
   // Get a specific asset from a memory by asset_id
@@ -547,6 +560,7 @@ service : {
   get_user_migration_status : (principal) -> (Result_12) query;
   get_user_settings : () -> (Result_13) query;
   greet : (text) -> (text) query;
+  http_request : (HttpRequest) -> (HttpResponse) query;
   is_migration_enabled : () -> (Result_7) query;
   is_personal_canister_creation_enabled : () -> (Result_7) query;
   list_admins : () -> (vec principal) query;
@@ -593,6 +607,7 @@ service : {
   memories_read_asset : (text, nat32) -> (Result_1) query;
   memories_update : (text, MemoryUpdateData) -> (Result_20);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
+  mint_http_token : (text, vec text, opt vec text, nat32) -> (text) query;
   register_with_nonce : (text) -> (Result);
   remove_admin : (principal) -> (Result);
   // Clean up expired sessions
