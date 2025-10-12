@@ -1,5 +1,6 @@
 use candid::{CandidType, Decode, Encode};
-use ic_cdk::api::{management_canister::main::raw_rand, time};
+use ic_cdk::api::time;
+use ic_cdk::management_canister::raw_rand;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
     DefaultMemoryImpl, StableCell, Storable,
@@ -94,8 +95,7 @@ pub async fn rotate_secret() {
 }
 
 async fn random_32() -> [u8; 32] {
-    use ic_cdk::api::management_canister::main::raw_rand;
-    let r = raw_rand().await.expect("raw_rand").0;
+    let r = raw_rand().await.expect("raw_rand");
     let mut out = [0u8; 32];
     out.copy_from_slice(&r[..32]);
     out

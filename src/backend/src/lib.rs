@@ -1465,7 +1465,7 @@ use crate::http::{
 
 #[query]
 fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<Vec<String>>, ttl_secs: u32) -> String {
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::msg_caller();
     let acl = FuturaAclAdapter;
     
     // ✅ Enhanced: Use ACL adapter for authorization (no domain imports in HTTP layer)
