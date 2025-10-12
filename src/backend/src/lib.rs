@@ -28,6 +28,7 @@ mod capsule_acl;
 mod capsule_store;
 mod folder;
 mod gallery;
+mod http;
 mod memories;
 mod memory;
 mod person;
@@ -1156,7 +1157,7 @@ fn pre_upgrade() {
 }
 
 #[ic_cdk::post_upgrade]
-fn post_upgrade() {
+async fn post_upgrade() {
     // UUID v7 generation no longer requires initialization - using proper IC primitives
 
     // Stable memory structures (StableBTreeMap) automatically restore their data
@@ -1198,6 +1199,10 @@ fn post_upgrade() {
     // If restore fails, start with empty state (no panic)
 
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
+    
+    // Initialize HTTP secret store
+    http::secret::post_upgrade_secret().await
+        .expect("Failed to rotate HTTP secret");
 }
 
 // DEBUG: Cross-call canary to test StableBTreeMap persistence
@@ -1420,6 +1425,60 @@ fn memories_list_assets(
     let mut store = StoreAdapter;
 
     memories_list_assets_core(&env, &mut store, memory_id)
+}
+
+// ============================================================================
+// HTTP REQUEST HANDLERS
+// ============================================================================
+
+#[ic_cdk::init]
+async fn init() {
+    // Initialize HTTP secret store
+    http::secret::init_secret().await
+        .expect("Failed to initialize HTTP secret store");
+}
+
+
+#[ic_cdk::query]
+fn http_request(req: ic_http_certification::HttpRequest) -> ic_http_certification::HttpResponse<'static> {
+    http::handle(req)
+}
+
+// TODO: Enable when streaming is needed
+// #[ic_cdk::query]
+// fn http_request_streaming_callback(token: http::streaming::CallbackToken)
+//     -> http::streaming::CallbackResponse
+// {
+//     // Note: This will need to be made async in the actual implementation
+//     // For now, we'll return an error since we can't use async in query methods
+//     Err("Streaming callback not yet implemented".to_string())
+// }
+
+// Token minting API for HTTP requests
+use ic_cdk::query;
+use ic_cdk::api::time;
+use rand::{RngCore, SeedableRng};
+
+use crate::http::auth::{TokenScope, TokenPayload, sign_token, encode_token};
+
+#[query]
+fn mint_http_token(scope: TokenScope, ttl_secs: u32) -> String {
+    let caller: Principal = ic_cdk::caller();
+    assert_user_can_view(&caller, &scope.memory_id); // wire to your ACL logic
+
+    let mut nonce = [0u8; 12];
+    // simple RNG; for stronger nonce use raw_rand() if you like
+    let mut rng = rand::rngs::StdRng::from_entropy();
+    rng.fill_bytes(&mut nonce);
+
+    let exp_ns = time() + (ttl_secs as u64) * 1_000_000_000;
+    let payload = TokenPayload { ver: 1, exp_ns, nonce, scope, sub: Some(caller) };
+    let tok = sign_token(&payload);
+    encode_token(&tok)
+}
+
+fn assert_user_can_view(_caller: &Principal, _memory_id: &str) {
+    // TODO: integrate with your effective_perm_mask() / ACL
 }
 
 // Export the interface for the smart contract.
