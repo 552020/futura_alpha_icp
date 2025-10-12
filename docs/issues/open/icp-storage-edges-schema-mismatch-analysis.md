@@ -141,4 +141,3 @@ The backend should read from storage edges database to populate `database_storag
 ## Status
 
 **Open** - Schema mismatch identified, fixes needed in multiple layers
-

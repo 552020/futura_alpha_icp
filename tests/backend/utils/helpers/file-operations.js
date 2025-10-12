@@ -112,3 +112,4 @@ export function getFileNameWithoutExtension(filePath) {
   return lastDotIndex > 0 ? fileName.substring(0, lastDotIndex) : fileName;
 }
 
+

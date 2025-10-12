@@ -208,3 +208,4 @@ uploadToICPWithProcessing(); // Complete workflow orchestration
 
 **Recommendation**: Start with `test_lane_a_original_upload.mjs` as it's the simplest and can validate our approach.
 
+
