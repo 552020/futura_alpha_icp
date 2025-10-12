@@ -1,0 +1,22 @@
+{
+  "name": "bytes-to-image-lab",
+  "version": "1.0.0",
+  "description": "Lab to understand how to transform raw bytes from ICP canisters into browser-displayable images",
+  "scripts": {
+    "serve": "http-server -p 8000 -o",
+    "start": "http-server -p 8000 -o"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "keywords": [
+    "icp",
+    "canister",
+    "image",
+    "bytes",
+    "blob",
+    "base64"
+  ],
+  "author": "",
+  "license": "MIT"
+}

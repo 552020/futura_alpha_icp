@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <pre id="output">Loading...</pre>
+
+    <script type="module">
+      import { HttpAgent, Actor } from "@dfinity/agent";
+      import { idlFactory } from "./your_canister.did.js"; // your generated IDL
+      const canisterId = "your-canister-id";
+
+      // 1. Connect to the IC
+      const agent = new HttpAgent({ host: "https://icp0.io" });
+
+      // 2. Create an actor
+      const actor = Actor.createActor(idlFactory, { agent, canisterId });
+
+      // 3. Call get_photo (which returns [nat8])
+      const bytes = await actor.get_photo("wedding.jpg");
+
+      // 4. Display them as plain numbers
+      document.getElementById("output").textContent = JSON.stringify(bytes, null, 2);
+
+      // You'll see: [255,216,255,224,0,16,74,70,73,70,0,1,1,0,…]
+      // These are just raw numbers; the browser doesn't "see" an image here.
+
+      // 5. Convert to Base64 data URL for display
+      const base64 = btoa(String.fromCharCode(...bytes));
+      const dataUrl = `data:image/jpeg;base64,${base64}`;
+
+      // 6. Create an image element to display it
+      const img = document.createElement("img");
+      img.src = dataUrl;
+      document.body.appendChild(img);
+    </script>
+  </body>
+</html>
