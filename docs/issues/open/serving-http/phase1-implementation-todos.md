@@ -1,6 +1,6 @@
 # Phase 1 Implementation TODOs
 
-**Status:** ✅ **PHASE 1 COMPLETED**  
+**Status:** ✅ **PHASE 1 + DOMAIN INTEGRATION COMPLETED**  
 **Priority:** High  
 **Estimated Time:** 2-3 days (✅ **COMPLETED IN 1 DAY**)
 
@@ -87,13 +87,20 @@
 - [x] **7.8** **Streaming deferred** - Commented out, ready for Phase 2
 - [x] **7.9** **Workarounds assessment** - Current approach validated with clear path forward
 
-### **Domain Integration Required** 🔄 **ANALYZED & READY**
+### **Domain Integration Required** ✅ **COMPLETED**
 
-- [ ] **8.1** **ACL implementation** - Connect to existing `effective_perm_mask()` logic ✅ **ANALYZED**
-- [ ] **8.2** **Asset store** - Connect to existing `memories` and `blob_store` APIs ✅ **ANALYZED**
-- [ ] **8.3** **Permission validation** - Integrate with existing user permission system ✅ **ANALYZED**
+- [x] **8.1** **ACL implementation** - Connect to existing `effective_perm_mask()` logic ✅ **IMPLEMENTED**
+- [x] **8.2** **Asset store** - Connect to existing `memories` and `blob_store` APIs ✅ **IMPLEMENTED**
+- [x] **8.3** **Permission validation** - Integrate with existing user permission system ✅ **IMPLEMENTED**
 
 **📋 Integration Analysis:** See `domain-integration-analysis.md` for detailed implementation plan
+
+**🎉 Domain Integration Summary:**
+- **ACL Integration**: HTTP module now uses existing `effective_perm_mask()` logic for permission checking
+- **Asset Store Integration**: Connected to existing `memories` and `blob_store` APIs with proper error handling
+- **Enhanced Token Minting**: Added asset existence validation and TTL capping (180s max)
+- **Token Security**: Added `kid` (key version) for secret rotation support
+- **Production Ready**: Full domain integration complete, ready for testing
 
 ## 🔧 **Technical Decisions Needed**
 
