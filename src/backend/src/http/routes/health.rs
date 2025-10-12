@@ -1,5 +1,9 @@
-use crate::http::{request::ParsedRequest, response};
+use ic_http_certification::{HttpResponse, StatusCode};
+use crate::http::core_types::ParsedRequest;
 
-pub fn get(_: &ParsedRequest) -> ic_http_certification::HttpResponse<'static> {
-    response::ok(b"OK".to_vec(), "text/plain")
+pub fn get(_: &ParsedRequest) -> HttpResponse<'static> {
+    HttpResponse::ok(
+        b"OK",
+        vec![("Content-Type".into(), "text/plain".into())]
+    ).build()
 }

@@ -1201,8 +1201,7 @@ async fn post_upgrade() {
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
     
     // Initialize HTTP secret store
-    http::secret::post_upgrade_secret().await
-        .expect("Failed to rotate HTTP secret");
+    http::secret_store::post_upgrade();
 }
 
 // DEBUG: Cross-call canary to test StableBTreeMap persistence
@@ -1434,8 +1433,7 @@ fn memories_list_assets(
 #[ic_cdk::init]
 async fn init() {
     // Initialize HTTP secret store
-    http::secret::init_secret().await
-        .expect("Failed to initialize HTTP secret store");
+    http::secret_store::init().await;
 }
 
 
@@ -1459,26 +1457,39 @@ use ic_cdk::query;
 use ic_cdk::api::time;
 use rand::{RngCore, SeedableRng};
 
-use crate::http::auth::{TokenScope, TokenPayload, sign_token, encode_token};
+use crate::http::{
+    core_types::{TokenScope, TokenPayload, Acl},
+    auth_core::{sign_token_core, encode_token_url},
+    canister_env::CanisterClock, secret_store::StableSecretStore, acl::FuturaAclAdapter,
+};
 
 #[query]
-fn mint_http_token(scope: TokenScope, ttl_secs: u32) -> String {
-    let caller: Principal = ic_cdk::caller();
-    assert_user_can_view(&caller, &scope.memory_id); // wire to your ACL logic
+fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<Vec<String>>, ttl_secs: u32) -> String {
+    let caller = ic_cdk::caller();
+    let acl = FuturaAclAdapter;
+    
+    // ✅ Enhanced: Use ACL adapter for authorization (no domain imports in HTTP layer)
+    assert!(acl.can_view(&memory_id, caller), "forbidden");
 
+    // ✅ Enhanced: Default TTL to 180 seconds if not specified
+    let ttl = if ttl_secs == 0 { 180 } else { ttl_secs };
+
+    // build payload
     let mut nonce = [0u8; 12];
     // simple RNG; for stronger nonce use raw_rand() if you like
     let mut rng = rand::rngs::StdRng::from_entropy();
     rng.fill_bytes(&mut nonce);
 
-    let exp_ns = time() + (ttl_secs as u64) * 1_000_000_000;
-    let payload = TokenPayload { ver: 1, exp_ns, nonce, scope, sub: Some(caller) };
-    let tok = sign_token(&payload);
-    encode_token(&tok)
-}
+    let payload = TokenPayload {
+        ver: 1,
+        exp_ns: time() + (ttl as u64) * 1_000_000_000,
+        nonce,
+        scope: TokenScope { memory_id, variants, asset_ids },
+        sub: Some(caller), // ✅ Enhanced: Bind token to caller by default
+    };
 
-fn assert_user_can_view(_caller: &Principal, _memory_id: &str) {
-    // TODO: integrate with your effective_perm_mask() / ACL
+    let token = sign_token_core(&StableSecretStore, &payload);
+    encode_token_url(&token)
 }
 
 // Export the interface for the smart contract.

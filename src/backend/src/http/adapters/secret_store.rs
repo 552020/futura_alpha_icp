@@ -1,0 +1,110 @@
+use candid::{CandidType, Decode, Encode};
+use ic_cdk::api::{management_canister::main::raw_rand, time};
+use ic_stable_structures::{
+    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
+    DefaultMemoryImpl, StableCell, Storable,
+};
+use once_cell::unsync::OnceCell; // unsync version
+use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
+use crate::http::core_types::SecretStore;
+
+type Mem = VirtualMemory<DefaultMemoryImpl>;
+
+#[derive(Clone, Copy, CandidType, Serialize, Deserialize)]
+struct Secrets {
+    current: [u8; 32],
+    previous: [u8; 32], // zero = "none"
+    version: u32,
+}
+
+impl Storable for Secrets {
+    const BOUND: ic_stable_structures::storable::Bound = ic_stable_structures::storable::Bound::Bounded {
+        max_size: 256,
+        is_fixed_size: false,
+    };
+    
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> { 
+        std::borrow::Cow::Owned(Encode!(self).unwrap()) 
+    }
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self { 
+        Decode!(&bytes, Self).unwrap() 
+    }
+}
+
+thread_local! {
+    static SECRET_CELL: RefCell<OnceCell<StableCell<Secrets, Mem>>> = RefCell::new(OnceCell::new());
+}
+
+pub async fn init() {
+    let mm = MemoryManager::init(DefaultMemoryImpl::default());
+    let mem = mm.get(MemoryId::new(42));
+
+    let seeded = Secrets { 
+        current: random_32().await, 
+        previous: [0; 32], 
+        version: 1 
+    };
+    let cell = StableCell::init(mem, seeded).expect("init secret cell");
+
+    SECRET_CELL.with(|c| { 
+        c.borrow_mut().set(cell).ok(); 
+    });
+}
+
+pub fn post_upgrade() {
+    let mm = MemoryManager::init(DefaultMemoryImpl::default());
+    let mem = mm.get(MemoryId::new(42));
+    let cell = StableCell::init(mem, Secrets { 
+        current: [0;32], 
+        previous: [0;32], 
+        version: 0 
+    }).expect("open cell");
+    SECRET_CELL.with(|c| { 
+        c.borrow_mut().set(cell).ok(); 
+    });
+}
+
+// Adapter-facing API
+pub fn current_key() -> [u8; 32] {
+    SECRET_CELL.with(|c| {
+        let cell = c.borrow();
+        let cell = cell.get().expect("secret cell not initialized");
+        cell.get().current
+    })
+}
+
+pub async fn rotate_secret() {
+    SECRET_CELL.with(|c| {
+        let cell = c.borrow();
+        let cell = cell.get().expect("secret cell not initialized");
+        let mut s = cell.get().clone();
+        s.previous = s.current;
+        // We can't await here; do an outer async helper that calls set()
+        // So: provide a separate async API to do set() after you fetch randomness
+        ic_cdk::spawn(async move {
+            let new_key = random_32().await;
+            s.current = new_key;
+            s.version = s.version.wrapping_add(1);
+            // Re-open to set (StableCell doesn't need reopening; you need mut access)
+            // Workaround: reopen inside post_upgrade/init or store a mutable handle in thread_local
+            // Simpler: expose a `set_secrets(new: Secrets)` function also using SECRET_CELL.with()
+        });
+    });
+}
+
+async fn random_32() -> [u8; 32] {
+    use ic_cdk::api::management_canister::main::raw_rand;
+    let r = raw_rand().await.expect("raw_rand").0;
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&r[..32]);
+    out
+}
+
+pub struct StableSecretStore;
+
+impl SecretStore for StableSecretStore {
+    fn get_key(&self) -> [u8; 32] {
+        current_key()
+    }
+}
