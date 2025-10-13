@@ -84,6 +84,14 @@ if eval "$DEPLOY_CMD" && dfx deploy internet_identity; then
             echo -e "${RED}❌ Declaration fixes failed${NC}"
             exit 1
         fi
+        
+        echo -e "${YELLOW}📋 Setting up test environment...${NC}"
+        if ./tests/backend/setup-mjs-test-environment.sh; then
+            echo -e "${GREEN}✅ Test environment setup completed${NC}"
+        else
+            echo -e "${RED}❌ Test environment setup failed${NC}"
+            exit 1
+        fi
     else
         echo -e "${RED}❌ Declaration generation failed${NC}"
         exit 1
