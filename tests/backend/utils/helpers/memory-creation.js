@@ -65,7 +65,7 @@ export async function createMemoryWithInline(backend, filePath, capsuleId, optio
     // Create asset metadata based on file type
     const assetMetadata =
       options.assetType === "image"
-        ? createImageAssetMetadata(fileName, fileSize, options.mimeType)
+        ? createImageAssetMetadata({ name: fileName, size: fileSize, mimeType: options.mimeType })
         : createDocumentAssetMetadata(fileName, fileSize, options.mimeType);
 
     const idempotencyKey = options.idempotencyKey || `test_inline_${Date.now()}`;
@@ -119,7 +119,7 @@ export async function createMemoryFromBlob(backend, capsuleId, fileName, fileSiz
     // Create asset metadata based on file type
     const assetMetadata =
       options.assetType === "image"
-        ? createImageAssetMetadata(fileName, fileSize, options.mimeType)
+        ? createImageAssetMetadata({ name: fileName, size: fileSize, mimeType: options.mimeType })
         : createDocumentAssetMetadata(fileName, fileSize, options.mimeType);
 
     const idempotencyKey = options.idempotencyKey || `test_blob_${Date.now()}`;
