@@ -174,3 +174,4 @@ echo_info "- HTTP request method: $([ "$DFX_HTTP" != "ERROR" ] && echo "✅ PASS
 echo_info "- HTTP Gateway: $([ "$GATEWAY_STATUS" == "200" ] || [ "$GATEWAY_STATUS" == "404" ] && echo "✅ PASS" || echo "❌ FAIL")"
 
 echo_success "Basic local HTTP tests completed successfully!"
+
