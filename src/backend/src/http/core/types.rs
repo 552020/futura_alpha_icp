@@ -7,6 +7,7 @@ pub struct ParsedRequest {
     pub method: String,
     pub path_segments: Vec<String>,
     pub query: Vec<(String, String)>,
+    pub headers: Vec<(String, String)>,
 }
 
 impl ParsedRequest {
@@ -14,6 +15,13 @@ impl ParsedRequest {
         self.query
             .iter()
             .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    }
+
+    pub fn get_header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.to_lowercase() == name.to_lowercase())
             .map(|(_, v)| v.as_str())
     }
 }
@@ -73,6 +81,7 @@ pub struct InlineAsset {
 }
 
 pub trait AssetStore {
+    #[allow(dead_code)]
     fn get_inline(&self, memory_id: &str, asset_id: &str) -> Option<InlineAsset>;
     #[allow(dead_code)]
     fn get_blob_len(&self, memory_id: &str, asset_id: &str) -> Option<(u64, String)>;
@@ -85,6 +94,38 @@ pub trait AssetStore {
         len: u64,
     ) -> Option<Vec<u8>>;
     fn exists(&self, memory_id: &str, asset_id: &str) -> bool;
+
+    /// Get inline asset using the token's subject principal (not HTTP caller)
+    #[allow(dead_code)]
+    fn get_inline_with_principal(
+        &self,
+        who: &Principal,
+        memory_id: &str,
+        asset_id: &str,
+    ) -> Option<InlineAsset>;
+
+    /// Check if asset exists using the token's subject principal (not HTTP caller)
+    #[allow(dead_code)]
+    fn exists_with_principal(&self, who: &Principal, memory_id: &str, asset_id: &str) -> bool;
+
+    /// Resolve asset for a specific variant, handling variant-to-asset-id mapping
+    #[allow(dead_code)]
+    fn resolve_asset_for_variant(
+        &self,
+        who: &Principal,
+        memory_id: &str,
+        variant: &str,
+        id_param: Option<&str>,
+    ) -> Option<String>;
+
+    /// Get blob asset using the token's subject principal (not HTTP caller)
+    #[allow(dead_code)]
+    fn get_blob_with_principal(
+        &self,
+        who: &Principal,
+        memory_id: &str,
+        asset_id: &str,
+    ) -> Option<(Vec<u8>, String)>;
 }
 
 /// ACL trait for authorization - avoids domain imports in HTTP layer
@@ -96,7 +137,6 @@ pub trait Acl {
 mod tests {
     use super::*;
     use candid::Principal;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_token_payload_creation() {

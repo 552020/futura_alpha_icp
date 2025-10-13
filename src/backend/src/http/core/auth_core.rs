@@ -29,10 +29,14 @@ pub fn verify_token_core(clock: &dyn Clock, secret: &dyn SecretStore, t: &Encode
         if !t.p.scope.variants.iter().any(|vv| vv == v) { return Err(VerifyErr::VariantNotAllowed); }
     }
     if let Some(req_ids) = &want.asset_ids {
-        let Some(allow) = &t.p.scope.asset_ids else { return Err(VerifyErr::AssetNotAllowed); };
-        for id in req_ids {
-            if !allow.iter().any(|a| a == id) { return Err(VerifyErr::AssetNotAllowed); }
+        // If token has specific asset IDs, check them
+        if let Some(allow) = &t.p.scope.asset_ids {
+            for id in req_ids {
+                if !allow.iter().any(|a| a == id) { return Err(VerifyErr::AssetNotAllowed); }
+            }
         }
+        // If token has no specific asset IDs (null), allow access to any asset
+        // This is the default behavior for tokens minted without specific asset restrictions
     }
     let mut mac = HmacSha256::new_from_slice(&secret.get_key()).unwrap();
     mac.update(&canonical_bytes(&t.p));
