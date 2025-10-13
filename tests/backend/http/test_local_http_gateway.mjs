@@ -10,7 +10,7 @@
 import { createTestActor, getOrCreateTestCapsule } from "../utils/index.js";
 import { logHeader, logSuccess, logError, logInfo } from "../utils/helpers/logging.js";
 import { measureExecutionTime } from "../utils/helpers/timing.js";
-import { createMemoryWithInline } from "../utils/helpers/memory-creation.js";
+import { createTestImageMemory } from "../utils/helpers/memory-creation.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
@@ -58,7 +58,7 @@ async function testLocalHttpGateway() {
 
     // Cleanup
     logInfo("Cleaning up test memory...");
-    await actor.memories_delete(memoryId);
+    await actor.memories_delete(memoryId, false);
     logSuccess("✅ Cleanup completed");
 
     logSuccess("🎉 Local HTTP Gateway tests completed!");
@@ -132,18 +132,14 @@ async function createTestMemoryWithAsset(actor, capsuleId) {
 
   try {
     // Use the proper memory creation utility
-    const result = await createMemoryWithInline(actor, testImagePath, capsuleId, {
+    const memoryId = await createTestImageMemory(actor, capsuleId, {
       assetType: "image",
       mimeType: "image/jpeg",
       idempotencyKey: `http_gateway_test_${Date.now()}`,
     });
 
-    if (result.success) {
-      logSuccess(`✅ Test memory with image asset created: ${result.memoryId}`);
-      return result.memoryId;
-    } else {
-      throw new Error(`Failed to create test memory: ${result.error}`);
-    }
+    logSuccess(`✅ Test memory with image asset created: ${memoryId}`);
+    return memoryId;
   } catch (error) {
     throw new Error(`Failed to create test memory with asset: ${error.message}`);
   }

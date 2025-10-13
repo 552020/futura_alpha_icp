@@ -70,3 +70,4 @@ async function demoBrowserImage() {
 
 // Run the demo
 demoBrowserImage().catch(console.error);
+
