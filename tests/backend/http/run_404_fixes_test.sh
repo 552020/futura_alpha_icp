@@ -49,3 +49,4 @@ echo "   2. Look for [HTTP-ASSET], [ASSET-LOOKUP], and [VARIANT-RESOLVE] log ent
 echo "   3. Verify that token.subject is being used correctly"
 echo "   4. Check that variant-to-asset-id resolution is working"
 echo ""
+

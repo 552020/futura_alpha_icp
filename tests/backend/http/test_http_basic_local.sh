@@ -175,3 +175,4 @@ echo_info "- HTTP Gateway: $([ "$GATEWAY_STATUS" == "200" ] || [ "$GATEWAY_STATU
 
 echo_success "Basic local HTTP tests completed successfully!"
 
+
