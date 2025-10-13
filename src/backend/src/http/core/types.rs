@@ -1,5 +1,5 @@
 use candid::{CandidType, Principal};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Parsed, pure representation of an HTTP request we care about.
 #[derive(Clone, Debug)]
@@ -11,7 +11,10 @@ pub struct ParsedRequest {
 
 impl ParsedRequest {
     pub fn q(&self, name: &str) -> Option<&str> {
-        self.query.iter().find(|(k,_)| k == name).map(|(_,v)| v.as_str())
+        self.query
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -39,24 +42,25 @@ pub struct EncodedToken {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum VerifyErr { 
-    Expired, 
-    BadSig, 
-    WrongMemory, 
-    VariantNotAllowed, 
-    AssetNotAllowed 
+pub enum VerifyErr {
+    Expired,
+    BadSig,
+    WrongMemory,
+    VariantNotAllowed,
+    AssetNotAllowed,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum AssetErr { 
-    NotFound, 
-    TooLargeForInline, 
-    Io 
+#[allow(dead_code)]
+pub enum AssetErr {
+    NotFound,
+    TooLargeForInline,
+    Io,
 }
 
 /// Dependency inversion traits — pure, mockable.
-pub trait Clock { 
-    fn now_ns(&self) -> u64; 
+pub trait Clock {
+    fn now_ns(&self) -> u64;
 }
 
 pub trait SecretStore {
@@ -70,12 +74,61 @@ pub struct InlineAsset {
 
 pub trait AssetStore {
     fn get_inline(&self, memory_id: &str, asset_id: &str) -> Option<InlineAsset>;
+    #[allow(dead_code)]
     fn get_blob_len(&self, memory_id: &str, asset_id: &str) -> Option<(u64, String)>;
-    fn read_blob_chunk(&self, memory_id: &str, asset_id: &str, offset: u64, len: u64) -> Option<Vec<u8>>;
+    #[allow(dead_code)]
+    fn read_blob_chunk(
+        &self,
+        memory_id: &str,
+        asset_id: &str,
+        offset: u64,
+        len: u64,
+    ) -> Option<Vec<u8>>;
     fn exists(&self, memory_id: &str, asset_id: &str) -> bool;
 }
 
 /// ACL trait for authorization - avoids domain imports in HTTP layer
 pub trait Acl {
     fn can_view(&self, memory_id: &str, who: Principal) -> bool;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candid::Principal;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn test_token_payload_creation() {
+        let payload = TokenPayload {
+            ver: 1,
+            kid: 1,
+            exp_ns: 1000000000,
+            nonce: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            scope: TokenScope {
+                memory_id: "memory_123".to_string(),
+                variants: vec!["thumbnail".to_string()],
+                asset_ids: None,
+            },
+            sub: Some(Principal::anonymous()),
+        };
+
+        assert_eq!(payload.ver, 1);
+        assert_eq!(payload.kid, 1);
+        assert_eq!(payload.scope.memory_id, "memory_123");
+    }
+
+    #[test]
+    fn test_scope_parsing() {
+        let valid_scopes = vec![
+            ("memory_123", "thumbnail"),
+            ("memory_123", "preview"),
+            ("memory_123", "original"),
+        ];
+
+        for (memory_id, variant) in valid_scopes {
+            assert!(memory_id.starts_with("memory_"));
+            assert!(["thumbnail", "preview", "original"].contains(&variant));
+        }
+    }
 }

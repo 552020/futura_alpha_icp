@@ -70,6 +70,7 @@ mod tests {
 
         let payload = TokenPayload {
             ver: 1,
+            kid: 1,
             exp_ns: clock.now_ns() + 10_000_000, // +10ms
             nonce: [1u8; 12],
             scope: TokenScope {
@@ -97,6 +98,7 @@ mod tests {
 
         let payload = TokenPayload {
             ver: 1,
+            kid: 1,
             exp_ns: clock.now_ns() - 1, // already expired
             nonce: [0u8; 12],
             scope: TokenScope { memory_id: "m".into(), variants: vec!["preview".into()], asset_ids: None },
@@ -114,7 +116,7 @@ mod tests {
         let secret = MockSecret { key: key(9) };
 
         let payload = TokenPayload {
-            ver: 1, exp_ns: 10, nonce: [0;12],
+            ver: 1, kid: 1, exp_ns: 10, nonce: [0;12],
             scope: TokenScope { memory_id: "A".into(), variants: vec!["thumbnail".into()], asset_ids: None },
             sub: None
         };
@@ -130,7 +132,7 @@ mod tests {
         let secret = MockSecret { key: key(1) };
 
         let payload = TokenPayload {
-            ver: 1, exp_ns: 10, nonce: [0;12],
+            ver: 1, kid: 1, exp_ns: 10, nonce: [0;12],
             scope: TokenScope { memory_id: "M".into(), variants: vec!["preview".into()], asset_ids: None },
             sub: None
         };
@@ -146,7 +148,7 @@ mod tests {
         let secret = MockSecret { key: key(4) };
 
         let payload = TokenPayload {
-            ver: 1, exp_ns: 10, nonce: [0;12],
+            ver: 1, kid: 1, exp_ns: 10, nonce: [0;12],
             scope: TokenScope { memory_id: "M".into(), variants: vec!["thumbnail".into()], asset_ids: Some(vec!["id-1".into()]) },
             sub: None
         };
@@ -162,7 +164,7 @@ mod tests {
         let secret = MockSecret { key: key(8) };
 
         let payload = TokenPayload {
-            ver: 1, exp_ns: 10, nonce: [9;12],
+            ver: 1, kid: 1, exp_ns: 10, nonce: [9;12],
             scope: TokenScope { memory_id: "M".into(), variants: vec!["preview".into()], asset_ids: None },
             sub: None
         };

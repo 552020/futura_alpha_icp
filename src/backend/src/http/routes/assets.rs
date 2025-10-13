@@ -1,10 +1,12 @@
-use ic_http_certification::{HttpResponse, StatusCode};
 use crate::http::{
-    core_types::{ParsedRequest, VerifyErr, AssetErr, AssetStore},
-    path_core::path_to_scope,
+    asset_store::FuturaAssetStore,
     auth_core::{decode_token_url, verify_token_core},
-    canister_env::CanisterClock, secret_store::StableSecretStore, asset_store::FuturaAssetStore,
+    canister_env::CanisterClock,
+    core_types::{AssetStore, ParsedRequest, VerifyErr},
+    path_core::path_to_scope,
+    secret_store::StableSecretStore,
 };
+use ic_http_certification::{HttpResponse, StatusCode};
 
 pub fn get(memory_id: &str, variant: &str, req: &ParsedRequest) -> HttpResponse<'static> {
     // 1) verify token
@@ -41,8 +43,9 @@ pub fn get(memory_id: &str, variant: &str, req: &ParsedRequest) -> HttpResponse<
                 ("Content-Type".into(), inline.content_type),
                 ("Cache-Control".into(), "private, no-store".into()),
                 ("Content-Length".into(), content_length),
-            ]
-        ).build();
+            ],
+        )
+        .build();
     }
 
     // 3) fallback: not found (streaming to be added in Phase 2)
