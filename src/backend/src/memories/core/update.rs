@@ -3,11 +3,13 @@
 //! This module contains the core business logic for updating memories
 //! with proper access control and post-write assertions.
 
-use super::traits::*;
 use super::model_helpers::*;
+use super::traits::*;
 use crate::capsule_acl::CapsuleAcl;
-use crate::memories::types::{InternalBlobAssetInput, InlineAssetInput};
-use crate::types::{Error, MemoryId, MemoryUpdateData, BlobRef, MemoryAssetBlobInternal, MemoryAssetInline};
+use crate::memories::types::{InlineAssetInput, InternalBlobAssetInput};
+use crate::types::{
+    BlobRef, Error, MemoryAssetBlobInternal, MemoryAssetInline, MemoryId, MemoryUpdateData,
+};
 
 /// Core memory update function - pure business logic
 pub fn memories_update_core<E: Env, S: Store>(
@@ -93,7 +95,7 @@ pub fn memories_add_asset_core<E: Env, S: Store>(
             let capsule_access = store
                 .get_capsule_for_acl(&capsule_id)
                 .ok_or(Error::NotFound)?;
-            
+
             if !capsule_access.can_write(&caller) {
                 return Err(Error::Unauthorized);
             }
@@ -181,7 +183,7 @@ pub fn memories_add_inline_asset_core<E: Env, S: Store>(
             let capsule_access = store
                 .get_capsule_for_acl(&capsule_id)
                 .ok_or(Error::NotFound)?;
-            
+
             if !capsule_access.can_write(&caller) {
                 return Err(Error::Unauthorized);
             }
@@ -228,6 +230,7 @@ pub fn memories_add_inline_asset_core<E: Env, S: Store>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capsule::domain::SharingStatus;
     use crate::types::*;
 
     /// Test utility to create a Memory with default values
