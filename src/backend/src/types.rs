@@ -6,10 +6,22 @@ use std::borrow::Cow;
 // Re-export types from specialized modules
 pub use crate::memories::types::*;
 pub use crate::unified_types::*;
-pub use crate::upload::types::*;
+// Import upload types specifically to avoid conflicts with unified_types
+pub use crate::upload::types::{
+    BlobId,
+    ChunkData,
+    UploadConfig,
+    UploadFinishResult,
+    UploadProgress,
+    UploadSession,
+    // BlobMeta and CommitResponse are already defined in this file
+    // StorageBackend and ProcessingStatus are already imported from unified_types
+};
 
 // Re-export core domain types from capsule module
-pub use crate::capsule::domain::{Capsule, Connection, ConnectionStatus, ControllerState, OwnerState, PersonRef};
+pub use crate::capsule::domain::{
+    Capsule, Connection, ConnectionStatus, ControllerState, OwnerState, PersonRef,
+};
 
 // Re-export capsule API types from capsule module
 pub use crate::capsule::api_types::{

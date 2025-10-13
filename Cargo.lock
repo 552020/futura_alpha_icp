@@ -82,6 +82,7 @@ dependencies = [
  "ic-stable-structures",
  "mockall",
  "once_cell",
+ "percent-encoding",
  "pocket-ic",
  "proptest",
  "regex",

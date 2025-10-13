@@ -1473,19 +1473,19 @@ fn http_request(
 
 // Token minting API for HTTP requests
 use ic_cdk::api::time;
-use ic_cdk::query;
+// use ic_cdk::query; // TODO: Remove when needed
 // Removed rand dependency - using ICP's native randomness instead
 
 use crate::http::{
     acl::FuturaAclAdapter,
     asset_store::FuturaAssetStore,
     auth_core::{encode_token_url, sign_token_core},
-    canister_env::CanisterClock,
+    // canister_env::CanisterClock, // TODO: Remove when needed
     core_types::{Acl, AssetStore, TokenPayload, TokenScope},
     secret_store::StableSecretStore,
 };
 
-#[query]
+#[ic_cdk::query]
 fn mint_http_token(
     memory_id: String,
     variants: Vec<String>,
