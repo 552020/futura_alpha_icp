@@ -101,3 +101,4 @@ async function testAuthenticatedImageServing() {
 // Run the test
 testAuthenticatedImageServing().catch(console.error);
 
+
