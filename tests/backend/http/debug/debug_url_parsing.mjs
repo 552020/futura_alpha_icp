@@ -1,13 +1,13 @@
 /**
  * Debug URL Parsing Test
- * 
+ *
  * This test helps us understand how the HTTP module parses URLs with multiple query parameters
  */
 
-import { logHeader, logInfo, logSuccess, logError } from "../utils/helpers/logging.js";
-import { createTestActor } from "../utils/core/actor.js";
-import { createTestCapsule } from "../utils/helpers/capsule-creation.js";
-import { createTestImageMemory } from "../utils/helpers/memory-creation.js";
+import { logHeader, logInfo, logSuccess, logError } from "../../utils/helpers/logging.js";
+import { createTestActor } from "../../utils/core/actor.js";
+import { createTestCapsule } from "../../utils/helpers/capsule-creation.js";
+import { createTestImageMemory } from "../../utils/helpers/memory-creation.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 
@@ -57,14 +57,14 @@ async function debugUrlParsing() {
 
     // Step 6: Test different URL formats
     const canisterId = "uxrrr-q7777-77774-qaaaq-cai";
-    
+
     logInfo("Step 6: Testing different URL formats...");
-    
+
     // Test 1: Only token parameter
     logInfo("Test 1: Only token parameter");
     const url1 = `http://${canisterId}.localhost:4943/asset/${memoryId}/thumbnail?token=${token}`;
     logInfo(`URL 1: ${url1}`);
-    
+
     try {
       const { stdout: response1 } = await execAsync(`curl -s -i ${url1}`);
       if (response1.includes("HTTP/1.1 200 OK")) {
@@ -72,7 +72,7 @@ async function debugUrlParsing() {
       } else if (response1.includes("Missing token")) {
         logError("❌ Test 1 FAILED - Missing token");
       } else {
-        logInfo(`Test 1 response: ${response1.split('\n')[0]}`);
+        logInfo(`Test 1 response: ${response1.split("\n")[0]}`);
       }
     } catch (error) {
       logError(`Test 1 error: ${error.message}`);
@@ -82,7 +82,7 @@ async function debugUrlParsing() {
     logInfo("Test 2: Token first, then id");
     const url2 = `http://${canisterId}.localhost:4943/asset/${memoryId}/thumbnail?token=${token}&id=${assetId}`;
     logInfo(`URL 2: ${url2}`);
-    
+
     try {
       const { stdout: response2 } = await execAsync(`curl -s -i ${url2}`);
       if (response2.includes("HTTP/1.1 200 OK")) {
@@ -90,7 +90,7 @@ async function debugUrlParsing() {
       } else if (response2.includes("Missing token")) {
         logError("❌ Test 2 FAILED - Missing token");
       } else {
-        logInfo(`Test 2 response: ${response2.split('\n')[0]}`);
+        logInfo(`Test 2 response: ${response2.split("\n")[0]}`);
       }
     } catch (error) {
       logError(`Test 2 error: ${error.message}`);
@@ -100,7 +100,7 @@ async function debugUrlParsing() {
     logInfo("Test 3: ID first, then token");
     const url3 = `http://${canisterId}.localhost:4943/asset/${memoryId}/thumbnail?id=${assetId}&token=${token}`;
     logInfo(`URL 3: ${url3}`);
-    
+
     try {
       const { stdout: response3 } = await execAsync(`curl -s -i ${url3}`);
       if (response3.includes("HTTP/1.1 200 OK")) {
@@ -108,7 +108,7 @@ async function debugUrlParsing() {
       } else if (response3.includes("Missing token")) {
         logError("❌ Test 3 FAILED - Missing token");
       } else {
-        logInfo(`Test 3 response: ${response3.split('\n')[0]}`);
+        logInfo(`Test 3 response: ${response3.split("\n")[0]}`);
       }
     } catch (error) {
       logError(`Test 3 error: ${error.message}`);
@@ -119,7 +119,7 @@ async function debugUrlParsing() {
     const encodedToken = encodeURIComponent(token);
     const url4 = `http://${canisterId}.localhost:4943/asset/${memoryId}/thumbnail?id=${assetId}&token=${encodedToken}`;
     logInfo(`URL 4: ${url4}`);
-    
+
     try {
       const { stdout: response4 } = await execAsync(`curl -s -i ${url4}`);
       if (response4.includes("HTTP/1.1 200 OK")) {
@@ -127,14 +127,13 @@ async function debugUrlParsing() {
       } else if (response4.includes("Missing token")) {
         logError("❌ Test 4 FAILED - Missing token");
       } else {
-        logInfo(`Test 4 response: ${response4.split('\n')[0]}`);
+        logInfo(`Test 4 response: ${response4.split("\n")[0]}`);
       }
     } catch (error) {
       logError(`Test 4 error: ${error.message}`);
     }
 
     return { success: true, memoryId, assetId };
-
   } catch (error) {
     logError(`❌ Test failed: ${error.message}`);
     return { success: false, error: error.message };
@@ -174,4 +173,3 @@ async function main() {
 }
 
 main().catch(console.error);
-

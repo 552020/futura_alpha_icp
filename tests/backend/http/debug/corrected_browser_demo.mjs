@@ -1,4 +1,4 @@
-import { logHeader, logSuccess, logInfo, logError } from "../utils/helpers/logging.js";
+import { logHeader, logSuccess, logInfo, logError } from "../../utils/helpers/logging.js";
 
 function correctedBrowserDemo() {
   logHeader("🖼️  CORRECTED Browser Image Demo - HTTP Certification SUCCESS!");
@@ -43,5 +43,3 @@ function correctedBrowserDemo() {
 }
 
 correctedBrowserDemo();
-
-

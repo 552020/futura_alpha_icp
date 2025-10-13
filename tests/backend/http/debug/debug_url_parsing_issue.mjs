@@ -10,7 +10,7 @@
  * correctly extracting the token parameter when there are multiple parameters.
  */
 
-import { logInfo, logSuccess, logError } from "../utils/helpers/logging.js";
+import { logInfo, logSuccess, logError } from "../../utils/helpers/logging.js";
 
 async function debugUrlParsing() {
   logInfo("🔍 Debugging URL parsing issue in HTTP module");

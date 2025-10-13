@@ -1,13 +1,13 @@
 /**
  * Debug Token Decoding Test
- * 
+ *
  * This test helps us understand if the token decoding is working correctly
  */
 
-import { logHeader, logInfo, logSuccess, logError } from "../utils/helpers/logging.js";
-import { createTestActor } from "../utils/core/actor.js";
-import { createTestCapsule } from "../utils/helpers/capsule-creation.js";
-import { createTestImageMemory } from "../utils/helpers/memory-creation.js";
+import { logHeader, logInfo, logSuccess, logError } from "../../utils/helpers/logging.js";
+import { createTestActor } from "../../utils/core/actor.js";
+import { createTestCapsule } from "../../utils/helpers/capsule-creation.js";
+import { createTestImageMemory } from "../../utils/helpers/memory-creation.js";
 
 async function debugTokenDecoding() {
   logHeader("🔍 Debugging Token Decoding");
@@ -53,45 +53,51 @@ async function debugTokenDecoding() {
 
     // Step 6: Test token decoding
     logInfo("Step 6: Testing token decoding...");
-    
+
     try {
       // Decode the token to see its contents
       // The token is a single URL-safe base64 string without padding
       logInfo(`Full token: ${token}`);
-      
+
       // Add padding to the base64 string
       let base64Token = token;
       while (base64Token.length % 4) {
-        base64Token += '=';
+        base64Token += "=";
       }
-      
+
       // Convert URL-safe base64 to standard base64
-      base64Token = base64Token.replace(/-/g, '+').replace(/_/g, '/');
-      
+      base64Token = base64Token.replace(/-/g, "+").replace(/_/g, "/");
+
       const tokenData = JSON.parse(atob(base64Token));
       logInfo(`Token data: ${JSON.stringify(tokenData, null, 2)}`);
-      
+
       // Check if the token contains the expected memory ID
       if (tokenData.p && tokenData.p.scope && tokenData.p.scope.memory_id === memoryId) {
         logSuccess("✅ Token contains correct memory ID");
       } else {
         logError(`❌ Token memory ID mismatch: expected ${memoryId}, got ${tokenData.p?.scope?.memory_id}`);
       }
-      
+
       // Check if the token contains the expected variants
-      if (tokenData.p && tokenData.p.scope && tokenData.p.scope.variants && tokenData.p.scope.variants.includes("thumbnail")) {
+      if (
+        tokenData.p &&
+        tokenData.p.scope &&
+        tokenData.p.scope.variants &&
+        tokenData.p.scope.variants.includes("thumbnail")
+      ) {
         logSuccess("✅ Token contains correct variant");
       } else {
-        logError(`❌ Token variant mismatch: expected ["thumbnail"], got ${JSON.stringify(tokenData.p?.scope?.variants)}`);
+        logError(
+          `❌ Token variant mismatch: expected ["thumbnail"], got ${JSON.stringify(tokenData.p?.scope?.variants)}`
+        );
       }
-      
+
       // Check if the token contains asset IDs
       if (tokenData.p && tokenData.p.scope && tokenData.p.scope.asset_ids === null) {
         logSuccess("✅ Token has no specific asset IDs (as expected)");
       } else {
         logError(`❌ Token asset IDs mismatch: expected null, got ${JSON.stringify(tokenData.p?.scope?.asset_ids)}`);
       }
-      
     } catch (decodeError) {
       logError(`❌ Token decode failed: ${decodeError.message}`);
     }
@@ -101,29 +107,36 @@ async function debugTokenDecoding() {
     try {
       const tokenWithAsset = await actor.mint_http_token(memoryId, ["thumbnail"], [assetId], 180);
       logSuccess(`✅ Token with asset ID minted: ${tokenWithAsset.substring(0, 50)}...`);
-      
+
       // Decode the token with asset ID
       let base64AssetToken = tokenWithAsset;
       while (base64AssetToken.length % 4) {
-        base64AssetToken += '=';
+        base64AssetToken += "=";
       }
-      base64AssetToken = base64AssetToken.replace(/-/g, '+').replace(/_/g, '/');
-      
+      base64AssetToken = base64AssetToken.replace(/-/g, "+").replace(/_/g, "/");
+
       const tokenWithAssetPayload = JSON.parse(atob(base64AssetToken));
       logInfo(`Token with asset payload: ${JSON.stringify(tokenWithAssetPayload, null, 2)}`);
-      
-      if (tokenWithAssetPayload.p && tokenWithAssetPayload.p.scope && tokenWithAssetPayload.p.scope.asset_ids && tokenWithAssetPayload.p.scope.asset_ids.includes(assetId)) {
+
+      if (
+        tokenWithAssetPayload.p &&
+        tokenWithAssetPayload.p.scope &&
+        tokenWithAssetPayload.p.scope.asset_ids &&
+        tokenWithAssetPayload.p.scope.asset_ids.includes(assetId)
+      ) {
         logSuccess("✅ Token with asset ID contains correct asset ID");
       } else {
-        logError(`❌ Token with asset ID mismatch: expected [${assetId}], got ${JSON.stringify(tokenWithAssetPayload.p?.scope?.asset_ids)}`);
+        logError(
+          `❌ Token with asset ID mismatch: expected [${assetId}], got ${JSON.stringify(
+            tokenWithAssetPayload.p?.scope?.asset_ids
+          )}`
+        );
       }
-      
     } catch (error) {
       logError(`❌ Token with asset ID failed: ${error.message}`);
     }
 
     return { success: true, memoryId, assetId, token };
-
   } catch (error) {
     logError(`❌ Test failed: ${error.message}`);
     return { success: false, error: error.message };

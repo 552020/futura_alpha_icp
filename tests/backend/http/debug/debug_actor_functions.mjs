@@ -7,8 +7,8 @@
  * to help us understand what's available.
  */
 
-import { logHeader, logInfo, logSuccess, logError } from "../utils/helpers/logging.js";
-import { createTestActor } from "../utils/core/actor.js";
+import { logHeader, logInfo, logSuccess, logError } from "../../utils/helpers/logging.js";
+import { createTestActor } from "../../utils/core/actor.js";
 
 async function debugActorFunctions() {
   logHeader("🔍 Debugging Actor Functions");
@@ -50,5 +50,3 @@ async function debugActorFunctions() {
 }
 
 debugActorFunctions().catch(console.error);
-
-

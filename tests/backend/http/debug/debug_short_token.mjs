@@ -1,13 +1,13 @@
 /**
  * Debug Short Token Test
- * 
+ *
  * This test helps us understand if the issue is URL length by using a shorter token
  */
 
-import { logHeader, logInfo, logSuccess, logError } from "../utils/helpers/logging.js";
-import { createTestActor } from "../utils/core/actor.js";
-import { createTestCapsule } from "../utils/helpers/capsule-creation.js";
-import { createTestImageMemory } from "../utils/helpers/memory-creation.js";
+import { logHeader, logInfo, logSuccess, logError } from "../../utils/helpers/logging.js";
+import { createTestActor } from "../../utils/core/actor.js";
+import { createTestCapsule } from "../../utils/helpers/capsule-creation.js";
+import { createTestImageMemory } from "../../utils/helpers/memory-creation.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 
@@ -58,13 +58,13 @@ async function debugShortToken() {
 
     // Step 6: Test with short token
     const canisterId = "uxrrr-q7777-77774-qaaaq-cai";
-    
+
     // Test 1: Only token (should work with fallback)
     logInfo("Test 1: Only token parameter");
     const url1 = `http://${canisterId}.localhost:4943/asset/${memoryId}/thumbnail?token=${token}`;
     logInfo(`URL 1 length: ${url1.length}`);
     logInfo(`URL 1: ${url1}`);
-    
+
     try {
       const { stdout: response1 } = await execAsync(`curl -s -i ${url1}`);
       if (response1.includes("HTTP/1.1 200 OK")) {
@@ -72,7 +72,7 @@ async function debugShortToken() {
       } else if (response1.includes("Missing token")) {
         logError("❌ Test 1 FAILED - Missing token");
       } else {
-        logInfo(`Test 1 response: ${response1.split('\n')[0]}`);
+        logInfo(`Test 1 response: ${response1.split("\n")[0]}`);
       }
     } catch (error) {
       logError(`Test 1 error: ${error.message}`);
@@ -83,7 +83,7 @@ async function debugShortToken() {
     const url2 = `http://${canisterId}.localhost:4943/asset/${memoryId}/thumbnail?id=${assetId}&token=${token}`;
     logInfo(`URL 2 length: ${url2.length}`);
     logInfo(`URL 2: ${url2}`);
-    
+
     try {
       const { stdout: response2 } = await execAsync(`curl -s -i ${url2}`);
       if (response2.includes("HTTP/1.1 200 OK")) {
@@ -91,14 +91,13 @@ async function debugShortToken() {
       } else if (response2.includes("Missing token")) {
         logError("❌ Test 2 FAILED - Missing token");
       } else {
-        logInfo(`Test 2 response: ${response2.split('\n')[0]}`);
+        logInfo(`Test 2 response: ${response2.split("\n")[0]}`);
       }
     } catch (error) {
       logError(`Test 2 error: ${error.message}`);
     }
 
     return { success: true, memoryId, assetId, token };
-
   } catch (error) {
     logError(`❌ Test failed: ${error.message}`);
     return { success: false, error: error.message };
@@ -138,4 +137,3 @@ async function main() {
 }
 
 main().catch(console.error);
-

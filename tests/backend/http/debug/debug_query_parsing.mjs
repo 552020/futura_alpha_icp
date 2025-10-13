@@ -7,10 +7,10 @@
  * 3. Test different URL formats to see which ones work
  */
 
-import { logHeader, logInfo, logSuccess, logError } from "../utils/helpers/logging.js";
-import { createTestActor } from "../utils/core/actor.js";
-import { createTestCapsule } from "../utils/helpers/capsule-creation.js";
-import { createTestImageMemory } from "../utils/helpers/memory-creation.js";
+import { logHeader, logInfo, logSuccess, logError } from "../../utils/helpers/logging.js";
+import { createTestActor } from "../../utils/core/actor.js";
+import { createTestCapsule } from "../../utils/helpers/capsule-creation.js";
+import { createTestImageMemory } from "../../utils/helpers/memory-creation.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 
@@ -144,4 +144,3 @@ async function main() {
 }
 
 main().catch(console.error);
-
