@@ -462,9 +462,22 @@ pub fn has_perm<T: AccessControlled>(res: &T, ctx: &PrincipalContext, want: Perm
 
 /// Check if the principal is the owner of the resource
 #[allow(dead_code)]
-fn is_owner<T: AccessControlled>(_res: &T, _ctx: &PrincipalContext) -> bool {
-    // TODO: Implement ownership logic based on resource type
-    // For now, return false - this will be implemented when we add the trait to Memory/Gallery
+fn is_owner<T: AccessControlled>(res: &T, ctx: &PrincipalContext) -> bool {
+    // Check if the principal has an access entry with ResourceRole::Owner
+    for entry in res.access_entries() {
+        if entry.role == ResourceRole::Owner {
+            // Check if this entry applies to the current principal
+            if entry.is_public {
+                // Public owner access (unusual but possible)
+                return true;
+            } else if let Some(person_ref) = &entry.person_ref {
+                // Individual owner access - check if principal matches
+                if person_ref == &PersonRef::Principal(ctx.principal) {
+                    return true;
+                }
+            }
+        }
+    }
     false
 }
 
