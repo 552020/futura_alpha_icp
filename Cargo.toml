@@ -6,6 +6,7 @@ members = [
     "lab/service_lifetimes_stateless",
     "lab/service_lifetimes_threadlocal",
     "lab/ic_upload_minimal",
+    "tests/pocket-ic",
 ]
 resolver = "2"
 

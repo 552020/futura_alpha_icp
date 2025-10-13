@@ -16,10 +16,8 @@ use pocket_ic::PocketIc;
 use serde::Deserialize;
 // Note: pocket-ic returns Result<Vec<u8>, (RejectionCode, String)> for calls
 
-// We'll use the local type definitions for capsule creation
-
 // ============================================================================
-// MINIMAL MIRRORS OF CANDID TYPES
+// UPDATED TYPE DEFINITIONS TO MATCH CURRENT BACKEND.DID
 // ============================================================================
 
 #[derive(CandidType, Deserialize, Clone)]
@@ -146,9 +144,24 @@ enum Error {
     Unauthorized,
     InvalidArgument(String),
     ResourceExhausted,
+    NotImplemented(String),
     Conflict(String),
 }
 
+// Updated Result types to match current backend.did
+#[derive(CandidType, Deserialize)]
+enum Result6 {
+    Ok(String),
+    Err(Error),
+}
+
+#[derive(CandidType, Deserialize)]
+enum Result20 {
+    Ok(Memory),
+    Err(Error),
+}
+
+// Legacy Result types for backward compatibility
 #[derive(CandidType, Deserialize)]
 enum Result5 {
     Ok(String),
@@ -161,36 +174,52 @@ enum Result11 {
     Err(Error),
 }
 
-// Read model (trimmed to what we assert on)
+// Read model (updated to match current backend.did)
 #[derive(CandidType, Deserialize)]
 struct Memory {
     id: String,
-    metadata: MemoryMetadata,
-    access: MemoryAccess,
     inline_assets: Vec<MemoryAssetInline>,
+    capsule_id: String,
+    metadata: MemoryMetadata,
     blob_internal_assets: Vec<MemoryAssetBlobInternal>,
     blob_external_assets: Vec<MemoryAssetBlobExternal>,
+    access_entries: Vec<AccessEntry>,
 }
 
 #[derive(CandidType, Deserialize)]
 struct MemoryMetadata {
-    memory_type: MemoryType,
     title: Option<String>,
-    description: Option<String>,
-    content_type: String,
-    created_at: u64,
     updated_at: u64,
-    uploaded_at: u64,
+    sharing_status: SharingStatus,
     date_of_memory: Option<u64>,
-    file_created_at: Option<u64>,
-    parent_folder_id: Option<String>,
+    memory_type: MemoryType,
     tags: Vec<String>,
-    deleted_at: Option<u64>,
+    has_thumbnails: bool,
+    content_type: String,
     people_in_memory: Option<Vec<String>>,
+    has_previews: bool,
+    database_storage_edges: Vec<StorageEdgeDatabaseType>,
+    description: Option<String>,
+    created_at: u64,
+    created_by: Option<String>,
+    total_size: u64,
+    thumbnail_url: Option<String>,
+    parent_folder_id: Option<String>,
+    asset_count: u32,
+    deleted_at: Option<u64>,
+    primary_asset_url: Option<String>,
+    shared_count: u32,
+    file_created_at: Option<u64>,
     location: Option<String>,
     memory_notes: Option<String>,
-    created_by: Option<String>,
-    database_storage_edges: Vec<StorageEdgeDatabaseType>,
+    uploaded_at: u64,
+}
+
+#[derive(CandidType, Deserialize)]
+enum SharingStatus {
+    Shared,
+    Private,
+    Public,
 }
 
 #[derive(CandidType, Deserialize)]
@@ -202,6 +231,66 @@ enum MemoryType {
     Note,
 }
 
+// Updated AccessEntry to match current backend.did
+#[derive(CandidType, Deserialize)]
+struct AccessEntry {
+    id: String,
+    is_public: bool,
+    updated_at: u64,
+    role: ResourceRole,
+    source_id: Option<String>,
+    created_at: u64,
+    person_ref: Option<PersonRef>,
+    invited_by_person_ref: Option<PersonRef>,
+    grant_source: GrantSource,
+    perm_mask: u32,
+    condition: AccessCondition,
+}
+
+#[derive(CandidType, Deserialize)]
+enum ResourceRole {
+    Guest,
+    Member,
+    SuperAdmin,
+    Admin,
+    Owner,
+}
+
+#[derive(CandidType, Deserialize)]
+enum GrantSource {
+    MagicLink,
+    System,
+    Group,
+    User,
+}
+
+#[derive(CandidType, Deserialize)]
+enum AccessCondition {
+    Immediate,
+    EventTriggered { event: AccessEvent },
+    Scheduled { accessible_after: u64 },
+    ExpiresAt { expires: u64 },
+}
+
+#[derive(CandidType, Deserialize)]
+enum AccessEvent {
+    CapsuleMaturity(u32),
+    Graduation,
+    AfterDeath,
+    Wedding,
+    Birthday(u32),
+    Custom(String),
+    ConnectionCount(u32),
+    Anniversary(u32),
+}
+
+#[derive(CandidType, Deserialize)]
+enum PersonRef {
+    Opaque(String),
+    Principal(Principal),
+}
+
+// Legacy MemoryAccess type for backward compatibility in tests
 #[derive(CandidType, Deserialize)]
 enum MemoryAccess {
     Public {
@@ -229,28 +318,38 @@ enum MemoryAccess {
 
 #[derive(CandidType, Deserialize)]
 struct MemoryAssetInline {
-    bytes: Vec<u8>,
     metadata: AssetMetadata,
+    bytes: Vec<u8>,
+    asset_id: String,
 }
 
 #[derive(CandidType, Deserialize)]
 struct MemoryAssetBlobInternal {
-    blob_ref: BlobRef,
     metadata: AssetMetadata,
+    blob_ref: BlobRef,
+    asset_id: String,
 }
 
 #[derive(CandidType, Deserialize)]
 struct MemoryAssetBlobExternal {
-    location: StorageEdgeBlobType,
-    storage_key: String,
     url: Option<String>,
     metadata: AssetMetadata,
+    storage_key: String,
+    asset_id: String,
+    location: StorageEdgeBlobType,
 }
 
 #[derive(CandidType, Deserialize)]
 enum StorageEdgeDatabaseType {
     Icp,
     Neon,
+}
+
+#[derive(CandidType, Deserialize)]
+struct MemoryUpdateData {
+    metadata: Option<MemoryMetadata>,
+    name: Option<String>,
+    access_entries: Option<Vec<AccessEntry>>,
 }
 
 #[derive(CandidType, Deserialize)]
@@ -272,7 +371,7 @@ fn load_backend_wasm() -> Vec<u8> {
 
 /// Create a new canister with optimized setup
 fn create_test_canister() -> (PocketIc, Principal, Vec<u8>) {
-    let mut pic = PocketIc::new();
+    let pic = PocketIc::new();
     let wasm = load_backend_wasm();
     let canister_id = pic.create_canister();
     pic.add_cycles(canister_id, 2_000_000_000_000);
@@ -291,7 +390,7 @@ fn create_capsule_for_user(
             canister_id,
             user,
             "capsules_create",
-            Encode!(&Option::<String>::None)?, // No subject specified, will use caller
+            Encode!(&Option::<PersonRef>::None)?, // No subject specified, will use caller
         )
         .map_err(|e| anyhow::anyhow!("Capsule creation failed: {:?}", e))?;
 
@@ -302,16 +401,17 @@ fn create_capsule_for_user(
         // We'll ignore all other fields - the decoder will skip unknown fields
     }
 
+    // The capsules_create function returns Result_5 (Ok: Capsule, Err: Error)
     #[derive(CandidType, Deserialize)]
-    enum CapsuleResult {
+    enum Result5 {
         Ok(CapsuleIdOnly),
-        Err(String), // Simplified error type for testing
+        Err(Error),
     }
 
-    let result: CapsuleResult = Decode!(&capsule_creation_result, CapsuleResult)?;
+    let result: Result5 = Decode!(&capsule_creation_result, Result5)?;
     match result {
-        CapsuleResult::Ok(capsule) => Ok(capsule.id),
-        CapsuleResult::Err(e) => Err(anyhow::anyhow!("Capsule creation failed: {}", e)),
+        Result5::Ok(capsule) => Ok(capsule.id),
+        Result5::Err(e) => Err(anyhow::anyhow!("Capsule creation failed: {:?}", e)),
     }
 }
 
@@ -401,9 +501,9 @@ fn test_create_and_read_memory_happy_path() -> Result<()> {
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
 
-    let memory_id = match Decode!(&raw, Result5)? {
-        Result5::Ok(id) => id,
-        Result5::Err(e) => panic!("memories_create Err: {:?}", e),
+    let memory_id = match Decode!(&raw, Result6)? {
+        Result6::Ok(id) => id,
+        Result6::Err(e) => panic!("memories_create Err: {:?}", e),
     };
 
     assert!(!memory_id.is_empty());
@@ -418,9 +518,9 @@ fn test_create_and_read_memory_happy_path() -> Result<()> {
         )
         .map_err(|e| anyhow::anyhow!("Query call failed: {:?}", e))?;
 
-    let mem = match Decode!(&raw, Result11)? {
-        Result11::Ok(m) => m,
-        Result11::Err(e) => panic!("memories_read Err: {:?}", e),
+    let mem = match Decode!(&raw, Result20)? {
+        Result20::Ok(m) => m,
+        Result20::Err(e) => panic!("memories_read Err: {:?}", e),
     };
 
     assert_eq!(mem.id, memory_id);
@@ -468,25 +568,46 @@ fn test_delete_forbidden_for_non_owner() -> Result<()> {
     let raw = pic
         .update_call(canister_id, owner, "memories_create", payload)
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let mem_id = match Decode!(&raw, Result5)? {
-        Result5::Ok(id) => id,
-        Result5::Err(e) => panic!("create Err: {:?}", e),
+    let mem_id = match Decode!(&raw, Result6)? {
+        Result6::Ok(id) => id,
+        Result6::Err(e) => panic!("create Err: {:?}", e),
     };
 
-    // Try delete as stranger: memories_delete(text) -> MemoryOperationResponse
+    // Try delete as stranger: memories_delete(text, bool) -> Result
     let raw = pic
-        .update_call(canister_id, stranger, "memories_delete", Encode!(&mem_id)?)
+        .update_call(
+            canister_id,
+            stranger,
+            "memories_delete",
+            Encode!(&mem_id, &false)?,
+        )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
 
-    let resp: MemoryOperationResponse = Decode!(&raw, MemoryOperationResponse)?;
+    // The memories_delete function returns Result (Ok with no data, or Err with Error)
+    #[derive(CandidType, Deserialize)]
+    enum SimpleResult {
+        Ok,
+        Err(Error),
+    }
 
-    assert!(!resp.success, "delete should be forbidden");
-    assert!(
-        resp.message.to_lowercase().contains("unauthor")
-            || resp.message.to_lowercase().contains("forbid"),
-        "unexpected message: {}",
-        resp.message
-    );
+    let resp: SimpleResult = Decode!(&raw, SimpleResult)?;
+
+    match resp {
+        SimpleResult::Ok => panic!("delete should be forbidden for non-owner"),
+        SimpleResult::Err(e) => {
+            // Check that it's an authorization or not found error
+            // NotFound is also acceptable since the stranger can't see the memory
+            match e {
+                Error::Unauthorized => {
+                    println!("✅ Delete correctly forbidden for non-owner (Unauthorized)");
+                }
+                Error::NotFound => {
+                    println!("✅ Delete correctly forbidden for non-owner (NotFound - memory not visible)");
+                }
+                _ => panic!("Expected Unauthorized or NotFound error, got: {:?}", e),
+            }
+        }
+    }
 
     Ok(())
 }
@@ -530,9 +651,9 @@ fn test_memory_creation_idempotency() -> Result<()> {
     let raw1 = pic
         .update_call(canister_id, controller, "memories_create", payload1)
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let id1 = match Decode!(&raw1, Result5)? {
-        Result5::Ok(id) => id,
-        Result5::Err(e) => panic!("first create Err: {:?}", e),
+    let id1 = match Decode!(&raw1, Result6)? {
+        Result6::Ok(id) => id,
+        Result6::Err(e) => panic!("first create Err: {:?}", e),
     };
 
     // Second creation with same idem - using inline bytes branch (all external fields must be None)
@@ -560,9 +681,9 @@ fn test_memory_creation_idempotency() -> Result<()> {
     let raw2 = pic
         .update_call(canister_id, controller, "memories_create", payload2)
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let id2 = match Decode!(&raw2, Result5)? {
-        Result5::Ok(id) => id,
-        Result5::Err(e) => panic!("second create Err: {:?}", e),
+    let id2 = match Decode!(&raw2, Result6)? {
+        Result6::Ok(id) => id,
+        Result6::Err(e) => panic!("second create Err: {:?}", e),
     };
 
     // Should get the same ID (idempotency)
@@ -572,9 +693,9 @@ fn test_memory_creation_idempotency() -> Result<()> {
     let raw = pic
         .query_call(canister_id, controller, "memories_read", Encode!(&id1)?)
         .map_err(|e| anyhow::anyhow!("Query call failed: {:?}", e))?;
-    let mem = match Decode!(&raw, Result11)? {
-        Result11::Ok(m) => m,
-        Result11::Err(e) => panic!("read Err: {:?}", e),
+    let mem = match Decode!(&raw, Result20)? {
+        Result20::Ok(m) => m,
+        Result20::Err(e) => panic!("read Err: {:?}", e),
     };
 
     assert_eq!(mem.metadata.title, Some("test1.jpg".to_string())); // Original name
@@ -622,16 +743,16 @@ fn test_memory_update_roundtrip() -> Result<()> {
     let raw = pic
         .update_call(canister_id, controller, "memories_create", payload)
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let memory_id = match Decode!(&raw, Result5)? {
-        Result5::Ok(id) => id,
-        Result5::Err(e) => panic!("create Err: {:?}", e),
+    let memory_id = match Decode!(&raw, Result6)? {
+        Result6::Ok(id) => id,
+        Result6::Err(e) => panic!("create Err: {:?}", e),
     };
 
-    // Update memory
+    // Update memory - create proper MemoryUpdateData structure
     let update_data = MemoryUpdateData {
-        name: Some("Updated Name".to_string()),
         metadata: None,
-        access: None,
+        name: Some("Updated Name".to_string()),
+        access_entries: None,
     };
 
     let raw = pic
@@ -642,11 +763,15 @@ fn test_memory_update_roundtrip() -> Result<()> {
             Encode!(&memory_id, &update_data)?,
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let update_resp: MemoryOperationResponse = Decode!(&raw, MemoryOperationResponse)?;
 
-    println!("Update response: success={}, message='{}', memory_id={:?}", 
-             update_resp.success, update_resp.message, update_resp.memory_id);
-    assert!(update_resp.success, "update should succeed: {}", update_resp.message);
+    // The memories_update function returns Result_20 (Ok: Memory, Err: Error)
+    let update_resp = match Decode!(&raw, Result20)? {
+        Result20::Ok(memory) => {
+            println!("✅ Update successful, memory ID: {}", memory.id);
+            memory
+        }
+        Result20::Err(e) => panic!("Update should succeed, got error: {:?}", e),
+    };
 
     // Read back and verify
     let raw = pic
@@ -657,9 +782,9 @@ fn test_memory_update_roundtrip() -> Result<()> {
             Encode!(&memory_id)?,
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let mem = match Decode!(&raw, Result11)? {
-        Result11::Ok(m) => m,
-        Result11::Err(e) => panic!("read Err: {:?}", e),
+    let mem = match Decode!(&raw, Result20)? {
+        Result20::Ok(m) => m,
+        Result20::Err(e) => panic!("read Err: {:?}", e),
     };
 
     assert_eq!(mem.metadata.title, Some("Updated Name".to_string()));
@@ -668,15 +793,15 @@ fn test_memory_update_roundtrip() -> Result<()> {
     Ok(())
 }
 
-#[derive(CandidType, Deserialize)]
-struct MemoryUpdateData {
-    name: Option<String>,
-    metadata: Option<MemoryMetadata>,
-    access: Option<MemoryAccess>,
-}
-
 #[test]
 fn test_memory_crud_full_workflow() -> Result<()> {
+    // The memories_delete function returns Result (Ok with no data, or Err with Error)
+    #[derive(CandidType, Deserialize)]
+    enum SimpleResult {
+        Ok,
+        Err(Error),
+    }
+
     let mut pic = PocketIc::new();
     let wasm = load_backend_wasm();
     let controller = Principal::from_slice(&[1; 29]);
@@ -714,9 +839,9 @@ fn test_memory_crud_full_workflow() -> Result<()> {
     let raw = pic
         .update_call(canister_id, controller, "memories_create", payload)
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let memory_id = match Decode!(&raw, Result5)? {
-        Result5::Ok(id) => id,
-        Result5::Err(e) => panic!("create Err: {:?}", e),
+    let memory_id = match Decode!(&raw, Result6)? {
+        Result6::Ok(id) => id,
+        Result6::Err(e) => panic!("create Err: {:?}", e),
     };
 
     // 2. Read
@@ -728,9 +853,9 @@ fn test_memory_crud_full_workflow() -> Result<()> {
             Encode!(&memory_id)?,
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let mem = match Decode!(&raw, Result11)? {
-        Result11::Ok(m) => m,
-        Result11::Err(e) => panic!("read Err: {:?}", e),
+    let mem = match Decode!(&raw, Result20)? {
+        Result20::Ok(m) => m,
+        Result20::Err(e) => panic!("read Err: {:?}", e),
     };
 
     assert_eq!(mem.id, memory_id);
@@ -738,9 +863,9 @@ fn test_memory_crud_full_workflow() -> Result<()> {
 
     // 3. Update
     let update_data = MemoryUpdateData {
-        name: Some("CRUD Updated".to_string()),
         metadata: None,
-        access: None,
+        name: Some("CRUD Updated".to_string()),
+        access_entries: None,
     };
 
     let raw = pic
@@ -751,9 +876,15 @@ fn test_memory_crud_full_workflow() -> Result<()> {
             Encode!(&memory_id, &update_data)?,
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let update_resp: MemoryOperationResponse = Decode!(&raw, MemoryOperationResponse)?;
 
-    assert!(update_resp.success);
+    // The memories_update function returns Result_20 (Ok: Memory, Err: Error)
+    let update_resp = match Decode!(&raw, Result20)? {
+        Result20::Ok(memory) => {
+            println!("✅ CRUD Update successful, memory ID: {}", memory.id);
+            memory
+        }
+        Result20::Err(e) => panic!("Update should succeed, got error: {:?}", e),
+    };
 
     // 4. Read again to verify update
     let raw = pic
@@ -764,9 +895,9 @@ fn test_memory_crud_full_workflow() -> Result<()> {
             Encode!(&memory_id)?,
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let mem = match Decode!(&raw, Result11)? {
-        Result11::Ok(m) => m,
-        Result11::Err(e) => panic!("read after update Err: {:?}", e),
+    let mem = match Decode!(&raw, Result20)? {
+        Result20::Ok(m) => m,
+        Result20::Err(e) => panic!("read after update Err: {:?}", e),
     };
 
     assert_eq!(mem.metadata.title, Some("CRUD Updated".to_string()));
@@ -777,12 +908,17 @@ fn test_memory_crud_full_workflow() -> Result<()> {
             canister_id,
             controller,
             "memories_delete",
-            Encode!(&memory_id)?,
+            Encode!(&memory_id, &false)?, // memories_delete(text, bool) -> Result
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    let delete_resp: MemoryOperationResponse = Decode!(&raw, MemoryOperationResponse)?;
 
-    assert!(delete_resp.success);
+    // The memories_delete function returns Result (Ok with no data, or Err with Error)
+    match Decode!(&raw, SimpleResult)? {
+        SimpleResult::Ok => {
+            println!("✅ CRUD Delete successful");
+        }
+        SimpleResult::Err(e) => panic!("Delete should succeed, got error: {:?}", e),
+    }
 
     // 6. Try to read deleted memory (should fail)
     let raw = pic
@@ -793,10 +929,12 @@ fn test_memory_crud_full_workflow() -> Result<()> {
             Encode!(&memory_id)?,
         )
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
-    match Decode!(&raw, Result11)? {
-        Result11::Ok(_) => panic!("Should not be able to read deleted memory"),
-        Result11::Err(Error::NotFound) => {} // Expected
-        Result11::Err(e) => panic!("Unexpected error: {:?}", e),
+    match Decode!(&raw, Result20)? {
+        Result20::Ok(_) => panic!("Should not be able to read deleted memory"),
+        Result20::Err(Error::NotFound) => {
+            println!("✅ Correctly got NotFound when reading deleted memory");
+        } // Expected
+        Result20::Err(e) => panic!("Unexpected error: {:?}", e),
     }
 
     Ok(())

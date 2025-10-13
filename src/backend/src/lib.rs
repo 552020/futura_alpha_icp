@@ -23,18 +23,18 @@ thread_local! {
 mod admin;
 mod auth;
 mod canister_factory;
-mod capsule;
-mod capsule_acl;
-mod capsule_store;
+pub mod capsule;
+pub mod capsule_acl;
+pub mod capsule_store;
 mod folder;
 mod gallery;
 mod http;
-mod memories;
+pub mod memories;
 mod memory;
 mod person;
 mod session;
 mod state;
-mod types;
+pub mod types;
 mod unified_types;
 mod upload;
 mod user;
@@ -54,7 +54,7 @@ fn greet(name: String) -> String {
 
 #[ic_cdk::query]
 fn whoami() -> Principal {
-    ic_cdk::caller()
+    ic_cdk::api::msg_caller()
 }
 
 #[ic_cdk::query]
@@ -846,7 +846,7 @@ fn sessions_cleanup_expired() -> std::result::Result<String, Error> {
 #[ic_cdk::update]
 fn clear_all_stable_memory() -> std::result::Result<(), Error> {
     // Only allow admin to call this
-    let caller = ic_cdk::caller();
+    let caller = ic_cdk::api::msg_caller();
     if !admin::is_admin(&caller) {
         return Err(types::Error::Unauthorized);
     }
@@ -1199,9 +1199,14 @@ async fn post_upgrade() {
     // If restore fails, start with empty state (no panic)
 
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
-    
+
     // Initialize HTTP secret store
     http::secret_store::post_upgrade();
+
+    // Set skip certification for private assets
+    ic_cdk::api::certified_data_set(
+        &ic_http_certification::utils::skip_certification_certified_data(),
+    );
 }
 
 // DEBUG: Cross-call canary to test StableBTreeMap persistence
@@ -1434,12 +1439,26 @@ fn memories_list_assets(
 async fn init() {
     // Initialize HTTP secret store
     http::secret_store::init().await;
+
+    // Set skip certification for private assets
+    ic_cdk::api::certified_data_set(
+        &ic_http_certification::utils::skip_certification_certified_data(),
+    );
 }
 
-
 #[ic_cdk::query]
-fn http_request(req: ic_http_certification::HttpRequest) -> ic_http_certification::HttpResponse<'static> {
-    http::handle(req)
+fn http_request(
+    req: ic_http_certification::HttpRequest,
+) -> ic_http_certification::HttpResponse<'static> {
+    let mut response = http::handle(req);
+
+    // Add skip certification headers for private assets
+    ic_http_certification::utils::add_skip_certification_header(
+        ic_cdk::api::data_certificate().expect("no data cert"),
+        &mut response,
+    );
+
+    response
 }
 
 // TODO: Enable when streaming is needed
@@ -1453,22 +1472,29 @@ fn http_request(req: ic_http_certification::HttpRequest) -> ic_http_certificatio
 // }
 
 // Token minting API for HTTP requests
-use ic_cdk::query;
 use ic_cdk::api::time;
+use ic_cdk::query;
 // Removed rand dependency - using ICP's native randomness instead
 
 use crate::http::{
-    core_types::{TokenScope, TokenPayload, Acl, AssetStore},
-    auth_core::{sign_token_core, encode_token_url},
-    canister_env::CanisterClock, secret_store::StableSecretStore, acl::FuturaAclAdapter,
+    acl::FuturaAclAdapter,
     asset_store::FuturaAssetStore,
+    auth_core::{encode_token_url, sign_token_core},
+    canister_env::CanisterClock,
+    core_types::{Acl, AssetStore, TokenPayload, TokenScope},
+    secret_store::StableSecretStore,
 };
 
 #[query]
-fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<Vec<String>>, ttl_secs: u32) -> String {
-    let caller = ic_cdk::caller();
+fn mint_http_token(
+    memory_id: String,
+    variants: Vec<String>,
+    asset_ids: Option<Vec<String>>,
+    ttl_secs: u32,
+) -> String {
+    let caller = ic_cdk::api::msg_caller();
     let acl = FuturaAclAdapter;
-    
+
     // ✅ Enhanced: Use ACL adapter for authorization (no domain imports in HTTP layer)
     assert!(acl.can_view(&memory_id, caller), "forbidden");
 
@@ -1481,7 +1507,11 @@ fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<V
     }
 
     // ✅ Enhanced: Default TTL to 180 seconds if not specified, cap at 180s
-    let ttl = if ttl_secs == 0 { 180 } else { ttl_secs.min(180) };
+    let ttl = if ttl_secs == 0 {
+        180
+    } else {
+        ttl_secs.min(180)
+    };
 
     // build payload
     let mut nonce = [0u8; 12];
@@ -1497,7 +1527,11 @@ fn mint_http_token(memory_id: String, variants: Vec<String>, asset_ids: Option<V
         kid: 1, // ✅ Enhanced: Key version for secret rotation
         exp_ns: time() + (ttl as u64) * 1_000_000_000,
         nonce,
-        scope: TokenScope { memory_id, variants, asset_ids },
+        scope: TokenScope {
+            memory_id,
+            variants,
+            asset_ids,
+        },
         sub: Some(caller), // ✅ Enhanced: Bind token to caller by default
     };
 
