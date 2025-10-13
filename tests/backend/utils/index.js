@@ -34,6 +34,7 @@ export * from "./helpers/upload-download.js";
 export * from "./helpers/verification.js";
 export * from "./helpers/image-processing.js";
 export * from "./helpers/asset-addition.js";
+export * from "./helpers/http-auth.js";
 
 // Re-export existing utilities for backward compatibility
 export * from "../shared-capsule/upload/helpers.mjs";
