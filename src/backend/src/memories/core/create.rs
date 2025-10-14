@@ -387,6 +387,28 @@ mod tests {
         fn get_capsule_for_acl(&self, capsule_id: &CapsuleId) -> Option<CapsuleAccess> {
             self.capsules.get(capsule_id).cloned()
         }
+
+        fn clear_all_memories_in_capsule(
+            &mut self,
+            capsule_id: &str,
+        ) -> std::result::Result<(), Error> {
+            self.memories
+                .retain(|(capsule, _), _| capsule != capsule_id);
+            Ok(())
+        }
+
+        fn clear_all_internal_blobs_in_capsule(
+            &mut self,
+            capsule_id: &str,
+        ) -> std::result::Result<(), Error> {
+            // For mock implementation, we don't need to actually clear blobs
+            // since we're not managing real blob storage
+            Ok(())
+        }
+
+        fn capsule_exists(&self, capsule_id: &str) -> bool {
+            self.capsules.contains_key(capsule_id)
+        }
     }
 
     fn create_test_asset_metadata() -> AssetMetadata {
