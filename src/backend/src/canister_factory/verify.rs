@@ -233,6 +233,9 @@ pub async fn verify_handoff_readiness(
 mod tests {
     use super::*;
 
+    use crate::capsule::domain::{
+        AccessCondition, AccessEntry, GrantSource, ResourceRole, SharingStatus,
+    };
     use crate::types::{self, HostingPreferences};
     use candid::Principal;
 

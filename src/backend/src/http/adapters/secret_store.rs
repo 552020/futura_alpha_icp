@@ -1,3 +1,4 @@
+use crate::http::core_types::SecretStore;
 use candid::{CandidType, Decode, Encode};
 use ic_cdk::management_canister::raw_rand;
 use ic_stable_structures::{
@@ -7,7 +8,6 @@ use ic_stable_structures::{
 use once_cell::unsync::OnceCell; // unsync version
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use crate::http::core_types::SecretStore;
 
 type Mem = VirtualMemory<DefaultMemoryImpl>;
 
@@ -19,16 +19,17 @@ struct Secrets {
 }
 
 impl Storable for Secrets {
-    const BOUND: ic_stable_structures::storable::Bound = ic_stable_structures::storable::Bound::Bounded {
-        max_size: 256,
-        is_fixed_size: false,
-    };
-    
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> { 
-        std::borrow::Cow::Owned(Encode!(self).unwrap()) 
+    const BOUND: ic_stable_structures::storable::Bound =
+        ic_stable_structures::storable::Bound::Bounded {
+            max_size: 256,
+            is_fixed_size: false,
+        };
+
+    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+        std::borrow::Cow::Owned(Encode!(self).unwrap())
     }
-    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self { 
-        Decode!(&bytes, Self).unwrap() 
+    fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
+        Decode!(&bytes, Self).unwrap()
     }
 }
 
@@ -41,28 +42,32 @@ pub async fn init() {
     let mem = mm.get(MemoryId::new(42));
 
     // Use deterministic initialization during init (system calls not allowed)
-    let seeded = Secrets { 
-        current: deterministic_key(), 
-        previous: [0; 32], 
-        version: 1 
+    let seeded = Secrets {
+        current: deterministic_key(),
+        previous: [0; 32],
+        version: 1,
     };
     let cell = StableCell::init(mem, seeded).expect("init secret cell");
 
-    SECRET_CELL.with(|c| { 
-        c.borrow_mut().set(cell).ok(); 
+    SECRET_CELL.with(|c| {
+        c.borrow_mut().set(cell).ok();
     });
 }
 
 pub fn post_upgrade() {
     let mm = MemoryManager::init(DefaultMemoryImpl::default());
     let mem = mm.get(MemoryId::new(42));
-    let cell = StableCell::init(mem, Secrets { 
-        current: [0;32], 
-        previous: [0;32], 
-        version: 0 
-    }).expect("open cell");
-    SECRET_CELL.with(|c| { 
-        c.borrow_mut().set(cell).ok(); 
+    let cell = StableCell::init(
+        mem,
+        Secrets {
+            current: [0; 32],
+            previous: [0; 32],
+            version: 0,
+        },
+    )
+    .expect("open cell");
+    SECRET_CELL.with(|c| {
+        c.borrow_mut().set(cell).ok();
     });
 }
 
@@ -108,15 +113,15 @@ fn deterministic_key() -> [u8; 32] {
     // This is used during initialization when system calls are not allowed
     let canister_id = ic_cdk::api::canister_self();
     let time = ic_cdk::api::time();
-    
+
     let mut key = [0u8; 32];
     let canister_bytes = canister_id.as_slice();
     let time_bytes = time.to_le_bytes();
-    
+
     for i in 0..32 {
         key[i] = canister_bytes[i % canister_bytes.len()] ^ time_bytes[i % 8];
     }
-    
+
     key
 }
 

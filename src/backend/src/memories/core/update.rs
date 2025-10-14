@@ -229,7 +229,6 @@ pub fn memories_add_inline_asset_core<E: Env, S: Store>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::capsule::domain::SharingStatus;
     use crate::types::*;
 
@@ -237,9 +236,9 @@ mod tests {
     fn create_test_memory(
         id: &str,
         title: Option<&str>,
-        is_public: bool,
+        _is_public: bool,
         shared_count: u32,
-        sharing_status: &str,
+        _sharing_status: &str,
     ) -> Memory {
         Memory {
             id: id.to_string(),

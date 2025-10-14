@@ -295,11 +295,12 @@ pub fn memories_create_with_internal_blobs_core<E: Env, S: Store>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::capsule::domain::SharingStatus;
     use crate::capsule_acl::CapsuleAccess;
     use crate::memories::types::{
         AssetMetadata, AssetMetadataBase, AssetType, ImageAssetMetadata, MemoryMetadata, MemoryType,
     };
-    use crate::types::{ControllerState, OwnerState, PersonRef};
+    use crate::types::{OwnerState, PersonRef};
     use candid::Principal;
     use std::collections::HashMap;
 
@@ -398,7 +399,7 @@ mod tests {
 
         fn clear_all_internal_blobs_in_capsule(
             &mut self,
-            capsule_id: &str,
+            _capsule_id: &str,
         ) -> std::result::Result<(), Error> {
             // For mock implementation, we don't need to actually clear blobs
             // since we're not managing real blob storage
