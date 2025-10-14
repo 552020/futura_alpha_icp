@@ -20,7 +20,7 @@ pub use assets::{
     memories_cleanup_assets_bulk_core, memories_list_assets_core,
 };
 pub use create::memories_create_core;
-pub use delete::{memories_delete_all_core, memories_delete_bulk_core, memories_delete_core};
+pub use delete::{memories_delete_all_core, memories_delete_bulk_core, memories_delete_core, _dev_clear_all_memories_in_capsule_core};
 pub use read::memories_read_core;
 pub use traits::{Env, Store};
 pub use update::{memories_update_core, memories_add_asset_core, memories_add_inline_asset_core};

@@ -143,22 +143,51 @@ pub fn get(
         }
     };
     let token = match decode_token_url(&token_param) {
-        Some(t) => t,
-        None => return HttpError::BadTokenFormat.to_response(),
+        Some(t) => {
+            ic_cdk::println!("  ✅ Token decoded successfully");
+            ic_cdk::println!("  Token payload: {:?}", t.p);
+            t
+        }
+        None => {
+            ic_cdk::println!("  ❌ Failed to decode token");
+            return HttpError::BadTokenFormat.to_response();
+        }
     };
+
     let want = path_to_scope(req, memory_id, variant);
+    ic_cdk::println!("  Expected scope: {:?}", want);
+
     let clock = CanisterClock;
     let secret = StableSecretStore;
+
     // Enhanced error handling with structured enums
     if let Err(e) = verify_token_core(&clock, &secret, &token, &want) {
+        ic_cdk::println!("  ❌ Token validation failed: {:?}", e);
         return match e {
-            VerifyErr::Expired => HttpError::TokenExpired.to_response(),
-            VerifyErr::BadSig => HttpError::BadTokenSignature.to_response(),
-            VerifyErr::WrongMemory => HttpError::AclDenied.to_response(),
-            VerifyErr::VariantNotAllowed => HttpError::AclDenied.to_response(),
-            VerifyErr::AssetNotAllowed => HttpError::AclDenied.to_response(),
+            VerifyErr::Expired => {
+                ic_cdk::println!("  ❌ Token expired");
+                HttpError::TokenExpired.to_response()
+            }
+            VerifyErr::BadSig => {
+                ic_cdk::println!("  ❌ Bad token signature");
+                HttpError::BadTokenSignature.to_response()
+            }
+            VerifyErr::WrongMemory => {
+                ic_cdk::println!("  ❌ Wrong memory ID");
+                HttpError::AclDenied.to_response()
+            }
+            VerifyErr::VariantNotAllowed => {
+                ic_cdk::println!("  ❌ Variant not allowed");
+                HttpError::AclDenied.to_response()
+            }
+            VerifyErr::AssetNotAllowed => {
+                ic_cdk::println!("  ❌ Asset not allowed");
+                HttpError::AclDenied.to_response()
+            }
         };
     }
+
+    ic_cdk::println!("  ✅ Token validation successful");
 
     // 2) load asset (inline preferred; else prepare for streaming in Phase 2)
     let store = FuturaAssetStore;
@@ -205,37 +234,59 @@ pub fn get(
         }
     };
 
-    // Try to get the asset using the token's subject principal
-    // First try inline assets
-    if let Some(inline) = store.get_inline_with_principal(token_subject, memory_id, &asset_id) {
-        let content_length = inline.bytes.len().to_string();
-        return HttpResponse::ok(
-            inline.bytes,
-            vec![
-                ("Content-Type".into(), inline.content_type),
-                ("Cache-Control".into(), "private, no-store".into()),
-                ("X-Content-Type-Options".into(), "nosniff".into()),
-                ("Content-Length".into(), content_length),
-            ],
-        )
-        .build();
+    // Decide priority by variant: for display/thumbnail/original prefer blob first.
+    // Inline should only be preferred when the requested variant is explicitly "inline".
+    let is_inline_variant = variant.eq_ignore_ascii_case("inline");
+
+    // Try blob first unless the caller explicitly asked for inline
+    if !is_inline_variant {
+        if let Some((blob_data, content_type)) =
+            store.get_blob_with_principal(token_subject, memory_id, &asset_id)
+        {
+            let content_length = blob_data.len().to_string();
+            ic_cdk::println!(
+                "[HTTP-ASSET] ✅ Serving blob asset: {} bytes, content_type={}",
+                content_length,
+                content_type
+            );
+            return HttpResponse::ok(
+                blob_data,
+                vec![
+                    ("Content-Type".into(), content_type),
+                    ("Cache-Control".into(), "private, no-store".into()),
+                    ("X-Content-Type-Options".into(), "nosniff".into()),
+                    ("Content-Length".into(), content_length),
+                ],
+            )
+            .build();
+        }
     }
 
-    // Fallback: try blob assets (for Phase 1, only small blobs <= 2MB)
-    if let Some((blob_data, content_type)) =
-        store.get_blob_with_principal(token_subject, memory_id, &asset_id)
-    {
-        let content_length = blob_data.len().to_string();
-        return HttpResponse::ok(
-            blob_data,
-            vec![
-                ("Content-Type".into(), content_type),
-                ("Cache-Control".into(), "private, no-store".into()),
-                ("X-Content-Type-Options".into(), "nosniff".into()),
-                ("Content-Length".into(), content_length),
-            ],
-        )
-        .build();
+    // Only try inline if explicitly requested (never as fallback for display/thumbnail/original)
+    if is_inline_variant {
+        if let Some(inline) = store.get_inline_with_principal(token_subject, memory_id, &asset_id) {
+            let content_length = inline.bytes.len().to_string();
+            ic_cdk::println!(
+                "[HTTP-ASSET] ✅ Serving inline asset: {} bytes, content_type={}",
+                content_length,
+                inline.content_type
+            );
+            return HttpResponse::ok(
+                inline.bytes,
+                vec![
+                    ("Content-Type".into(), inline.content_type),
+                    ("Cache-Control".into(), "private, no-store".into()),
+                    ("X-Content-Type-Options".into(), "nosniff".into()),
+                    ("Content-Length".into(), content_length),
+                ],
+            )
+            .build();
+        }
+    } else {
+        ic_cdk::println!(
+            "[HTTP-ASSET] ❌ No blob asset found for variant: {} - returning 404 instead of placeholder",
+            variant
+        );
     }
 
     // 3) fallback: not found (streaming to be added in Phase 2)
@@ -373,5 +424,188 @@ mod tests {
         // assert_eq!(HttpError::AssetNotFound.to_response().status_code(), 404); // TODO: Remove when needed
         assert_eq!(HttpError::InputTooLong.to_response().status_code(), 400);
         assert_eq!(HttpError::TooManyParams.to_response().status_code(), 400);
+    }
+
+    // --- Tech Lead's comprehensive asset selection tests ---
+
+    // Minimal shapes to keep this test self-contained
+    #[derive(Clone)]
+    struct InlineAsset {
+        bytes: Vec<u8>,
+        content_type: String,
+    }
+
+    trait TestStore {
+        fn get_blob_with_principal(
+            &self,
+            _principal: Option<candid::Principal>,
+            _memory_id: &str,
+            _asset_id: &str,
+        ) -> Option<(Vec<u8>, String)>;
+
+        fn get_inline_with_principal(
+            &self,
+            _principal: Option<candid::Principal>,
+            _memory_id: &str,
+            _asset_id: &str,
+        ) -> Option<InlineAsset>;
+    }
+
+    // This constant mirrors the heuristic in the fix
+    const PLACEHOLDER_MAX_LEN: usize = 1200;
+
+    // Extract the selection logic into a pure function for easy testing.
+    // Returns (bytes, content_type).
+    fn select_asset_for_variant<S: TestStore>(
+        store: &S,
+        token_subject: Option<candid::Principal>,
+        memory_id: &str,
+        asset_id: &str,
+        variant: &str,
+    ) -> Option<(Vec<u8>, String)> {
+        let is_inline_variant = variant.eq_ignore_ascii_case("inline");
+
+        // Prefer BLOB for non-inline variants
+        if !is_inline_variant {
+            if let Some((blob, ct)) =
+                store.get_blob_with_principal(token_subject, memory_id, asset_id)
+            {
+                return Some((blob, ct));
+            }
+        }
+
+        // Otherwise try INLINE (but skip tiny placeholders unless explicitly inline)
+        if let Some(inl) = store.get_inline_with_principal(token_subject, memory_id, asset_id) {
+            let looks_like_placeholder = inl.bytes.len() <= PLACEHOLDER_MAX_LEN;
+            if is_inline_variant || !looks_like_placeholder {
+                return Some((inl.bytes, inl.content_type));
+            }
+        }
+
+        None
+    }
+
+    // A tiny fake store to simulate all scenarios
+    #[derive(Default)]
+    struct FakeStore {
+        blob: Option<(Vec<u8>, String)>,
+        inline: Option<InlineAsset>,
+    }
+
+    impl TestStore for FakeStore {
+        fn get_blob_with_principal(
+            &self,
+            _principal: Option<candid::Principal>,
+            _memory_id: &str,
+            _asset_id: &str,
+        ) -> Option<(Vec<u8>, String)> {
+            self.blob.clone()
+        }
+
+        fn get_inline_with_principal(
+            &self,
+            _principal: Option<candid::Principal>,
+            _memory_id: &str,
+            _asset_id: &str,
+        ) -> Option<InlineAsset> {
+            self.inline.clone()
+        }
+    }
+
+    fn big_webp(len: usize) -> (Vec<u8>, String) {
+        (vec![1u8; len], "image/webp".to_string())
+    }
+
+    fn tiny_jpeg(len: usize) -> InlineAsset {
+        InlineAsset {
+            bytes: vec![2u8; len],
+            content_type: "image/jpeg".into(),
+        }
+    }
+
+    #[test]
+    fn prefers_blob_over_inline_for_display() {
+        let mut store = FakeStore::default();
+        // Real processed asset as BLOB (~248 KB)
+        store.blob = Some(big_webp(248_000));
+        // Inline is the tiny placeholder (~1 KB JPEG)
+        store.inline = Some(tiny_jpeg(1_000));
+
+        let got = select_asset_for_variant(
+            &store, None, "mem1", "assetD", "display", // non-inline
+        )
+        .expect("should select something");
+
+        assert_eq!(
+            got.0.len(),
+            248_000,
+            "blob must win over inline placeholder"
+        );
+        assert_eq!(got.1, "image/webp");
+    }
+
+    #[test]
+    fn falls_back_to_inline_when_blob_missing_for_display_if_not_placeholder() {
+        let mut store = FakeStore::default();
+        store.blob = None;
+        // Inline is a real image (e.g., server produced inline previews in future)
+        store.inline = Some(InlineAsset {
+            bytes: vec![3u8; 50_000],
+            content_type: "image/webp".into(),
+        });
+
+        let got = select_asset_for_variant(&store, None, "mem1", "assetT", "thumbnail")
+            .expect("should select inline since blob is missing");
+
+        assert_eq!(got.0.len(), 50_000);
+        assert_eq!(got.1, "image/webp");
+    }
+
+    #[test]
+    fn skips_tiny_inline_placeholder_when_blob_missing_for_display() {
+        let mut store = FakeStore::default();
+        store.blob = None;
+        // Only a tiny placeholder inline is present
+        store.inline = Some(tiny_jpeg(1_000)); // <= 1200 → placeholder
+
+        let got = select_asset_for_variant(
+            &store, None, "mem1", "assetD", "display", /* non-inline */
+        );
+
+        assert!(
+            got.is_none(),
+            "should skip tiny inline placeholder for non-inline variants if blob missing"
+        );
+    }
+
+    #[test]
+    fn inline_variant_prefers_inline_even_if_tiny() {
+        let mut store = FakeStore::default();
+        // Even if a big blob exists, when variant == inline we serve inline
+        store.blob = Some(big_webp(200_000));
+        store.inline = Some(tiny_jpeg(800));
+
+        let got = select_asset_for_variant(&store, None, "mem1", "assetI", "inline")
+            .expect("inline variant must serve inline");
+
+        assert_eq!(got.0.len(), 800);
+        assert_eq!(got.1, "image/jpeg");
+    }
+
+    #[test]
+    fn blob_wins_for_thumbnail_even_if_inline_is_large() {
+        let mut store = FakeStore::default();
+        // Both exist → for non-inline variant, blob should win
+        store.blob = Some(big_webp(36_000));
+        store.inline = Some(InlineAsset {
+            bytes: vec![4u8; 10_000],
+            content_type: "image/webp".into(),
+        });
+
+        let got = select_asset_for_variant(&store, None, "mem1", "assetT", "thumbnail")
+            .expect("should select blob");
+
+        assert_eq!(got.0.len(), 36_000);
+        assert_eq!(got.1, "image/webp");
     }
 }

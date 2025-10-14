@@ -19,11 +19,20 @@ pub mod canister_env;
 #[path = "http/adapters/secret_store.rs"]
 pub mod secret_store;
 
+// Service modules (business logic)
+#[path = "http/services/token_service.rs"]
+pub mod token_service;
+
 // Route modules (thin HTTP handlers)
 #[path = "http/routes/assets.rs"]
 pub mod assets_route;
 #[path = "http/routes/health.rs"]
 pub mod health_route;
+
+/// Generate relative asset path (no base URL)
+pub fn asset_path(memory_id: &str, kind: &str) -> String {
+    format!("/asset/{}/{}", memory_id, kind)
+}
 
 use core_types::ParsedRequest;
 use ic_http_certification::{HttpRequest, HttpResponse, StatusCode};

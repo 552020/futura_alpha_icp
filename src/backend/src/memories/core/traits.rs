@@ -34,4 +34,13 @@ pub trait Store {
     fn get_all_memories(&self, capsule: &CapsuleId) -> Vec<Memory>;
     fn get_accessible_capsules(&self, caller: &PersonRef) -> Vec<CapsuleId>;
     fn get_capsule_for_acl(&self, capsule_id: &CapsuleId) -> Option<CapsuleAccess>;
+    
+    /// Clear all memories in a capsule (atomic operation)
+    fn clear_all_memories_in_capsule(&mut self, capsule_id: &str) -> std::result::Result<(), Error>;
+    
+    /// Clear all internal blobs in a capsule (atomic operation)
+    fn clear_all_internal_blobs_in_capsule(&mut self, capsule_id: &str) -> std::result::Result<(), Error>;
+    
+    /// Check if capsule exists
+    fn capsule_exists(&self, capsule_id: &str) -> bool;
 }

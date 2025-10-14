@@ -331,3 +331,53 @@ fn cleanup_neon_blob_asset(storage_key: &str) -> std::result::Result<(), Error> 
     // In production, this should be implemented properly
     Ok(())
 }
+
+/// TEMPORARY DEV METHOD: Clear all memories in a capsule
+///
+/// WARNING: This is a developer method that bypasses normal ACL checks
+/// and uses atomic operations. It should be refined or removed before
+/// production use.
+///
+/// TODO: Implement proper ACL checks and individual memory deletion
+/// TODO: Add proper error handling and rollback mechanisms
+/// TODO: Consider if this should be a user-facing feature
+pub fn _dev_clear_all_memories_in_capsule_core<E: Env, S: Store>(
+    env: &E,
+    store: &mut S,
+    capsule_id: String,
+    delete_assets: bool,
+) -> std::result::Result<crate::memories::types::BulkDeleteResult, Error> {
+    let _caller = env.caller(); // TODO: Add proper ACL checks in production
+
+    // Simple check: just verify the capsule exists
+    if !store.capsule_exists(&capsule_id) {
+        return Err(Error::NotFound);
+    }
+
+    // Get count of memories before deletion (this is our main return value)
+    let memories = store.get_all_memories(&capsule_id);
+    let deleted_memory_count = memories.len(); // This is what we return
+
+    // If delete_assets=true, delete assets first, then memories
+    if delete_assets {
+        // Delete internal blob assets (ICP storage)
+        store.clear_all_internal_blobs_in_capsule(&capsule_id)?;
+
+        // For external blob assets, we can't delete them (they're on external storage)
+        // So we just return true and do nothing - the external storage will handle cleanup
+        // This is the expected behavior for external assets
+    }
+
+    // NUCLEAR OPTION: Clear all memories in this capsule
+    store.clear_all_memories_in_capsule(&capsule_id)?;
+
+    // Return the count of deleted memories (this is the main result)
+    Ok(crate::memories::types::BulkDeleteResult {
+        deleted_count: deleted_memory_count as u32, // PRIMARY RETURN VALUE: number of memories deleted
+        failed_count: 0,
+        message: format!(
+            "Successfully cleared {} memories from capsule {}",
+            deleted_memory_count, capsule_id
+        ),
+    })
+}

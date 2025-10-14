@@ -109,54 +109,69 @@ pub fn generate_asset_links_for_memory_header(
         memory: &Memory,
         asset_type: crate::memories::types::AssetType,
     ) -> Option<(&str, &crate::memories::types::AssetMetadata)> {
+        ic_cdk::println!("🔍 [DEBUG] Searching for asset type: {:?} in memory: {}", asset_type, memory.id);
+        
         // Check blob_internal_assets first
-        for asset in &memory.blob_internal_assets {
-            let matches_type = match &asset.metadata {
+        for (i, asset) in memory.blob_internal_assets.iter().enumerate() {
+            let asset_type_found = match &asset.metadata {
                 crate::memories::types::AssetMetadata::Image(img) => {
+                    ic_cdk::println!("🔍 [DEBUG] Blob internal asset {}: id={}, type={:?}", i, asset.asset_id, img.base.asset_type);
                     img.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Video(vid) => {
+                    ic_cdk::println!("🔍 [DEBUG] Blob internal asset {}: id={}, type={:?}", i, asset.asset_id, vid.base.asset_type);
                     vid.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Audio(audio) => {
+                    ic_cdk::println!("🔍 [DEBUG] Blob internal asset {}: id={}, type={:?}", i, asset.asset_id, audio.base.asset_type);
                     audio.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Document(doc) => {
+                    ic_cdk::println!("🔍 [DEBUG] Blob internal asset {}: id={}, type={:?}", i, asset.asset_id, doc.base.asset_type);
                     doc.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Note(note) => {
+                    ic_cdk::println!("🔍 [DEBUG] Blob internal asset {}: id={}, type={:?}", i, asset.asset_id, note.base.asset_type);
                     note.base.asset_type == asset_type
                 }
             };
-            if matches_type {
+            if asset_type_found {
+                ic_cdk::println!("🔍 [DEBUG] ✅ Found matching blob internal asset: {}", asset.asset_id);
                 return Some((&asset.asset_id, &asset.metadata));
             }
         }
 
         // Then check inline_assets
-        for asset in &memory.inline_assets {
-            let matches_type = match &asset.metadata {
+        for (i, asset) in memory.inline_assets.iter().enumerate() {
+            let asset_type_found = match &asset.metadata {
                 crate::memories::types::AssetMetadata::Image(img) => {
+                    ic_cdk::println!("🔍 [DEBUG] Inline asset {}: id={}, type={:?}", i, asset.asset_id, img.base.asset_type);
                     img.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Video(vid) => {
+                    ic_cdk::println!("🔍 [DEBUG] Inline asset {}: id={}, type={:?}", i, asset.asset_id, vid.base.asset_type);
                     vid.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Audio(audio) => {
+                    ic_cdk::println!("🔍 [DEBUG] Inline asset {}: id={}, type={:?}", i, asset.asset_id, audio.base.asset_type);
                     audio.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Document(doc) => {
+                    ic_cdk::println!("🔍 [DEBUG] Inline asset {}: id={}, type={:?}", i, asset.asset_id, doc.base.asset_type);
                     doc.base.asset_type == asset_type
                 }
                 crate::memories::types::AssetMetadata::Note(note) => {
+                    ic_cdk::println!("🔍 [DEBUG] Inline asset {}: id={}, type={:?}", i, asset.asset_id, note.base.asset_type);
                     note.base.asset_type == asset_type
                 }
             };
-            if matches_type {
+            if asset_type_found {
+                ic_cdk::println!("🔍 [DEBUG] ✅ Found matching inline asset: {}", asset.asset_id);
                 return Some((&asset.asset_id, &asset.metadata));
             }
         }
 
+        ic_cdk::println!("🔍 [DEBUG] ❌ No asset found for type: {:?}", asset_type);
         None
     }
 
@@ -210,9 +225,15 @@ pub fn generate_asset_links_for_memory_header(
     }
 
     // Generate thumbnail link if available
+    ic_cdk::println!("🔍 [DEBUG] Looking for thumbnail assets in memory: {}", memory.id);
+    ic_cdk::println!("🔍 [DEBUG] Inline assets count: {}", memory.inline_assets.len());
+    ic_cdk::println!("🔍 [DEBUG] Blob internal assets count: {}", memory.blob_internal_assets.len());
+    ic_cdk::println!("🔍 [DEBUG] Blob external assets count: {}", memory.blob_external_assets.len());
+    
     if let Some((asset_id, metadata)) =
         find_asset_by_type(memory, crate::memories::types::AssetType::Thumbnail)
     {
+        ic_cdk::println!("🔍 [DEBUG] ✅ Found thumbnail asset: {}", asset_id);
         let (content_type, width, height, bytes, etag) = extract_asset_metadata(metadata);
         header.assets.thumbnail = Some(build_asset_link(
             &memory.id,
@@ -225,12 +246,16 @@ pub fn generate_asset_links_for_memory_header(
             etag,
             MEMORY_LISTING_TTL,
         ));
+    } else {
+        ic_cdk::println!("🔍 [DEBUG] ❌ No thumbnail asset found");
     }
 
     // Generate display link if available (Display type)
+    ic_cdk::println!("🔍 [DEBUG] Looking for display assets in memory: {}", memory.id);
     if let Some((asset_id, metadata)) =
         find_asset_by_type(memory, crate::memories::types::AssetType::Display)
     {
+        ic_cdk::println!("🔍 [DEBUG] ✅ Found display asset: {}", asset_id);
         let (content_type, width, height, bytes, etag) = extract_asset_metadata(metadata);
         header.assets.display = Some(build_asset_link(
             &memory.id,
@@ -243,6 +268,8 @@ pub fn generate_asset_links_for_memory_header(
             etag,
             MEMORY_LISTING_TTL,
         ));
+    } else {
+        ic_cdk::println!("🔍 [DEBUG] ❌ No display asset found");
     }
 
     // Generate original link if available
@@ -269,7 +296,7 @@ pub fn generate_asset_links_for_memory_header(
         let is_placeholder = match &asset.metadata {
             crate::memories::types::AssetMetadata::Image(img) => {
                 // Check if this is a placeholder asset (very small size indicates placeholder)
-                img.base.asset_type == crate::memories::types::AssetType::Derivative
+                img.base.asset_type == crate::memories::types::AssetType::Placeholder
                     && img.base.bytes < 1000 // Placeholders are typically very small
             }
             _ => false,

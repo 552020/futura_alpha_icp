@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Image Processing Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .test-section {
+        margin: 20px 0;
+        padding: 20px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+      }
+      .result {
+        margin: 10px 0;
+        padding: 10px;
+        background: #f5f5f5;
+        border-radius: 4px;
+      }
+      .success {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+      }
+      .error {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+      }
+      .info {
+        background: #d1ecf1;
+        border: 1px solid #bee5eb;
+      }
+      img {
+        max-width: 200px;
+        margin: 10px;
+        border: 1px solid #ccc;
+      }
+      .dimensions {
+        font-weight: bold;
+        color: #007bff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🖼️ Image Processing Test</h1>
+    <p>
+      This test verifies that the image processing worker is creating proper dimensions for display, thumbnail, and
+      placeholder images.
+    </p>
+
+    <div class="test-section">
+      <h2>📁 File Upload</h2>
+      <input type="file" id="fileInput" accept="image/*" />
+      <button onclick="testImageProcessing()">Test Image Processing</button>
+    </div>
+
+    <div class="test-section">
+      <h2>📊 Results</h2>
+      <div id="results"></div>
+    </div>
+
+    <div class="test-section">
+      <h2>🖼️ Processed Images</h2>
+      <div id="images"></div>
+    </div>
+
+    <script>
+      async function testImageProcessing() {
+          const fileInput = document.getElementById('fileInput');
+          const resultsDiv = document.getElementById('results');
+          const imagesDiv = document.getElementById('images');
+
+          if (!fileInput.files[0]) {
+              showResult('Please select an image file first.', 'error');
+              return;
+          }
+
+          const file = fileInput.files[0];
+          showResult(`Testing image: ${file.name} (${file.size} bytes, ${file.type})`, 'info');
+
+          try {
+              // Create Web Worker
+              const worker = new Worker(new URL('./src/nextjs/src/workers/image-processor.worker.ts', import.meta.url), {
+                  type: 'module',
+              });
+
+              // Process image in worker
+              const processedBlobs = await new Promise((resolve, reject) => {
+                  const timeout = setTimeout(() => {
+                      worker.terminate();
+                      reject(new Error('Worker processing timeout'));
+                  }, 30000);
+
+                  worker.onmessage = (e) => {
+                      clearTimeout(timeout);
+                      worker.terminate();
+
+                      const response = e.data;
+                      if (!response.ok) {
+                          reject(new Error(response.error || 'Worker processing failed'));
+                          return;
+                      }
+
+                      resolve(response);
+                  };
+
+                  worker.onerror = error => {
+                      clearTimeout(timeout);
+                      worker.terminate();
+                      reject(error);
+                  };
+
+                  // Send processing message
+                  const message = {
+                      kind: 'process',
+                      file,
+                      maxDisplaySize: 2048,
+                      maxThumbSize: 512,
+                      maxPlaceholderSize: 32,
+                  };
+
+                  worker.postMessage(message);
+              });
+
+              // Display results
+              displayResults(processedBlobs);
+              displayImages(processedBlobs);
+
+          } catch (error) {
+              showResult(`❌ Error: ${error.message}`, 'error');
+          }
+      }
+
+      function displayResults(processedBlobs) {
+          const resultsDiv = document.getElementById('results');
+          resultsDiv.innerHTML = '';
+
+          // Display results
+          if (processedBlobs.display) {
+              showResult(`✅ Display: ${processedBlobs.display.width}x${processedBlobs.display.height} (${processedBlobs.display.bytes} bytes)`, 'success');
+          } else {
+              showResult('❌ No display image generated', 'error');
+          }
+
+          if (processedBlobs.thumb) {
+              showResult(`✅ Thumbnail: ${processedBlobs.thumb.width}x${processedBlobs.thumb.height} (${processedBlobs.thumb.bytes} bytes)`, 'success');
+          } else {
+              showResult('❌ No thumbnail image generated', 'error');
+          }
+
+          if (processedBlobs.placeholder) {
+              showResult(`✅ Placeholder: ${processedBlobs.placeholder.width}x${processedBlobs.placeholder.height} (${processedBlobs.placeholder.bytes} bytes)`, 'success');
+          } else {
+              showResult('❌ No placeholder image generated', 'error');
+          }
+
+          // Check if dimensions are correct
+          const displayCorrect = processedBlobs.display && processedBlobs.display.width <= 2048 && processedBlobs.display.height <= 2048;
+          const thumbCorrect = processedBlobs.thumb && processedBlobs.thumb.width <= 512 && processedBlobs.thumb.height <= 512;
+          const placeholderCorrect = processedBlobs.placeholder && processedBlobs.placeholder.width <= 32 && processedBlobs.placeholder.height <= 32;
+
+          if (displayCorrect && thumbCorrect && placeholderCorrect) {
+              showResult('🎉 All dimensions are correct!', 'success');
+          } else {
+              showResult('⚠️ Some dimensions may be incorrect', 'error');
+          }
+      }
+
+      function displayImages(processedBlobs) {
+          const imagesDiv = document.getElementById('images');
+          imagesDiv.innerHTML = '';
+
+          if (processedBlobs.display) {
+              const displayImg = document.createElement('img');
+              displayImg.src = URL.createObjectURL(processedBlobs.display.blob);
+              displayImg.alt = 'Display Image';
+              displayImg.title = `Display: ${processedBlobs.display.width}x${processedBlobs.display.height}`;
+              imagesDiv.appendChild(displayImg);
+          }
+
+          if (processedBlobs.thumb) {
+              const thumbImg = document.createElement('img');
+              thumbImg.src = URL.createObjectURL(processedBlobs.thumb.blob);
+              thumbImg.alt = 'Thumbnail Image';
+              thumbImg.title = `Thumbnail: ${processedBlobs.thumb.width}x${processedBlobs.thumb.height}`;
+              imagesDiv.appendChild(thumbImg);
+          }
+
+          if (processedBlobs.placeholder) {
+              const placeholderImg = document.createElement('img');
+              placeholderImg.src = processedBlobs.placeholder.dataUrl;
+              placeholderImg.alt = 'Placeholder Image';
+              placeholderImg.title = `Placeholder: ${processedBlobs.placeholder.width}x${processedBlobs.placeholder.height}`;
+              imagesDiv.appendChild(placeholderImg);
+          }
+      }
+
+      function showResult(message, type) {
+          const resultsDiv = document.getElementById('results');
+          const resultDiv = document.createElement('div');
+          resultDiv.className = `result ${type}`;
+          resultDiv.textContent = message;
+          resultsDiv.appendChild(resultDiv);
+      }
+    </script>
+  </body>
+</html>

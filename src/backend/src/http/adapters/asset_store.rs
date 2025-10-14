@@ -1,11 +1,24 @@
 use crate::http::core_types::{AssetStore, InlineAsset};
 use crate::memories::core::traits::{Env, Store};
+use crate::memories::types::AssetType;
 use crate::memories::{CanisterEnv, StoreAdapter};
 use crate::types::PersonRef;
 use candid::Principal;
 
 /// Asset store adapter that bridges to existing asset storage APIs
 pub struct FuturaAssetStore;
+
+/// Helper function to map variant strings to AssetType enums
+fn variant_to_asset_type(variant: &str) -> Option<AssetType> {
+    match variant {
+        "display" => Some(AssetType::Display),
+        "thumbnail" => Some(AssetType::Thumbnail),
+        "original" => Some(AssetType::Original),
+        "placeholder" => Some(AssetType::Placeholder),
+        "metadata" => Some(AssetType::Metadata),
+        _ => None,
+    }
+}
 
 impl AssetStore for FuturaAssetStore {
     fn get_inline(&self, memory_id: &str, asset_id: &str) -> Option<InlineAsset> {
@@ -319,29 +332,100 @@ impl AssetStore for FuturaAssetStore {
                     return None;
                 }
 
-                // If no ID provided, pick first asset of the requested variant
+                // If no ID provided, find asset of the requested variant type
+                // First, convert variant string to AssetType
+                let target_asset_type = match variant_to_asset_type(variant) {
+                    Some(asset_type) => {
+                        ic_cdk::println!(
+                            "[VARIANT-RESOLVE] Looking for asset type: {:?}",
+                            asset_type
+                        );
+                        asset_type
+                    }
+                    None => {
+                        ic_cdk::println!("[VARIANT-RESOLVE] ❌ Unknown variant: {}", variant);
+                        return None;
+                    }
+                };
+
+                // Search for assets with the correct type
                 // Priority: inline -> blob_internal -> blob_external
-                if let Some(asset) = memory.inline_assets.first() {
-                    ic_cdk::println!(
-                        "[VARIANT-RESOLVE] ✅ Selected first inline asset: {}",
-                        asset.asset_id
-                    );
-                    return Some(asset.asset_id.clone());
+
+                // Check inline assets first
+                for asset in &memory.inline_assets {
+                    let asset_type = match &asset.metadata {
+                        crate::memories::types::AssetMetadata::Image(img) => &img.base.asset_type,
+                        crate::memories::types::AssetMetadata::Video(vid) => &vid.base.asset_type,
+                        crate::memories::types::AssetMetadata::Audio(audio) => {
+                            &audio.base.asset_type
+                        }
+                        crate::memories::types::AssetMetadata::Document(doc) => {
+                            &doc.base.asset_type
+                        }
+                        crate::memories::types::AssetMetadata::Note(note) => &note.base.asset_type,
+                    };
+
+                    if asset_type == &target_asset_type {
+                        ic_cdk::println!(
+                            "[VARIANT-RESOLVE] ✅ Found matching inline asset: {} (type: {:?})",
+                            asset.asset_id,
+                            asset_type
+                        );
+                        return Some(asset.asset_id.clone());
+                    }
                 }
-                if let Some(asset) = memory.blob_internal_assets.first() {
-                    ic_cdk::println!(
-                        "[VARIANT-RESOLVE] ✅ Selected first blob internal asset: {}",
-                        asset.asset_id
-                    );
-                    return Some(asset.asset_id.clone());
+
+                // Check blob internal assets
+                for asset in &memory.blob_internal_assets {
+                    let asset_type = match &asset.metadata {
+                        crate::memories::types::AssetMetadata::Image(img) => &img.base.asset_type,
+                        crate::memories::types::AssetMetadata::Video(vid) => &vid.base.asset_type,
+                        crate::memories::types::AssetMetadata::Audio(audio) => {
+                            &audio.base.asset_type
+                        }
+                        crate::memories::types::AssetMetadata::Document(doc) => {
+                            &doc.base.asset_type
+                        }
+                        crate::memories::types::AssetMetadata::Note(note) => &note.base.asset_type,
+                    };
+
+                    if asset_type == &target_asset_type {
+                        ic_cdk::println!(
+                            "[VARIANT-RESOLVE] ✅ Found matching blob internal asset: {} (type: {:?})",
+                            asset.asset_id, asset_type
+                        );
+                        return Some(asset.asset_id.clone());
+                    }
                 }
-                if let Some(asset) = memory.blob_external_assets.first() {
-                    ic_cdk::println!(
-                        "[VARIANT-RESOLVE] ✅ Selected first blob external asset: {}",
-                        asset.asset_id
-                    );
-                    return Some(asset.asset_id.clone());
+
+                // Check blob external assets
+                for asset in &memory.blob_external_assets {
+                    let asset_type = match &asset.metadata {
+                        crate::memories::types::AssetMetadata::Image(img) => &img.base.asset_type,
+                        crate::memories::types::AssetMetadata::Video(vid) => &vid.base.asset_type,
+                        crate::memories::types::AssetMetadata::Audio(audio) => {
+                            &audio.base.asset_type
+                        }
+                        crate::memories::types::AssetMetadata::Document(doc) => {
+                            &doc.base.asset_type
+                        }
+                        crate::memories::types::AssetMetadata::Note(note) => &note.base.asset_type,
+                    };
+
+                    if asset_type == &target_asset_type {
+                        ic_cdk::println!(
+                            "[VARIANT-RESOLVE] ✅ Found matching blob external asset: {} (type: {:?})",
+                            asset.asset_id, asset_type
+                        );
+                        return Some(asset.asset_id.clone());
+                    }
                 }
+
+                ic_cdk::println!(
+                    "[VARIANT-RESOLVE] ❌ No asset found for variant: {} (type: {:?})",
+                    variant,
+                    target_asset_type
+                );
             }
         }
 

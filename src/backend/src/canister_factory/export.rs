@@ -599,10 +599,6 @@ mod tests {
                 sharing_status: SharingStatus::Private,
                 total_size: data_size as u64,
                 asset_count: 1,
-                thumbnail_url: None,
-                primary_asset_url: None,
-                has_thumbnails: false,
-                has_previews: false,
             },
             access_entries: vec![create_owner_access_entry(
                 &PersonRef::Principal(Principal::anonymous()),

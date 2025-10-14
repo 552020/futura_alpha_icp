@@ -3,12 +3,11 @@
 //! This module contains helper functions used across different memory operations,
 //! providing common functionality for creating memories and managing assets.
 
+use crate::capsule::domain::{AccessCondition, AccessEntry, GrantSource, Perm, ResourceRole};
 use crate::types::{
-    AssetMetadata, BlobRef, CapsuleId, Memory, MemoryAssetBlobExternal,
-    MemoryAssetBlobInternal, MemoryAssetInline, MemoryMetadata, MemoryType, PersonRef,
-    StorageEdgeBlobType,
+    AssetMetadata, BlobRef, CapsuleId, Memory, MemoryAssetBlobExternal, MemoryAssetBlobInternal,
+    MemoryAssetInline, MemoryMetadata, MemoryType, PersonRef, StorageEdgeBlobType,
 };
-use crate::capsule::domain::{AccessEntry, AccessCondition, GrantSource, ResourceRole, Perm};
 use crate::utils::uuid_v7;
 use sha2::Digest;
 
@@ -72,15 +71,16 @@ pub fn generate_uuid_v7() -> String {
 pub fn generate_deterministic_uuid_from_idem(idem: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     // Create a hasher and hash the idempotency key
     let mut hasher = DefaultHasher::new();
     idem.hash(&mut hasher);
     let hash = hasher.finish();
-    
+
     // Convert the hash to a UUID-like string format
     // Use a simple approach: take the hash and format it as a UUID
-    format!("{:08x}-{:04x}-{:04x}-{:04x}-{:012x}", 
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
         (hash >> 32) as u32,
         (hash >> 16) as u16,
         hash as u16,
@@ -193,16 +193,12 @@ pub fn create_inline_memory(
             sharing_status: crate::capsule::domain::SharingStatus::Private,
             total_size: base.bytes,
             asset_count: 1,
-            thumbnail_url: None,
-            primary_asset_url: None,
-            has_thumbnails: false,
-            has_previews: false,
         },
         // access: MemoryAccess::Private {
         //     owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
         // },
         access_entries: vec![create_owner_access_entry(caller, now)], // ✅ Create owner access entry
-            // ❌ REMOVED: public_policy field - now unified in AccessEntry
+        // ❌ REMOVED: public_policy field - now unified in AccessEntry
         inline_assets,
         blob_internal_assets: vec![],
         blob_external_assets: vec![],
@@ -258,16 +254,12 @@ pub fn create_blob_memory(
             sharing_status: crate::capsule::domain::SharingStatus::Private,
             total_size: base.bytes,
             asset_count: 1,
-            thumbnail_url: None,
-            primary_asset_url: None,
-            has_thumbnails: false,
-            has_previews: false,
         },
         // access: MemoryAccess::Private {
         //     owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
         // },
         access_entries: vec![create_owner_access_entry(caller, now)], // ✅ Create owner access entry
-            // ❌ REMOVED: public_policy field - now unified in AccessEntry
+        // ❌ REMOVED: public_policy field - now unified in AccessEntry
         inline_assets: vec![],
         blob_internal_assets,
         blob_external_assets: vec![],
@@ -329,16 +321,12 @@ pub fn create_external_memory(
             sharing_status: crate::capsule::domain::SharingStatus::Private,
             total_size: base.bytes,
             asset_count: 1,
-            thumbnail_url: None,
-            primary_asset_url: None,
-            has_thumbnails: false,
-            has_previews: false,
         },
         // access: MemoryAccess::Private {
         //     owner_secure_code: "test_code".to_string(), // TODO: Generate proper secure code
         // },
         access_entries: vec![create_owner_access_entry(caller, now)], // ✅ Create owner access entry
-            // ❌ REMOVED: public_policy field - now unified in AccessEntry
+        // ❌ REMOVED: public_policy field - now unified in AccessEntry
         inline_assets: vec![],
         blob_internal_assets: vec![],
         blob_external_assets,

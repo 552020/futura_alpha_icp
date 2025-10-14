@@ -500,6 +500,7 @@ fn memories_list(
     limit: Option<u32>,
 ) -> std::result::Result<crate::capsule_store::types::Page<types::MemoryHeader>, Error> {
     use crate::capsule_store::CapsuleStore;
+    use crate::memories::utils::generate_asset_links_for_memory_header;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -512,20 +513,23 @@ fn memories_list(
             .and_then(|capsule| {
                 // Check if caller has read access
                 if capsule.has_read_access(&caller) {
-                    // Get memories with pagination
-                    let memories: Vec<types::MemoryHeader> = capsule
+                    // Generate memories with asset links
+                    let memories_with_asset_links: Vec<types::MemoryHeader> = capsule
                         .memories
                         .values()
-                        .map(|memory| memory.to_header())
+                        .map(|memory| {
+                            let header = memory.to_header();
+                            generate_asset_links_for_memory_header(header, memory)
+                        })
                         .collect();
 
                     // Simple pagination implementation
                     let start_idx = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
 
-                    let end_idx = (start_idx + limit as usize).min(memories.len());
-                    let page_items = memories[start_idx..end_idx].to_vec();
+                    let end_idx = (start_idx + limit as usize).min(memories_with_asset_links.len());
+                    let page_items = memories_with_asset_links[start_idx..end_idx].to_vec();
 
-                    let next_cursor = if end_idx < memories.len() {
+                    let next_cursor = if end_idx < memories_with_asset_links.len() {
                         Some(end_idx.to_string())
                     } else {
                         None
@@ -551,6 +555,7 @@ fn memories_list_by_capsule(
     limit: Option<u32>,
 ) -> std::result::Result<crate::capsule_store::types::Page<types::MemoryHeader>, Error> {
     use crate::capsule_store::CapsuleStore;
+    use crate::memories::utils::generate_asset_links_for_memory_header;
     use crate::memory::with_capsule_store;
     use crate::types::PersonRef;
 
@@ -562,20 +567,23 @@ fn memories_list_by_capsule(
             .get(&capsule_id)
             .and_then(|capsule| {
                 if capsule.has_read_access(&caller) {
-                    // Filter memories by capsule_id field
-                    let memories: Vec<types::MemoryHeader> = capsule
+                    // Filter memories by capsule_id field and generate asset links
+                    let memories_with_asset_links: Vec<types::MemoryHeader> = capsule
                         .memories
                         .values()
                         .filter(|memory| memory.capsule_id == capsule_id)
-                        .map(|memory| memory.to_header())
+                        .map(|memory| {
+                            let header = memory.to_header();
+                            generate_asset_links_for_memory_header(header, memory)
+                        })
                         .collect();
 
                     // Pagination logic
                     let start_idx = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
-                    let end_idx = (start_idx + limit as usize).min(memories.len());
-                    let page_items = memories[start_idx..end_idx].to_vec();
+                    let end_idx = (start_idx + limit as usize).min(memories_with_asset_links.len());
+                    let page_items = memories_with_asset_links[start_idx..end_idx].to_vec();
 
-                    let next_cursor = if end_idx < memories.len() {
+                    let next_cursor = if end_idx < memories_with_asset_links.len() {
                         Some(end_idx.to_string())
                     } else {
                         None
@@ -1280,6 +1288,29 @@ fn memories_delete_all(
     memories_delete_all_core(&env, &mut store, capsule_id, delete_assets)
 }
 
+/// TEMPORARY DEV METHOD: Clear all memories in a capsule
+///
+/// WARNING: This is a developer method that bypasses normal ACL checks
+/// and uses atomic operations. It should be refined or removed before
+/// production use.
+///
+/// TODO: Implement proper ACL checks and individual memory deletion
+/// TODO: Add proper error handling and rollback mechanisms
+/// TODO: Consider if this should be a user-facing feature
+#[ic_cdk::update]
+fn dev_clear_all_memories_in_capsule(
+    capsule_id: String,
+    delete_assets: bool,
+) -> Result<crate::memories::types::BulkDeleteResult, Error> {
+    use crate::memories::core::_dev_clear_all_memories_in_capsule_core;
+    use crate::memories::{CanisterEnv, StoreAdapter};
+
+    let env = CanisterEnv;
+    let mut store = StoreAdapter;
+
+    _dev_clear_all_memories_in_capsule_core(&env, &mut store, capsule_id, delete_assets)
+}
+
 /// Clean up all assets from a memory while preserving the memory record
 #[ic_cdk::update]
 fn memories_cleanup_assets_all(
@@ -1471,19 +1502,7 @@ fn http_request(
 //     Err("Streaming callback not yet implemented".to_string())
 // }
 
-// Token minting API for HTTP requests
-use ic_cdk::api::time;
-// use ic_cdk::query; // TODO: Remove when needed
-// Removed rand dependency - using ICP's native randomness instead
-
-use crate::http::{
-    acl::FuturaAclAdapter,
-    asset_store::FuturaAssetStore,
-    auth_core::{encode_token_url, sign_token_core},
-    // canister_env::CanisterClock, // TODO: Remove when needed
-    core_types::{Acl, AssetStore, TokenPayload, TokenScope},
-    secret_store::StableSecretStore,
-};
+// HTTP token functions are now handled by the TokenService
 
 #[ic_cdk::query]
 fn mint_http_token(
@@ -1492,51 +1511,21 @@ fn mint_http_token(
     asset_ids: Option<Vec<String>>,
     ttl_secs: u32,
 ) -> String {
-    let caller = ic_cdk::api::msg_caller();
-    let acl = FuturaAclAdapter;
+    crate::http::token_service::TokenService::mint_token(memory_id, variants, asset_ids, ttl_secs)
+}
 
-    // ✅ Enhanced: Use ACL adapter for authorization (no domain imports in HTTP layer)
-    assert!(acl.can_view(&memory_id, caller), "forbidden");
-
-    // ✅ Enhanced: Validate asset existence if asset_ids are specified
-    if let Some(ids) = &asset_ids {
-        let store = FuturaAssetStore;
-        for id in ids {
-            assert!(store.exists(&memory_id, id), "asset not found");
-        }
-    }
-
-    // ✅ Enhanced: Default TTL to 180 seconds if not specified, cap at 180s
-    let ttl = if ttl_secs == 0 {
-        180
-    } else {
-        ttl_secs.min(180)
-    };
-
-    // build payload
-    let mut nonce = [0u8; 12];
-    // Use deterministic nonce based on time and caller for query functions
-    let time_bytes = time().to_le_bytes();
-    let caller_bytes = caller.as_slice();
-    for i in 0..12 {
-        nonce[i] = time_bytes[i % 8] ^ caller_bytes[i % caller_bytes.len()];
-    }
-
-    let payload = TokenPayload {
-        ver: 1,
-        kid: 1, // ✅ Enhanced: Key version for secret rotation
-        exp_ns: time() + (ttl as u64) * 1_000_000_000,
-        nonce,
-        scope: TokenScope {
-            memory_id,
-            variants,
-            asset_ids,
-        },
-        sub: Some(caller), // ✅ Enhanced: Bind token to caller by default
-    };
-
-    let token = sign_token_core(&StableSecretStore, &payload);
-    encode_token_url(&token)
+/// Bulk token minting for efficient dashboard loading
+/// Returns a vector of (memory_id, token) pairs
+#[ic_cdk::query]
+fn mint_http_tokens_bulk(
+    memory_ids: Vec<String>,
+    variants: Vec<String>,
+    asset_ids: Option<Vec<String>>,
+    ttl_secs: u32,
+) -> Vec<(String, String)> {
+    crate::http::token_service::TokenService::mint_tokens_bulk(
+        memory_ids, variants, asset_ids, ttl_secs,
+    )
 }
 
 // Export the interface for the smart contract.

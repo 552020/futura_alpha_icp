@@ -446,10 +446,6 @@ mod tests {
             sharing_status: SharingStatus::Private,
             total_size: 1024,
             asset_count: 1,
-            thumbnail_url: None,
-            primary_asset_url: None,
-            has_thumbnails: false,
-            has_previews: false,
         }
     }
 

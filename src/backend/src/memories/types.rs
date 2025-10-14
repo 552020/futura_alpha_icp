@@ -7,6 +7,8 @@ use std::borrow::Cow;
 use crate::types::{StorageEdgeBlobType, StorageEdgeDatabaseType};
 // Import access control types from capsule domain
 use crate::capsule::domain::SharingStatus;
+// Import AssetLink and AssetLinks from utils
+use crate::memories::utils::{AssetLink, AssetLinks};
 
 // ============================================================================
 // ASSET METADATA TYPES (moved from unified_types.rs)
@@ -17,8 +19,8 @@ use crate::capsule::domain::SharingStatus;
 pub enum AssetType {
     Original,
     Thumbnail,
-    Preview,
-    Derivative,
+    Display,
+    Placeholder,
     Metadata,
 }
 
@@ -170,14 +172,10 @@ pub struct MemoryMetadata {
 
     // NEW: Pre-computed dashboard fields
     // ❌ REMOVED: pub is_public: bool,                   // Redundant with sharing_status
-    pub shared_count: u32,                 // Count of shared recipients
-    pub sharing_status: SharingStatus,     // ✅ ENUM: "public" | "shared" | "private"
-    pub total_size: u64,                   // Sum of all asset sizes
-    pub asset_count: u32,                  // Total number of assets
-    pub thumbnail_url: Option<String>,     // Pre-computed thumbnail URL
-    pub primary_asset_url: Option<String>, // Primary asset URL for display
-    pub has_thumbnails: bool,              // Whether thumbnails exist
-    pub has_previews: bool,                // Whether previews exist
+    pub shared_count: u32,             // Count of shared recipients
+    pub sharing_status: SharingStatus, // ✅ ENUM: "public" | "shared" | "private"
+    pub total_size: u64,               // Sum of all asset sizes
+    pub asset_count: u32,              // Total number of assets
 }
 
 /// Blob reference for external storage
@@ -241,7 +239,6 @@ pub struct Memory {
     pub blob_external_assets: Vec<MemoryAssetBlobExternal>,       // 0 or more external blob assets
 }
 
-
 /// Memory header for listings
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct MemoryHeader {
@@ -260,14 +257,12 @@ pub struct MemoryHeader {
     pub parent_folder_id: Option<String>, // From metadata
     pub tags: Vec<String>,                // From metadata
     // ❌ REMOVED: pub is_public: bool,                   // Redundant with sharing_status
-    pub shared_count: u32,                 // Computed from access
-    pub sharing_status: SharingStatus,     // ✅ ENUM: "public" | "shared" | "private"
-    pub asset_count: u32,                  // Total number of assets
-    pub thumbnail_url: Option<String>,     // Pre-computed thumbnail URL
-    pub primary_asset_url: Option<String>, // Primary asset URL for display
-    pub has_thumbnails: bool,              // Whether thumbnails exist
-    pub has_previews: bool,                // Whether previews exist
-    
+    pub shared_count: u32,                // Computed from access
+    pub sharing_status: SharingStatus,    // ✅ ENUM: "public" | "shared" | "private"
+    pub asset_count: u32,                 // Total number of assets
+    pub assets: AssetLinks, // Asset links grouped by kind (thumbnail, display, original)
+    pub placeholder_data: Option<String>, // Tiny base64 for LQIP (Low Quality Image Placeholder)
+
     // NEW: Storage location information
     pub database_storage_edges: Vec<StorageEdgeDatabaseType>, // Where the memory is stored: ['Icp'], ['Neon'], ['Icp', 'Neon']
 }

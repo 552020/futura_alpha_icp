@@ -268,10 +268,6 @@ mod tests {
                 sharing_status: SharingStatus::Private, // Default to private
                 total_size: 1000,
                 asset_count: 1,
-                thumbnail_url: None,
-                primary_asset_url: None,
-                has_thumbnails: false,
-                has_previews: false,
             },
             access_entries: vec![],
             inline_assets: vec![],
@@ -315,9 +311,8 @@ mod tests {
         // Override specific fields for this test
         memory.metadata.total_size = 2048;
         memory.metadata.asset_count = 3;
-        memory.metadata.thumbnail_url = Some("icp://memory/test_memory/thumbnail".to_string());
-        memory.metadata.primary_asset_url = Some("icp://memory/test_memory/primary".to_string());
-        memory.metadata.has_thumbnails = true;
+        // Note: thumbnail_url and primary_asset_url fields removed - now using assets field in MemoryHeader
+        // Note: has_thumbnails field removed - now check assets.thumbnail directly
 
         // Call to_header() method
         let header = memory.to_header();
@@ -326,16 +321,9 @@ mod tests {
         assert_eq!(header.shared_count, 5);
         assert_eq!(header.sharing_status, SharingStatus::Shared);
         assert_eq!(header.asset_count, 3);
-        assert_eq!(
-            header.thumbnail_url,
-            Some("icp://memory/test_memory/thumbnail".to_string())
-        );
-        assert_eq!(
-            header.primary_asset_url,
-            Some("icp://memory/test_memory/primary".to_string())
-        );
-        assert_eq!(header.has_thumbnails, true);
-        assert_eq!(header.has_previews, false);
+        // Note: Asset links are now generated dynamically, not pre-stored
+        // The test verifies that the header structure is correct
+        // Note: has_thumbnails and has_previews fields removed - check assets directly
 
         // Verify that size uses pre-computed value
         assert_eq!(header.size, 2048);
