@@ -30,6 +30,7 @@ pub mod assets_route;
 pub mod health_route;
 
 /// Generate relative asset path (no base URL)
+#[allow(dead_code)]
 pub fn asset_path(memory_id: &str, kind: &str) -> String {
     format!("/asset/{}/{}", memory_id, kind)
 }

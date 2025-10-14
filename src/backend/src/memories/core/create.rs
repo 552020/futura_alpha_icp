@@ -4,7 +4,6 @@
 //! with various asset types and storage backends.
 
 use super::{model_helpers::*, traits::*};
-use crate::capsule::domain::SharingStatus;
 use crate::capsule_acl::CapsuleAcl;
 use crate::memories::types::{InternalBlobAssetInput, MemoryMetadata};
 use crate::types::{

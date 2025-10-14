@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+
+import { Actor, HttpAgent } from "@dfinity/agent";
+import { loadDfxIdentity } from "../upload/ic-identity.js";
+import { idlFactory } from "../../../../src/nextjs/src/ic/declarations/backend/backend.did.js";
+
+// Configuration
+const CANISTER_ID = "uxrrr-q7777-77774-qaaaq-cai";
+const HOST = "http://127.0.0.1:4943";
+
+async function testFrontendIntegration() {
+  console.log("🧪 Testing frontend integration with dev_clear_all_memories_in_capsule...");
+
+  // Create agent and actor (simulating frontend setup)
+  const identity = loadDfxIdentity();
+  const agent = new HttpAgent({
+    host: HOST,
+    identity,
+    verifyQuerySignatures: false,
+  });
+  await agent.fetchRootKey();
+
+  const backend = Actor.createActor(idlFactory, {
+    agent,
+    canisterId: CANISTER_ID,
+  });
+
+  console.log("✅ Frontend actor initialized");
+
+  try {
+    // Simulate the frontend deleteAllMemoriesFromICP function
+    console.log("\n📋 Simulating frontend deleteAllMemoriesFromICP function...");
+
+    // Get capsule ID (same as frontend does)
+    const capsuleResult = await backend.capsules_read_basic([]);
+    if (!('Ok' in capsuleResult)) {
+      throw new Error('Failed to get user capsule');
+    }
+    const capsuleId = capsuleResult.Ok.capsule_id;
+    console.log("   Got capsule ID:", capsuleId);
+
+    // Check existing memories count
+    const listResult = await backend.memories_list_by_capsule(capsuleId, [], []);
+    let existingCount = 0;
+    if ('Ok' in listResult) {
+      existingCount = listResult.Ok.items.length;
+      console.log(`   Found ${existingCount} existing memories`);
+    }
+
+    // Use the new dev method for efficient deletion (same as frontend does)
+    console.log('🔍 [Delete All Dev] Calling dev_clear_all_memories_in_capsule for capsule:', capsuleId);
+    const deleteAllResult = await backend.dev_clear_all_memories_in_capsule(capsuleId, true); // true = delete assets
+
+    if ('Ok' in deleteAllResult) {
+      const result = deleteAllResult.Ok;
+      console.log('🔍 [Delete All Dev] Success:', result);
+      
+      const frontendResult = {
+        success: true,
+        message: result.message,
+        deletedCount: result.deleted_count,
+      };
+      
+      console.log("✅ Frontend integration result:", frontendResult);
+      
+      // Verify the count matches
+      if (result.deleted_count === existingCount) {
+        console.log("   ✅ Deleted count matches existing count");
+      } else {
+        console.log(`   ⚠️  Deleted count (${result.deleted_count}) doesn't match existing count (${existingCount})`);
+      }
+      
+      return frontendResult;
+    } else {
+      console.error('🔍 [Delete All Dev] Failed:', deleteAllResult.Err);
+      throw new Error(`Failed to delete all memories: ${JSON.stringify(deleteAllResult.Err)}`);
+    }
+
+  } catch (error) {
+    console.error("❌ Frontend integration test failed:", error);
+    throw error;
+  }
+}
+
+// Run the test
+testFrontendIntegration()
+  .then(result => {
+    console.log("\n🎉 Frontend integration test completed successfully!");
+    console.log("   Result:", result);
+  })
+  .catch(error => {
+    console.error("\n❌ Frontend integration test failed:", error);
+    process.exit(1);
+  });
+

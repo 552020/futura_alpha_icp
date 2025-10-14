@@ -88,7 +88,9 @@ export async function mintHttpToken(memoryId, variants = ["thumbnail"], assetIds
     const { createTestActor } = await import("../core/actor.js");
     const { actor } = await createTestActor();
 
-    const token = await actor.mint_http_token(memoryId, variants, assetIds, ttlSecs);
+    // Convert null to empty array for Candid compatibility
+    const assetIdsParam = assetIds ? [assetIds] : [];
+    const token = await actor.mint_http_token(memoryId, variants, assetIdsParam, ttlSecs);
     logSuccess(`✅ HTTP token minted: ${token.substring(0, 50)}...`);
     return token;
   } catch (error) {

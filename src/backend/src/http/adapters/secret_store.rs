@@ -1,5 +1,4 @@
 use candid::{CandidType, Decode, Encode};
-use ic_cdk::api::time;
 use ic_cdk::management_canister::raw_rand;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -76,6 +75,7 @@ pub fn current_key() -> [u8; 32] {
     })
 }
 
+#[allow(dead_code)]
 pub async fn rotate_secret() {
     SECRET_CELL.with(|c| {
         let cell = c.borrow();
@@ -95,6 +95,7 @@ pub async fn rotate_secret() {
     });
 }
 
+#[allow(dead_code)]
 async fn random_32() -> [u8; 32] {
     let r = raw_rand().await.expect("raw_rand");
     let mut out = [0u8; 32];
@@ -105,7 +106,7 @@ async fn random_32() -> [u8; 32] {
 fn deterministic_key() -> [u8; 32] {
     // Generate deterministic key based on canister ID and time
     // This is used during initialization when system calls are not allowed
-    let canister_id = ic_cdk::api::id();
+    let canister_id = ic_cdk::api::canister_self();
     let time = ic_cdk::api::time();
     
     let mut key = [0u8; 32];

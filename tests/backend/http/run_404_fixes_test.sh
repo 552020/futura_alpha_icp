@@ -50,3 +50,6 @@ echo "   3. Verify that token.subject is being used correctly"
 echo "   4. Check that variant-to-asset-id resolution is working"
 echo ""
 
+
+
+

@@ -8,7 +8,7 @@ use crate::types::{StorageEdgeBlobType, StorageEdgeDatabaseType};
 // Import access control types from capsule domain
 use crate::capsule::domain::SharingStatus;
 // Import AssetLink and AssetLinks from utils
-use crate::memories::utils::{AssetLink, AssetLinks};
+use crate::memories::utils::AssetLinks;
 
 // ============================================================================
 // ASSET METADATA TYPES (moved from unified_types.rs)

@@ -24,11 +24,13 @@ async function testCompleteHttpFlow() {
   let capsuleId = null;
   let memoryId = null;
   let token = null;
+  let actor = null;
 
   try {
     // Step 1: Create test actor
     logInfo("Step 1: Creating test actor...");
-    const { actor } = await createTestActor();
+    const actorResult = await createTestActor();
+    actor = actorResult.actor;
     logSuccess("✅ Test actor created");
 
     // Step 2: Create capsule
@@ -63,7 +65,7 @@ async function testCompleteHttpFlow() {
     // Step 5: Mint HTTP token
     logInfo("Step 5: Minting HTTP token...");
     try {
-      token = await actor.mintHttpToken(memoryId, ["thumbnail"], null, 180);
+      token = await actor.mint_http_token(memoryId, ["thumbnail"], [], 180);
       logSuccess(`✅ Token minted: ${token.substring(0, 50)}...`);
     } catch (error) {
       logError(`❌ Token minting failed: ${error.message}`);
@@ -127,7 +129,7 @@ async function testCompleteHttpFlow() {
     return { success: false, reason: "general_error", error: error.message };
   } finally {
     // Cleanup
-    if (memoryId) {
+    if (memoryId && actor) {
       logInfo("Cleaning up memory...");
       try {
         await actor.memories_delete(memoryId, false);

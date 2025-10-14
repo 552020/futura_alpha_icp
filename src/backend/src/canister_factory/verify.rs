@@ -1,7 +1,5 @@
 use crate::canister_factory::export::*;
 use crate::canister_factory::types::*;
-use crate::capsule::domain::SharingStatus;
-use crate::capsule::domain::{AccessCondition, AccessEntry, GrantSource, ResourceRole};
 // Removed unused imports: AssetMetadata, AssetMetadataBase, AssetType, MemoryAssetBlobInternal, NoteAssetMetadata
 use candid::Principal;
 

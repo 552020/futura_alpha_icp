@@ -5,7 +5,6 @@ use crate::http::{
     core_types::{Acl, AssetStore, TokenPayload, TokenScope},
     secret_store::StableSecretStore,
 };
-use candid::Principal;
 use ic_cdk::api::{msg_caller, time};
 
 /// Token service for HTTP authentication
