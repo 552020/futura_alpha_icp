@@ -21,9 +21,6 @@ fi
 # Check if required tools are installed
 MISSING_TOOLS=()
 
-# Check if required tools are installed (check both PATH and ~/.cargo/bin)
-MISSING_TOOLS=()
-
 # Helper function to check if tool exists in PATH or ~/.cargo/bin
 check_tool() {
     local tool_name=$1
@@ -37,8 +34,6 @@ check_tool() {
 if ! check_tool "generate-did"; then
     MISSING_TOOLS+=("generate-did")
 fi
-
-
 
 if ! check_tool "candid-extractor"; then
     MISSING_TOOLS+=("candid-extractor")
@@ -64,6 +59,121 @@ fi
 
 if eval "$DEPLOY_CMD" && dfx deploy internet_identity; then
     echo -e "${GREEN}✅ Deployed${NC}"
+    
+    # Get canister IDs
+    BACKEND_CANISTER_ID=$(dfx canister id backend 2>/dev/null)
+    II_CANISTER_ID=$(dfx canister id internet_identity 2>/dev/null)
+    
+    if [ -n "$BACKEND_CANISTER_ID" ]; then
+        echo -e "${BLUE}📋 Backend Canister ID: ${BACKEND_CANISTER_ID}${NC}"
+        
+        # Update or create .env files (both root and Next.js)
+        echo -e "${YELLOW}📝 Updating .env files...${NC}"
+        
+        # Root .env file
+        ENV_FILE=".env"
+        touch "$ENV_FILE"
+        
+        # Next.js .env.local file
+        NEXTJS_ENV_FILE="src/nextjs/.env.local"
+        mkdir -p "$(dirname "$NEXTJS_ENV_FILE")"
+        touch "$NEXTJS_ENV_FILE"
+        
+        # Helper function to update env file
+        update_env_var() {
+            local file=$1
+            local key=$2
+            local value=$3
+            
+            if grep -q "^${key}=" "$file" 2>/dev/null; then
+                # Update existing entry
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    sed -i '' "s|^${key}=.*|${key}=${value}|" "$file"
+                else
+                    sed -i "s|^${key}=.*|${key}=${value}|" "$file"
+                fi
+            else
+                # Add newline before first entry if file is not empty and doesn't end with newline
+                if [ -s "$file" ] && [ "$(tail -c 1 "$file" | wc -l)" -eq 0 ]; then
+                    echo "" >> "$file"
+                fi
+                # Add new entry
+                echo "${key}=${value}" >> "$file"
+            fi
+        }
+        
+        # Process each env file separately to avoid duplicates
+        echo -e "${CYAN}   Updating root .env...${NC}"
+        update_env_var "$ENV_FILE" "NEXT_PUBLIC_CANISTER_ID_BACKEND" "$BACKEND_CANISTER_ID"
+        update_env_var "$ENV_FILE" "CANISTER_ID_BACKEND" "$BACKEND_CANISTER_ID"
+        update_env_var "$ENV_FILE" "DFX_NETWORK" "local"
+        update_env_var "$ENV_FILE" "NEXT_PUBLIC_DFX_NETWORK" "local"
+        
+        echo -e "${CYAN}   Updating src/nextjs/.env.local...${NC}"
+        update_env_var "$NEXTJS_ENV_FILE" "NEXT_PUBLIC_CANISTER_ID_BACKEND" "$BACKEND_CANISTER_ID"
+        update_env_var "$NEXTJS_ENV_FILE" "CANISTER_ID_BACKEND" "$BACKEND_CANISTER_ID"
+        update_env_var "$NEXTJS_ENV_FILE" "DFX_NETWORK" "local"
+        update_env_var "$NEXTJS_ENV_FILE" "NEXT_PUBLIC_DFX_NETWORK" "local"
+        
+        echo -e "${GREEN}   ✓ Updated backend canister environment variables${NC}"
+    fi
+    
+    if [ -n "$II_CANISTER_ID" ]; then
+        echo -e "${BLUE}📋 Internet Identity Canister ID: ${II_CANISTER_ID}${NC}"
+        
+        # Update or add Internet Identity canister ID
+        echo -e "${CYAN}   Updating root .env...${NC}"
+        update_env_var "$ENV_FILE" "NEXT_PUBLIC_CANISTER_ID_INTERNET_IDENTITY" "$II_CANISTER_ID"
+        update_env_var "$ENV_FILE" "CANISTER_ID_INTERNET_IDENTITY" "$II_CANISTER_ID"
+        
+        echo -e "${CYAN}   Updating src/nextjs/.env.local...${NC}"
+        update_env_var "$NEXTJS_ENV_FILE" "NEXT_PUBLIC_CANISTER_ID_INTERNET_IDENTITY" "$II_CANISTER_ID"
+        update_env_var "$NEXTJS_ENV_FILE" "CANISTER_ID_INTERNET_IDENTITY" "$II_CANISTER_ID"
+        
+        echo -e "${GREEN}   ✓ Updated Internet Identity environment variables${NC}"
+    fi
+    
+    # Update /etc/hosts
+    if [ -n "$BACKEND_CANISTER_ID" ] || [ -n "$II_CANISTER_ID" ]; then
+        echo -e "${YELLOW}🌐 Updating /etc/hosts for local development...${NC}"
+        
+        HOSTS_ENTRIES=()
+        if [ -n "$BACKEND_CANISTER_ID" ]; then
+            HOSTS_ENTRIES+=("127.0.0.1 ${BACKEND_CANISTER_ID}.localhost")
+        fi
+        if [ -n "$II_CANISTER_ID" ]; then
+            HOSTS_ENTRIES+=("127.0.0.1 ${II_CANISTER_ID}.localhost")
+        fi
+        
+        NEEDS_UPDATE=false
+        for entry in "${HOSTS_ENTRIES[@]}"; do
+            canister_hostname=$(echo "$entry" | awk '{print $2}')
+            if ! grep -q "$canister_hostname" /etc/hosts 2>/dev/null; then
+                NEEDS_UPDATE=true
+                break
+            fi
+        done
+        
+        if [ "$NEEDS_UPDATE" = true ]; then
+            echo -e "${YELLOW}   Adding entries to /etc/hosts (requires sudo)...${NC}"
+            for entry in "${HOSTS_ENTRIES[@]}"; do
+                canister_hostname=$(echo "$entry" | awk '{print $2}')
+                if ! grep -q "$canister_hostname" /etc/hosts 2>/dev/null; then
+                    echo "$entry" | sudo tee -a /etc/hosts > /dev/null
+                    echo -e "${GREEN}   ✓ Added: $entry${NC}"
+                else
+                    echo -e "${BLUE}   ℹ Already exists: $entry${NC}"
+                fi
+            done
+            echo -e "${GREEN}✅ /etc/hosts updated${NC}"
+        else
+            echo -e "${BLUE}   ℹ All entries already exist in /etc/hosts${NC}"
+        fi
+        
+        # Show current canister-related entries
+        echo -e "${CYAN}📋 Current canister entries in /etc/hosts:${NC}"
+        grep "\.localhost" /etc/hosts 2>/dev/null | grep -E "(${BACKEND_CANISTER_ID}|${II_CANISTER_ID})" || echo -e "${YELLOW}   No matching entries found${NC}"
+    fi
     
     echo -e "${YELLOW}📝 Generating .did file...${NC}"
     if generate-did backend; then
@@ -96,6 +206,24 @@ if eval "$DEPLOY_CMD" && dfx deploy internet_identity; then
         echo -e "${RED}❌ Declaration generation failed${NC}"
         exit 1
     fi
+    
+    echo ""
+    echo -e "${GREEN}🎉 Deployment completed successfully!${NC}"
+    echo ""
+    echo -e "${CYAN}📋 Next steps:${NC}"
+    echo -e "${YELLOW}   1. Restart your Next.js dev server to pick up new environment variables:${NC}"
+    echo -e "${CYAN}      cd src/nextjs && npm run dev${NC}"
+    echo ""
+    echo -e "${YELLOW}   2. Access your application:${NC}"
+    echo -e "${CYAN}      Frontend: http://localhost:3000${NC}"
+    if [ -n "$BACKEND_CANISTER_ID" ]; then
+        echo -e "${CYAN}      Backend: http://${BACKEND_CANISTER_ID}.localhost:4943${NC}"
+        echo -e "${CYAN}      Backend (alt): http://127.0.0.1:4943/?canisterId=${BACKEND_CANISTER_ID}${NC}"
+    fi
+    if [ -n "$II_CANISTER_ID" ]; then
+        echo -e "${CYAN}      Internet Identity: http://${II_CANISTER_ID}.localhost:4943${NC}"
+    fi
+    echo ""
 else
     echo -e "${RED}❌ Failed${NC}"
     exit 1
