@@ -159,6 +159,35 @@ To test and develop locally:
    npm run dev
    ```
 
+## Testing
+
+We've got plenty of tests to keep the codebase together. Our testing setup covers everything from unit tests to integration tests, making sure everything works as expected.
+
+### Frontend Testing (Next.js)
+
+**Unit Tests**: `src/nextjs/src/tests-unit/`
+
+- Application logic, authentication flows, API endpoints, and utility functions
+- Run with: `cd src/nextjs && npm run test`
+
+**Integration Tests**: `src/nextjs/tests-integration/`
+
+- Database operations, storage systems, and infrastructure testing
+- Includes shell scripts for API endpoint testing
+
+### Backend Testing (ICP)
+
+**Rust Backend Tests**: `tests/backend/`
+
+- Comprehensive test suite for ICP canister functionality
+- Memory creation, deletion, and storage operations
+- Run with: `cargo test --package backend`
+
+**PocketIC Tests**: `tests/pocket-ic/`
+
+- Local ICP replica testing for development
+- Isolated canister testing without mainnet dependencies
+
 ## Deployed Canisters
 
 ### Backend Canister (ICP Mainnet)
