@@ -11,11 +11,23 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}🚀 Deploying backend and Internet Identity canisters locally...${NC}"
 
-# Check if dfx is running
-if ! dfx ping >/dev/null 2>&1; then
-    echo -e "${YELLOW}Starting dfx...${NC}"
-    dfx start --background
-    sleep 3
+# Step 1: Kill all dfx processes and wait for completion
+echo -e "${YELLOW}🛑 Stopping all dfx processes...${NC}"
+if dfx killall; then
+    echo -e "${GREEN}✅ All dfx processes stopped${NC}"
+    # Wait a moment for processes to fully terminate
+    sleep 2
+else
+    echo -e "${YELLOW}⚠️  No dfx processes were running or killall failed${NC}"
+fi
+
+# Step 2: Start dfx with clean state and wait for completion
+echo -e "${YELLOW}🔄 Starting dfx with clean state...${NC}"
+if dfx start --clean --background; then
+    echo -e "${GREEN}✅ dfx started and is ready${NC}"
+else
+    echo -e "${RED}❌ Failed to start dfx${NC}"
+    exit 1
 fi
 
 # Check if required tools are installed
