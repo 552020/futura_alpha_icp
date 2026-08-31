@@ -947,7 +947,8 @@ async fn debug_put_chunk_b64(
         .map_err(|_| types::Error::InvalidArgument("bad base64".into()))?;
     memory::with_capsule_store_mut(|store| {
         let session_id = upload::types::SessionId(session_id);
-        upload::service::put_chunk(store, &session_id, chunk_idx, bytes)})
+        upload::service::put_chunk(store, &session_id, chunk_idx, bytes)
+    })
 }
 
 /// Debug endpoint to finish upload with hex hash (dev only)
@@ -969,7 +970,8 @@ async fn debug_finish_hex(
 
     memory::with_capsule_store_mut(|store| {
         let session_id = upload::types::SessionId(session_id);
-        upload::service::commit(store, session_id, hash_array, total_len)})
+        upload::service::commit(store, session_id, hash_array, total_len)
+    })
 }
 
 // ============================================================================

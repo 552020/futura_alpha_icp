@@ -123,7 +123,10 @@ impl crate::memories::core::Store for StoreAdapter {
         })
     }
 
-    fn get_capsule_for_acl(&self, capsule_id: &CapsuleId) -> Option<crate::capsule_acl::CapsuleAccess> {
+    fn get_capsule_for_acl(
+        &self,
+        capsule_id: &CapsuleId,
+    ) -> Option<crate::capsule_acl::CapsuleAccess> {
         use crate::capsule_acl::CapsuleAccess;
         with_capsule_store(|store| {
             store.get(capsule_id).map(|capsule| {
@@ -137,7 +140,10 @@ impl crate::memories::core::Store for StoreAdapter {
     }
 
     /// Clear all memories in a capsule (atomic operation)
-    fn clear_all_memories_in_capsule(&mut self, capsule_id: &str) -> std::result::Result<(), Error> {
+    fn clear_all_memories_in_capsule(
+        &mut self,
+        capsule_id: &str,
+    ) -> std::result::Result<(), Error> {
         with_capsule_store_mut(|store| {
             match store.update_with(&capsule_id.to_string(), |capsule_data| {
                 // Clear all memories in the capsule
@@ -145,30 +151,34 @@ impl crate::memories::core::Store for StoreAdapter {
                 Ok(())
             }) {
                 Ok(_) => Ok(()),
-                Err(e) => Err(Error::Internal(format!("Failed to clear memories: {:?}", e))),
+                Err(e) => Err(Error::Internal(format!(
+                    "Failed to clear memories: {:?}",
+                    e
+                ))),
             }
         })
     }
 
     /// Clear all internal blobs in a capsule (atomic operation)
-    fn clear_all_internal_blobs_in_capsule(&mut self, capsule_id: &str) -> std::result::Result<(), Error> {
+    fn clear_all_internal_blobs_in_capsule(
+        &mut self,
+        capsule_id: &str,
+    ) -> std::result::Result<(), Error> {
         // Get all memories first to access their assets
         let memories = self.get_all_memories(&capsule_id.to_string());
-        
+
         // Clean up assets for each memory
         for memory in memories {
             // Use existing cleanup function for each memory's assets
             crate::memories::core::assets::cleanup_memory_assets(&memory)?;
         }
-        
+
         Ok(())
     }
 
     /// Check if capsule exists
     fn capsule_exists(&self, capsule_id: &str) -> bool {
-        with_capsule_store(|store| {
-            store.get(&capsule_id.to_string()).is_some()
-        })
+        with_capsule_store(|store| store.get(&capsule_id.to_string()).is_some())
     }
 }
 
@@ -177,31 +187,28 @@ impl crate::memories::core::Store for StoreAdapter {
 // ============================================================================
 
 /// Check presence for multiple memories on ICP
-/// 
+///
 /// Returns presence status for the given memory IDs by checking if they exist
 /// in the caller's accessible capsules.
 pub fn ping(
     memory_ids: Vec<String>,
 ) -> std::result::Result<Vec<crate::types::MemoryPresenceResult>, Error> {
     let caller = PersonRef::from_caller();
-    
+
     let results: Vec<crate::types::MemoryPresenceResult> = memory_ids
         .iter()
         .map(|memory_id| {
             // Check if memory exists in any of the caller's accessible capsules
             let exists = with_capsule_store(|store| {
                 let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                all_capsules
-                    .items
-                    .iter()
-                    .any(|capsule| {
-                        // Check if caller has read access to this capsule
-                        capsule.has_read_access(&caller) && 
+                all_capsules.items.iter().any(|capsule| {
+                    // Check if caller has read access to this capsule
+                    capsule.has_read_access(&caller) &&
                         // Check if memory exists in this capsule
                         capsule.memories.contains_key(memory_id)
-                    })
+                })
             });
-            
+
             crate::types::MemoryPresenceResult {
                 memory_id: memory_id.clone(),
                 metadata_present: exists,
@@ -219,7 +226,7 @@ pub fn ping(
 /// List memories in a capsule
 pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
     use crate::capsule_acl::{CapsuleAccess, CapsuleAcl};
-    
+
     let caller = PersonRef::from_caller();
     let memories = with_capsule_store(|store| {
         store
@@ -231,20 +238,20 @@ pub fn list(capsule_id: String) -> crate::types::MemoryListResponse {
                     capsule.owners.clone(),
                     capsule.controllers.clone(),
                 );
-                
+
                 if capsule_access.can_read(&caller) {
                     // Log successful ACL check
                     ic_cdk::println!(
                         "[ACL] op=list caller={} cap={} read={} write={} delete={} - AUTHORIZED",
                         caller, capsule_id, capsule_access.can_read(&caller), capsule_access.can_write(&caller), capsule_access.can_delete(&caller)
                     );
-                    
+
                     // Debug: Log memory count
                     ic_cdk::println!(
                         "[DEBUG] memories_list: capsule={} has {} memories",
                         capsule_id, capsule.memories.len()
                     );
-                    
+
                     Some(
                         capsule
                             .memories
@@ -365,7 +372,8 @@ impl Memory {
         let _size = inline_size + blob_internal_size + blob_external_size;
 
         let title = self.metadata.title.clone();
-        let name = title.as_ref()
+        let name = title
+            .as_ref()
             .map(|t| crate::utils::title_to_name(t))
             .unwrap_or_else(|| "untitled".to_string());
 
@@ -373,15 +381,15 @@ impl Memory {
             // Existing fields
             id: self.id.clone(),
             capsule_id: self.capsule_id.clone(),
-            name,                    // ✅ Now properly generated from title
+            name, // ✅ Now properly generated from title
             memory_type: self.metadata.memory_type.clone(),
             size: self.metadata.total_size, // Use pre-computed value
             created_at: self.metadata.created_at,
             updated_at: self.metadata.updated_at,
             // access: self.access.clone(), // Legacy - commented out for greenfield
-            
+
             // NEW: Dashboard-specific fields (pre-computed)
-            title,                   // ✅ User-facing title
+            title, // ✅ User-facing title
             description: self.metadata.description.clone(),
             parent_folder_id: self.metadata.parent_folder_id.clone(),
             tags: self.metadata.tags.clone(),
@@ -391,12 +399,12 @@ impl Memory {
             asset_count: self.metadata.asset_count,
             assets: crate::memories::utils::AssetLinks::default(), // Will be populated by generate_asset_links_for_memory_header
             placeholder_data: None, // TODO: Extract from inline assets if available
-            
+
             // NEW: Storage location information
             database_storage_edges: self.metadata.database_storage_edges.clone(),
         }
     }
-    
+
     /// Compute and update dashboard fields in metadata
     pub fn update_dashboard_fields(&mut self) {
         // ❌ REMOVED: self.metadata.is_public = self.compute_is_public(); // Redundant with sharing_status
@@ -405,7 +413,7 @@ impl Memory {
         self.metadata.total_size = self.calculate_total_size();
         self.metadata.asset_count = self.count_assets();
     }
-    
+
     /// Check if memory is public based on access rules
     #[allow(dead_code)]
     fn compute_is_public(&self) -> bool {
@@ -424,7 +432,7 @@ impl Memory {
         // }
         false // Temporary - assume private for greenfield
     }
-    
+
     /// Count number of shared recipients
     /// TODO: Replace with new access control system
     fn count_shared_recipients(&self) -> u32 {
@@ -436,7 +444,7 @@ impl Memory {
         // }
         self.access_entries.len() as u32 // Use new access control system
     }
-    
+
     /// Compute sharing status string
     /// TODO: Replace with new access control system
     fn compute_sharing_status(&self) -> crate::capsule::domain::SharingStatus {
@@ -451,21 +459,21 @@ impl Memory {
             crate::capsule::domain::SharingStatus::Private
         }
     }
-    
+
     /// Calculate total size of all assets
     fn calculate_total_size(&self) -> u64 {
         let mut total = 0u64;
-        
+
         // Add inline assets
         for asset in &self.inline_assets {
             total += asset.bytes.len() as u64;
         }
-        
+
         // Add blob internal assets
         for asset in &self.blob_internal_assets {
             total += asset.blob_ref.len;
         }
-        
+
         // Add blob external assets
         for asset in &self.blob_external_assets {
             total += match &asset.metadata {
@@ -476,16 +484,14 @@ impl Memory {
                 crate::types::AssetMetadata::Note(note) => note.base.bytes,
             };
         }
-        
+
         total
     }
-    
+
     /// Count total number of assets
     fn count_assets(&self) -> u32 {
-        (self.inline_assets.len() + 
-         self.blob_internal_assets.len() + 
-         self.blob_external_assets.len()) as u32
+        (self.inline_assets.len()
+            + self.blob_internal_assets.len()
+            + self.blob_external_assets.len()) as u32
     }
-    
-    
 }

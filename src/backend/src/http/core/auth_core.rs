@@ -2,7 +2,9 @@ use base64::{engine::general_purpose, Engine as _};
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
-use crate::http::core_types::{TokenPayload, EncodedToken, TokenScope, VerifyErr, SecretStore, Clock};
+use crate::http::core_types::{
+    Clock, EncodedToken, SecretStore, TokenPayload, TokenScope, VerifyErr,
+};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -17,22 +19,36 @@ pub fn sign_token_core(secret: &dyn SecretStore, payload: &TokenPayload) -> Enco
     let sig = mac.finalize().into_bytes();
     let mut s = [0u8; 32];
     s.copy_from_slice(&sig[..32]);
-    EncodedToken { p: payload.clone(), s }
+    EncodedToken {
+        p: payload.clone(),
+        s,
+    }
 }
 
-pub fn verify_token_core(clock: &dyn Clock, secret: &dyn SecretStore, t: &EncodedToken, want: &TokenScope)
-    -> Result<(), VerifyErr>
-{
-    if clock.now_ns() > t.p.exp_ns { return Err(VerifyErr::Expired); }
-    if t.p.scope.memory_id != want.memory_id { return Err(VerifyErr::WrongMemory); }
+pub fn verify_token_core(
+    clock: &dyn Clock,
+    secret: &dyn SecretStore,
+    t: &EncodedToken,
+    want: &TokenScope,
+) -> Result<(), VerifyErr> {
+    if clock.now_ns() > t.p.exp_ns {
+        return Err(VerifyErr::Expired);
+    }
+    if t.p.scope.memory_id != want.memory_id {
+        return Err(VerifyErr::WrongMemory);
+    }
     for v in &want.variants {
-        if !t.p.scope.variants.iter().any(|vv| vv == v) { return Err(VerifyErr::VariantNotAllowed); }
+        if !t.p.scope.variants.iter().any(|vv| vv == v) {
+            return Err(VerifyErr::VariantNotAllowed);
+        }
     }
     if let Some(req_ids) = &want.asset_ids {
         // If token has specific asset IDs, check them
         if let Some(allow) = &t.p.scope.asset_ids {
             for id in req_ids {
-                if !allow.iter().any(|a| a == id) { return Err(VerifyErr::AssetNotAllowed); }
+                if !allow.iter().any(|a| a == id) {
+                    return Err(VerifyErr::AssetNotAllowed);
+                }
             }
         }
         // If token has no specific asset IDs (null), allow access to any asset
@@ -56,16 +72,30 @@ pub fn decode_token_url(s: &str) -> Option<EncodedToken> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::core_types::{TokenScope, TokenPayload, SecretStore, Clock};
+    use crate::http::core_types::{Clock, SecretStore, TokenPayload, TokenScope};
     use candid::Principal;
 
-    struct MockClock { now: u64 }
-    impl Clock for MockClock { fn now_ns(&self) -> u64 { self.now } }
+    struct MockClock {
+        now: u64,
+    }
+    impl Clock for MockClock {
+        fn now_ns(&self) -> u64 {
+            self.now
+        }
+    }
 
-    struct MockSecret { key: [u8; 32] }
-    impl SecretStore for MockSecret { fn get_key(&self) -> [u8; 32] { self.key } }
+    struct MockSecret {
+        key: [u8; 32],
+    }
+    impl SecretStore for MockSecret {
+        fn get_key(&self) -> [u8; 32] {
+            self.key
+        }
+    }
 
-    fn key(bytes: u8) -> [u8;32] { [bytes; 32] }
+    fn key(bytes: u8) -> [u8; 32] {
+        [bytes; 32]
+    }
 
     #[test]
     fn verify_roundtrip_ok() {
@@ -82,7 +112,7 @@ mod tests {
                 variants: vec!["thumbnail".into()],
                 asset_ids: Some(vec!["asset-1".into()]),
             },
-            sub: Some(Principal::anonymous())
+            sub: Some(Principal::anonymous()),
         };
         let tok = sign_token_core(&secret, &payload);
 
@@ -105,13 +135,24 @@ mod tests {
             kid: 1,
             exp_ns: clock.now_ns() - 1, // already expired
             nonce: [0u8; 12],
-            scope: TokenScope { memory_id: "m".into(), variants: vec!["preview".into()], asset_ids: None },
-            sub: None
+            scope: TokenScope {
+                memory_id: "m".into(),
+                variants: vec!["preview".into()],
+                asset_ids: None,
+            },
+            sub: None,
         };
         let tok = sign_token_core(&secret, &payload);
-        let want = TokenScope { memory_id: "m".into(), variants: vec!["preview".into()], asset_ids: None };
+        let want = TokenScope {
+            memory_id: "m".into(),
+            variants: vec!["preview".into()],
+            asset_ids: None,
+        };
 
-        assert_eq!(verify_token_core(&clock, &secret, &tok, &want), Err(VerifyErr::Expired));
+        assert_eq!(
+            verify_token_core(&clock, &secret, &tok, &want),
+            Err(VerifyErr::Expired)
+        );
     }
 
     #[test]
@@ -120,14 +161,28 @@ mod tests {
         let secret = MockSecret { key: key(9) };
 
         let payload = TokenPayload {
-            ver: 1, kid: 1, exp_ns: 10, nonce: [0;12],
-            scope: TokenScope { memory_id: "A".into(), variants: vec!["thumbnail".into()], asset_ids: None },
-            sub: None
+            ver: 1,
+            kid: 1,
+            exp_ns: 10,
+            nonce: [0; 12],
+            scope: TokenScope {
+                memory_id: "A".into(),
+                variants: vec!["thumbnail".into()],
+                asset_ids: None,
+            },
+            sub: None,
         };
         let tok = sign_token_core(&secret, &payload);
-        let want = TokenScope { memory_id: "B".into(), variants: vec!["thumbnail".into()], asset_ids: None };
+        let want = TokenScope {
+            memory_id: "B".into(),
+            variants: vec!["thumbnail".into()],
+            asset_ids: None,
+        };
 
-        assert_eq!(verify_token_core(&clock, &secret, &tok, &want), Err(VerifyErr::WrongMemory));
+        assert_eq!(
+            verify_token_core(&clock, &secret, &tok, &want),
+            Err(VerifyErr::WrongMemory)
+        );
     }
 
     #[test]
@@ -136,14 +191,28 @@ mod tests {
         let secret = MockSecret { key: key(1) };
 
         let payload = TokenPayload {
-            ver: 1, kid: 1, exp_ns: 10, nonce: [0;12],
-            scope: TokenScope { memory_id: "M".into(), variants: vec!["preview".into()], asset_ids: None },
-            sub: None
+            ver: 1,
+            kid: 1,
+            exp_ns: 10,
+            nonce: [0; 12],
+            scope: TokenScope {
+                memory_id: "M".into(),
+                variants: vec!["preview".into()],
+                asset_ids: None,
+            },
+            sub: None,
         };
         let tok = sign_token_core(&secret, &payload);
-        let want = TokenScope { memory_id: "M".into(), variants: vec!["thumbnail".into()], asset_ids: None };
+        let want = TokenScope {
+            memory_id: "M".into(),
+            variants: vec!["thumbnail".into()],
+            asset_ids: None,
+        };
 
-        assert_eq!(verify_token_core(&clock, &secret, &tok, &want), Err(VerifyErr::VariantNotAllowed));
+        assert_eq!(
+            verify_token_core(&clock, &secret, &tok, &want),
+            Err(VerifyErr::VariantNotAllowed)
+        );
     }
 
     #[test]
@@ -152,14 +221,28 @@ mod tests {
         let secret = MockSecret { key: key(4) };
 
         let payload = TokenPayload {
-            ver: 1, kid: 1, exp_ns: 10, nonce: [0;12],
-            scope: TokenScope { memory_id: "M".into(), variants: vec!["thumbnail".into()], asset_ids: Some(vec!["id-1".into()]) },
-            sub: None
+            ver: 1,
+            kid: 1,
+            exp_ns: 10,
+            nonce: [0; 12],
+            scope: TokenScope {
+                memory_id: "M".into(),
+                variants: vec!["thumbnail".into()],
+                asset_ids: Some(vec!["id-1".into()]),
+            },
+            sub: None,
         };
         let tok = sign_token_core(&secret, &payload);
-        let want = TokenScope { memory_id: "M".into(), variants: vec!["thumbnail".into()], asset_ids: Some(vec!["id-2".into()]) };
+        let want = TokenScope {
+            memory_id: "M".into(),
+            variants: vec!["thumbnail".into()],
+            asset_ids: Some(vec!["id-2".into()]),
+        };
 
-        assert_eq!(verify_token_core(&clock, &secret, &tok, &want), Err(VerifyErr::AssetNotAllowed));
+        assert_eq!(
+            verify_token_core(&clock, &secret, &tok, &want),
+            Err(VerifyErr::AssetNotAllowed)
+        );
     }
 
     #[test]
@@ -168,15 +251,29 @@ mod tests {
         let secret = MockSecret { key: key(8) };
 
         let payload = TokenPayload {
-            ver: 1, kid: 1, exp_ns: 10, nonce: [9;12],
-            scope: TokenScope { memory_id: "M".into(), variants: vec!["preview".into()], asset_ids: None },
-            sub: None
+            ver: 1,
+            kid: 1,
+            exp_ns: 10,
+            nonce: [9; 12],
+            scope: TokenScope {
+                memory_id: "M".into(),
+                variants: vec!["preview".into()],
+                asset_ids: None,
+            },
+            sub: None,
         };
         let mut tok = sign_token_core(&secret, &payload);
         // flip one bit in signature
         tok.s[0] ^= 0x01;
 
-        let want = TokenScope { memory_id: "M".into(), variants: vec!["preview".into()], asset_ids: None };
-        assert_eq!(verify_token_core(&clock, &secret, &tok, &want), Err(VerifyErr::BadSig));
+        let want = TokenScope {
+            memory_id: "M".into(),
+            variants: vec!["preview".into()],
+            asset_ids: None,
+        };
+        assert_eq!(
+            verify_token_core(&clock, &secret, &tok, &want),
+            Err(VerifyErr::BadSig)
+        );
     }
 }

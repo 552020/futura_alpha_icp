@@ -37,9 +37,9 @@ impl TokenService {
         let max_ttl = if is_memory_listing_context() {
             1800 // 30 minutes for memory listings
         } else {
-            180  // 3 minutes for direct requests
+            180 // 3 minutes for direct requests
         };
-        
+
         let ttl = if ttl_secs == 0 {
             180 // Default to 3 minutes
         } else {

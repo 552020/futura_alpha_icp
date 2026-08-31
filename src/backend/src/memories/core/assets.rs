@@ -45,15 +45,14 @@ pub fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<()
 
     // Add loud, temporary logging to debug exact blob ID strings
     ic_cdk::println!(
-        "[cleanup_internal_blob_asset] raw='{}' (len={}) bytes={:?}", 
-        blob_id_str, 
-        blob_id_str.len(), 
+        "[cleanup_internal_blob_asset] raw='{}' (len={}) bytes={:?}",
+        blob_id_str,
+        blob_id_str.len(),
         blob_id_str.as_bytes()
     );
 
     // Use the bulletproof parser
-    let blob_id_num = parse_blob_id(blob_id_str)
-        .map_err(Error::InvalidArgument)?;
+    let blob_id_num = parse_blob_id(blob_id_str).map_err(Error::InvalidArgument)?;
 
     let blob_id = BlobId(blob_id_num);
 

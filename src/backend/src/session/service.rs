@@ -81,8 +81,7 @@ impl SessionService {
         let session = self.sessions.get_mut(&sid.0).ok_or(Error::NotFound)?;
 
         // Verify all chunks received
-        let expected_chunks =
-            session.bytes_expected.div_ceil(session.chunk_size as u64);
+        let expected_chunks = session.bytes_expected.div_ceil(session.chunk_size as u64);
         if session.received_idxs.len() != expected_chunks as usize {
             return Err(Error::InvalidArgument(
                 "Not all chunks received".to_string(),

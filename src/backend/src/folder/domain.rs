@@ -57,14 +57,15 @@ impl Folder {
     /// Convert Folder to FolderHeader for listing operations
     pub fn to_header(&self) -> FolderHeader {
         let title = self.metadata.title.clone();
-        let name = title.as_ref()
+        let name = title
+            .as_ref()
             .map(|t| crate::utils::title_to_name(t))
             .unwrap_or_else(|| "untitled".to_string());
 
         FolderHeader {
             id: self.id.clone(),
             title,
-            name,                    // ✅ Now uses shared function
+            name, // ✅ Now uses shared function
             memory_count: self.metadata.total_memories as u64,
             created_at: self.created_at,
             updated_at: self.updated_at,

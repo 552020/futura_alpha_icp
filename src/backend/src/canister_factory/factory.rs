@@ -86,9 +86,8 @@ pub async fn create_personal_canister_impl(
             Ok(canister_id)
         }
         Err(error) => {
-            let error_msg = format!(
-                "Failed to create personal canister for user {user}: {error:?}"
-            );
+            let error_msg =
+                format!("Failed to create personal canister for user {user}: {error:?}");
 
             ic_cdk::println!("{}", error_msg);
 
@@ -135,9 +134,8 @@ pub async fn install_personal_canister_wasm(
             Ok(())
         }
         Err(error) => {
-            let error_msg = format!(
-                "Failed to install WASM on personal canister {canister_id}: {error:?}"
-            );
+            let error_msg =
+                format!("Failed to install WASM on personal canister {canister_id}: {error:?}");
 
             ic_cdk::println!("{}", error_msg);
 
@@ -195,9 +193,7 @@ pub async fn handoff_controllers(canister_id: Principal, user: Principal) -> Res
             Ok(())
         }
         Err(error) => {
-            let error_msg = format!(
-                "Failed to update canister settings for handoff: {error:?}"
-            );
+            let error_msg = format!("Failed to update canister settings for handoff: {error:?}");
 
             ic_cdk::println!("Controller handoff failed: {}", error_msg);
 
@@ -315,8 +311,6 @@ pub fn prepare_canister_config(
 /// This function logs warnings for any unsupported options but doesn't fail
 /// This allows for future expansion without breaking existing clients
 pub fn check_unsupported_config_options(_config: &CreatePersonalCanisterConfig) -> Vec<String> {
-    
-
     // For MVP, all current options are supported
     // Future unsupported options would be detected here
 
@@ -541,12 +535,7 @@ mod tests {
         let _init_arg = vec![1, 2, 3, 4]; // Test init args
 
         // Create registry entry first
-        let _ = create_registry_entry(
-            canister_id,
-            user,
-            CreationStatus::Creating,
-            100_000_000_000,
-        );
+        let _ = create_registry_entry(canister_id, user, CreationStatus::Creating, 100_000_000_000);
 
         // Mock successful WASM installation
         mock_management::set_install_code_failure(false);
@@ -569,12 +558,7 @@ mod tests {
         let user = create_test_user();
 
         // Create registry entry first
-        let _ = create_registry_entry(
-            canister_id,
-            user,
-            CreationStatus::Creating,
-            100_000_000_000,
-        );
+        let _ = create_registry_entry(canister_id, user, CreationStatus::Creating, 100_000_000_000);
 
         // Mock WASM installation failure
         mock_management::set_install_code_failure(true);
@@ -662,12 +646,7 @@ mod tests {
         let user = create_test_user();
 
         // Create registry entry in wrong state (Creating instead of Verifying)
-        let _ = create_registry_entry(
-            canister_id,
-            user,
-            CreationStatus::Creating,
-            100_000_000_000,
-        );
+        let _ = create_registry_entry(canister_id, user, CreationStatus::Creating, 100_000_000_000);
 
         // Test precondition verification with wrong status
         let precondition_result = verify_handoff_preconditions(canister_id, user).await;
@@ -949,12 +928,7 @@ mod tests {
         let user = create_test_user();
 
         // Create registry entry
-        let _ = create_registry_entry(
-            canister_id,
-            user,
-            CreationStatus::Creating,
-            100_000_000_000,
-        );
+        let _ = create_registry_entry(canister_id, user, CreationStatus::Creating, 100_000_000_000);
 
         // Simulate installation failure
         let result = update_registry_status(canister_id, CreationStatus::Failed);

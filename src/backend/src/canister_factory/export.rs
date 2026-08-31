@@ -269,12 +269,7 @@ fn validate_memory_data(memory: &types::Memory) -> Result<(), String> {
         return Err("Memory ID is empty".to_string());
     }
 
-    if memory
-        .metadata
-        .title
-        .as_ref()
-        .is_none_or(|t| t.is_empty())
-    {
+    if memory.metadata.title.as_ref().is_none_or(|t| t.is_empty()) {
         return Err(format!("Memory '{}' has empty title", memory.id));
     }
 

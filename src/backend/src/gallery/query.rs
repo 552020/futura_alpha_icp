@@ -1,7 +1,7 @@
 use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
+use crate::gallery::domain::GalleryHeader;
 use crate::memory::with_capsule_store;
 use crate::types::PersonRef;
-use crate::gallery::domain::GalleryHeader;
 
 /// Get all galleries for the caller (replaces get_user_galleries)
 pub fn galleries_list() -> Vec<GalleryHeader> {
