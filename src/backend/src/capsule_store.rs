@@ -92,7 +92,6 @@ pub trait CapsuleStore {
 }
 
 // Include the backend implementations
-// pub mod hash;  // LEGACY - commented out, we only use StableStore now
 pub mod stable;
 pub mod store;
 pub mod types;

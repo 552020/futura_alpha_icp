@@ -9,7 +9,7 @@ use std::cell::RefCell;
 
 // Thread-local storage for SessionCompat (persists across calls)
 thread_local! {
-    static SESSION_COMPAT: RefCell<Option<SessionCompat>> = RefCell::new(None);
+    static SESSION_COMPAT: RefCell<Option<SessionCompat>> = const { RefCell::new(None) };
 }
 
 fn with_session_compat<R>(f: impl FnOnce(&SessionCompat) -> R) -> R {
@@ -112,7 +112,7 @@ pub fn begin_upload(
         blob_id: None, // No blob ID yet (pending)
     };
 
-    with_session_compat(|sessions| sessions.create(session_id.clone(), upload_meta))?;
+    with_session_compat(|sessions| sessions.create(session_id, upload_meta))?;
     Ok(session_id)
 }
 
@@ -258,7 +258,7 @@ pub fn commit(
         completed_at: ic_cdk::api::time(),
     };
     session.blob_id = Some(blob_id.0);
-    with_session_compat(|sessions| sessions.update(session_id.clone(), session.clone()))?;
+    with_session_compat(|sessions| sessions.update(session_id, session.clone()))?;
 
     // 4. Cleanup session and chunks
     with_session_compat(|sessions| sessions.cleanup(&session_id));

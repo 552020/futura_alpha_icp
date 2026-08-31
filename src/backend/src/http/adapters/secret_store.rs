@@ -25,7 +25,7 @@ impl Storable for Secrets {
             is_fixed_size: false,
         };
 
-    fn to_bytes(&self) -> std::borrow::Cow<[u8]> {
+    fn to_bytes(&self) -> std::borrow::Cow<'_, [u8]> {
         std::borrow::Cow::Owned(Encode!(self).unwrap())
     }
     fn from_bytes(bytes: std::borrow::Cow<[u8]>) -> Self {
@@ -34,7 +34,7 @@ impl Storable for Secrets {
 }
 
 thread_local! {
-    static SECRET_CELL: RefCell<OnceCell<StableCell<Secrets, Mem>>> = RefCell::new(OnceCell::new());
+    static SECRET_CELL: RefCell<OnceCell<StableCell<Secrets, Mem>>> = const { RefCell::new(OnceCell::new()) };
 }
 
 pub async fn init() {
@@ -85,7 +85,7 @@ pub async fn rotate_secret() {
     SECRET_CELL.with(|c| {
         let cell = c.borrow();
         let cell = cell.get().expect("secret cell not initialized");
-        let mut s = cell.get().clone();
+        let mut s = *cell.get();
         s.previous = s.current;
         // We can't await here; do an outer async helper that calls set()
         // So: provide a separate async API to do set() after you fetch randomness

@@ -98,11 +98,7 @@ pub fn time_until_expiry(created_at_ns: u64, ttl_ns: u64) -> u64 {
     let expires_at = created_at_ns + ttl_ns;
     let now = now_icp_ns();
 
-    if now >= expires_at {
-        0
-    } else {
-        expires_at - now
-    }
+    expires_at.saturating_sub(now)
 }
 
 #[cfg(test)]

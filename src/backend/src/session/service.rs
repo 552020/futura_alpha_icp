@@ -82,7 +82,7 @@ impl SessionService {
 
         // Verify all chunks received
         let expected_chunks =
-            (session.bytes_expected + session.chunk_size as u64 - 1) / session.chunk_size as u64;
+            session.bytes_expected.div_ceil(session.chunk_size as u64);
         if session.received_idxs.len() != expected_chunks as usize {
             return Err(Error::InvalidArgument(
                 "Not all chunks received".to_string(),

@@ -85,7 +85,7 @@ pub fn generate_deterministic_uuid_from_idem(idem: &str) -> String {
         (hash >> 16) as u16,
         hash as u16,
         (hash >> 48) as u16,
-        hash as u64 & 0x0000_0000_0000_FFFF
+        hash & 0x0000_0000_0000_FFFF
     )
 }
 

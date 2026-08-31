@@ -93,7 +93,7 @@ use std::cell::Cell;
 
 // thread-local per instance; persist a real counter in stable memory if needed
 thread_local! {
-    static CTR: Cell<u64> = Cell::new(0);
+    static CTR: Cell<u64> = const { Cell::new(0) };
 }
 
 pub fn uuid_v7_weak() -> String {

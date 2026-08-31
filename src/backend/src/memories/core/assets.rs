@@ -53,7 +53,7 @@ pub fn cleanup_internal_blob_asset(blob_ref: &BlobRef) -> std::result::Result<()
 
     // Use the bulletproof parser
     let blob_id_num = parse_blob_id(blob_id_str)
-        .map_err(|e| Error::InvalidArgument(e))?;
+        .map_err(Error::InvalidArgument)?;
 
     let blob_id = BlobId(blob_id_num);
 

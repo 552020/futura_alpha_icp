@@ -273,7 +273,7 @@ fn validate_memory_data(memory: &types::Memory) -> Result<(), String> {
         .metadata
         .title
         .as_ref()
-        .map_or(true, |t| t.is_empty())
+        .is_none_or(|t| t.is_empty())
     {
         return Err(format!("Memory '{}' has empty title", memory.id));
     }

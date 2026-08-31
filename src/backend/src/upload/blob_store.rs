@@ -22,7 +22,7 @@ pub fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(pmid.as_bytes());
     h.update(b"#"); // Separator
-    h.update(&session_id.to_le_bytes());
+    h.update(session_id.to_le_bytes());
     h.finalize().into()
 }
 
@@ -589,7 +589,7 @@ impl StableBlobSink {
 
     fn write_at_impl(&mut self, offset: u64, data: &[u8]) -> Result<(), Error> {
         // Validate alignment (all chunks must be aligned to chunk_size boundary)
-        if offset % (self.chunk_size as u64) != 0 {
+        if !offset.is_multiple_of(self.chunk_size as u64) {
             return Err(Error::InvalidArgument("unaligned offset".into()));
         }
 

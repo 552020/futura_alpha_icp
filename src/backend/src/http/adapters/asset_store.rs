@@ -197,13 +197,10 @@ impl AssetStore for FuturaAssetStore {
             Ok(crate::types::MemoryAssetData::InternalBlob { blob_id, .. }) => {
                 // Read chunk from internal blob store
                 let _blob_store = crate::upload::blob_store::BlobStore::new();
-                match crate::upload::blob_store::blob_read_chunk(
+                crate::upload::blob_store::blob_read_chunk(
                     blob_id.clone(),
                     (offset / 1024) as u32,
-                ) {
-                    Ok(data) => Some(data),
-                    Err(_) => None,
-                }
+                ).ok()
             }
             Ok(crate::types::MemoryAssetData::ExternalUrl { url, .. }) => {
                 // For external URLs, we'd need to implement HTTP range requests

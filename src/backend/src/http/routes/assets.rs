@@ -61,7 +61,7 @@ fn qs_get(url: &str, key: &str) -> Option<String> {
 fn extract_token_from_request(req: &ParsedRequest, url: &str) -> Option<String> {
     // 1. Check Authorization header first (highest priority)
     if let Some(auth_header) = req.get_header("authorization") {
-        if let Some(token) = extract_bearer_token(&auth_header) {
+        if let Some(token) = extract_bearer_token(auth_header) {
             return Some(token);
         }
     }

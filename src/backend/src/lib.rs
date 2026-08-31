@@ -1,6 +1,5 @@
 // External imports
 use candid::Principal;
-use hex;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -16,7 +15,7 @@ use crate::upload::types::{Result15, UploadFinishResult};
 
 // Rolling hash storage for upload verification
 thread_local! {
-    static UPLOAD_HASH: RefCell<BTreeMap<u64, Sha256>> = RefCell::new(BTreeMap::new());
+    static UPLOAD_HASH: RefCell<BTreeMap<u64, Sha256>> = const { RefCell::new(BTreeMap::new()) };
 }
 
 // Import modules
@@ -948,8 +947,7 @@ async fn debug_put_chunk_b64(
         .map_err(|_| types::Error::InvalidArgument("bad base64".into()))?;
     memory::with_capsule_store_mut(|store| {
         let session_id = upload::types::SessionId(session_id);
-        upload::service::put_chunk(store, &session_id, chunk_idx, bytes).map_err(types::Error::from)
-    })
+        upload::service::put_chunk(store, &session_id, chunk_idx, bytes)})
 }
 
 /// Debug endpoint to finish upload with hex hash (dev only)
@@ -971,9 +969,7 @@ async fn debug_finish_hex(
 
     memory::with_capsule_store_mut(|store| {
         let session_id = upload::types::SessionId(session_id);
-        upload::service::commit(store, session_id, hash_array, total_len)
-            .map_err(types::Error::from)
-    })
+        upload::service::commit(store, session_id, hash_array, total_len)})
 }
 
 // ============================================================================
@@ -1213,7 +1209,7 @@ async fn post_upgrade() {
 
     // Set skip certification for private assets
     ic_cdk::api::certified_data_set(
-        &ic_http_certification::utils::skip_certification_certified_data(),
+        ic_http_certification::utils::skip_certification_certified_data(),
     );
 }
 
@@ -1459,7 +1455,7 @@ fn memories_list_assets(
     let env = CanisterEnv;
     let mut store = StoreAdapter;
 
-    memories_list_assets_core(&env, &mut store, memory_id)
+    memories_list_assets_core(&env, &store, memory_id)
 }
 
 // ============================================================================
@@ -1473,7 +1469,7 @@ async fn init() {
 
     // Set skip certification for private assets
     ic_cdk::api::certified_data_set(
-        &ic_http_certification::utils::skip_certification_certified_data(),
+        ic_http_certification::utils::skip_certification_certified_data(),
     );
 }
 

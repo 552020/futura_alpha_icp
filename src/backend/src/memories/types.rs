@@ -317,7 +317,7 @@ pub struct SimpleMemoryMetadata {
 // ============================================================================
 
 impl Storable for Memory {
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let bytes = candid::encode_one(self).expect("Failed to encode Memory");
         Cow::Owned(bytes)
     }
@@ -334,7 +334,7 @@ impl Storable for Memory {
 }
 
 impl Storable for MemoryMetadata {
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let bytes = candid::encode_one(self).expect("Failed to encode MemoryMetadata");
         Cow::Owned(bytes)
     }

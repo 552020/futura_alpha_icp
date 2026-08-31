@@ -117,7 +117,7 @@ impl Storable for SessionId {
         is_fixed_size: true,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(self.0.to_le_bytes().to_vec())
     }
 
@@ -160,7 +160,7 @@ impl Storable for BlobId {
         is_fixed_size: true,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(self.0.to_le_bytes().to_vec())
     }
 
@@ -196,7 +196,7 @@ impl Storable for SessionMeta {
         is_fixed_size: false,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(&(1u16, self)).expect("Failed to encode SessionMeta"))
     }
 
@@ -223,7 +223,7 @@ impl Storable for BlobMeta {
         is_fixed_size: false,
     };
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         Cow::Owned(Encode!(&(1u16, self)).expect("Failed to encode BlobMeta"))
     }
 

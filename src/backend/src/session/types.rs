@@ -59,7 +59,7 @@ impl SessionId {
     pub fn new() -> Self {
         use std::cell::Cell;
         thread_local! {
-            static SESSION_COUNTER: Cell<u64> = Cell::new(1);
+            static SESSION_COUNTER: Cell<u64> = const { Cell::new(1) };
         }
 
         let id = SESSION_COUNTER.with(|counter| {

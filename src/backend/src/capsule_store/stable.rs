@@ -41,7 +41,7 @@ impl OwnerIndexKey {
 }
 
 impl Storable for OwnerIndexKey {
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let mut buf = Vec::new();
 
         // Store owner_bytes length (4 bytes)
@@ -221,7 +221,7 @@ impl CapsuleStore for StableStore {
         let new_size = capsule.to_bytes().len() as u64;
 
         // Track size change (this will fail if it exceeds limits)
-        if let Err(_) = track_size_change(old_size, new_size) {
+        if track_size_change(old_size, new_size).is_err() {
             // If size tracking fails, we should not proceed with the upsert
             // This is a design decision - we could also log and continue
             panic!("Capsule size would exceed canister limits");
@@ -271,9 +271,7 @@ impl CapsuleStore for StableStore {
 
             // Calculate new size after update and track the change
             let new_size = capsule.to_bytes().len() as u64;
-            if let Err(e) = track_size_change(old_size, new_size) {
-                return Err(e);
-            }
+            track_size_change(old_size, new_size)?;
 
             // Update indexes if subject or owners changed
             let new_subject = capsule.subject.principal().cloned();
@@ -502,7 +500,7 @@ impl CapsuleStore for StableStore {
 impl Storable for Capsule {
     const BOUND: Bound = Bound::Unbounded;
 
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         // versioned encoding
         Cow::Owned(Encode!(&(1u16, self)).expect("encode Capsule"))
     }

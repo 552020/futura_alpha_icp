@@ -419,7 +419,7 @@ pub enum ResourceType {
 // ============================================================================
 
 impl Storable for UploadSession {
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let bytes = candid::encode_one(self).expect("Failed to encode UploadSession");
         Cow::Owned(bytes)
     }
@@ -436,7 +436,7 @@ impl Storable for UploadSession {
 }
 
 impl Storable for ChunkData {
-    fn to_bytes(&self) -> Cow<[u8]> {
+    fn to_bytes(&self) -> Cow<'_, [u8]> {
         let bytes = candid::encode_one(self).expect("Failed to encode ChunkData");
         Cow::Owned(bytes)
     }
