@@ -27,7 +27,7 @@ pub fn folders_list() -> Vec<FolderHeader> {
                     .collect();
 
                 // Sort by updated_at descending (most recent first)
-                folder_headers.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                folder_headers.sort_by_key(|h| std::cmp::Reverse(h.updated_at));
 
                 folder_headers
             }

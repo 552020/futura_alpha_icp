@@ -84,7 +84,7 @@ where
 // GLOBAL MEMORY MANAGER ACCESS FUNCTIONS (for StableStore)
 // ============================================================================
 
-/// Get virtual memory for capsules from global memory manager
+// Get virtual memory for capsules from global memory manager
 
 // Legacy memory access functions removed - using active capsule store system
 

@@ -4,7 +4,6 @@ use crate::memory::with_capsule_store;
 use crate::types::*;
 
 /// Get capsule by ID (with read access check)
-
 pub fn capsules_read(capsule_id: String) -> std::result::Result<Capsule, Error> {
     let caller = PersonRef::from_caller();
 
@@ -18,7 +17,6 @@ pub fn capsules_read(capsule_id: String) -> std::result::Result<Capsule, Error> 
 }
 
 /// Get capsule info by ID (basic version with read access check)
-
 pub fn capsules_read_basic(capsule_id: String) -> std::result::Result<CapsuleInfo, Error> {
     let caller = PersonRef::from_caller();
 
@@ -47,7 +45,6 @@ pub fn capsules_read_basic(capsule_id: String) -> std::result::Result<CapsuleInf
 }
 
 /// Get caller's self-capsule (where caller is the subject)
-
 pub fn capsule_read_self() -> std::result::Result<Capsule, Error> {
     let caller = PersonRef::from_caller();
 

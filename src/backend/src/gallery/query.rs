@@ -24,7 +24,7 @@ pub fn galleries_list() -> Vec<GalleryHeader> {
                     .collect();
 
                 // Sort by updated_at descending (most recent first)
-                gallery_headers.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                gallery_headers.sort_by_key(|h| std::cmp::Reverse(h.updated_at));
 
                 gallery_headers
             }
