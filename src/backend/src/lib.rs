@@ -1455,7 +1455,7 @@ fn memories_list_assets(
     use crate::memories::{CanisterEnv, StoreAdapter};
 
     let env = CanisterEnv;
-    let mut store = StoreAdapter;
+    let store = StoreAdapter;
 
     memories_list_assets_core(&env, &store, memory_id)
 }
