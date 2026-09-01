@@ -36,3 +36,6 @@ secretus/
 archive/ 
 
 .vscode/
+
+# test runner resume state (runtime)
+tests/backend/.test_state
