@@ -12,13 +12,6 @@ use crate::memories::types::GalleryMemoryEntry;
 // GALLERY API REQUEST/RESPONSE TYPES
 // ============================================================================
 
-/// Gallery creation result - API response DTO
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct GalleryCreationResult {
-    pub success: bool,
-    pub gallery_id: Option<String>,
-    pub message: String,
-}
 
 /// Gallery data for storage operations - API request DTO
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]

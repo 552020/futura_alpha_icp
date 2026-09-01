@@ -17,8 +17,3 @@ pub struct FolderUpdateData {
     pub description: Option<String>,
 }
 
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
-pub struct FolderCreationResult {
-    pub folder_id: String,
-    pub success: bool,
-}
