@@ -10,6 +10,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../test_utils.sh"
 
+# cargo and the grep checks use repo-relative paths; run from the repo root
+cd "$SCRIPT_DIR/../../../.."
+
 # Test configuration
 TEST_NAME="Authorization Unit Tests"
 
@@ -72,7 +75,8 @@ test_authorization_functions_exported() {
     echo_info "Testing authorization functions are properly exported..."
     
     # Check if authorization functions are properly defined in the codebase
-    if grep -r "pub fn verify_caller_authorized" src/backend/src/ >/dev/null 2>&1; then
+    # verify_caller_authorized was replaced by the permission-mask helpers
+    if grep -rq "pub fn has_perm" src/backend/src/ && grep -rq "pub fn effective_perm_mask" src/backend/src/; then
         echo_success "Authorization functions are properly exported"
         return 0
     else

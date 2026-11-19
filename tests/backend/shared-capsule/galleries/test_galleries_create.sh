@@ -78,8 +78,8 @@ test_galleries_create_verification() {
     # Get galleries list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
     
-    # Check if our gallery is in the list (Result<Vec<Gallery>, Error> format)
-    if is_success "$result" && echo "$result" | grep -q "\"$GALLERY_ID\""; then
+    # Check if our gallery is in the list (galleries_list returns vec FolderHeader)
+    if echo "$result" | grep -q "\"$GALLERY_ID\""; then
         echo_success "Gallery found in galleries_list after creation"
     else
         echo_error "Gallery not found in galleries_list after creation"

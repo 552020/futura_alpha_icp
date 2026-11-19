@@ -138,11 +138,11 @@ main() {
     
     echo_info "Starting HTTP module basic tests..."
     
-    test_health_check || ((failed_tests++))
-    test_token_minting || ((failed_tests++))
-    test_asset_serving_no_token || ((failed_tests++))
-    test_asset_serving_invalid_token || ((failed_tests++))
-    test_invalid_endpoint || ((failed_tests++))
+    test_health_check || failed_tests=$((failed_tests + 1))
+    test_token_minting || failed_tests=$((failed_tests + 1))
+    test_asset_serving_no_token || failed_tests=$((failed_tests + 1))
+    test_asset_serving_invalid_token || failed_tests=$((failed_tests + 1))
+    test_invalid_endpoint || failed_tests=$((failed_tests + 1))
     
     echo_info "HTTP module basic tests completed"
     

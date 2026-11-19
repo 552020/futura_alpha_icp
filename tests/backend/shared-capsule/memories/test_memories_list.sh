@@ -256,8 +256,8 @@ test_memories_list_dashboard_fields() {
            [[ $result == *"sharing_status"* ]] && \
            [[ $result == *"shared_count"* ]] && \
            [[ $result == *"asset_count"* ]] && \
-           [[ $result == *"has_thumbnails"* ]] && \
-           [[ $result == *"has_previews"* ]]; then
+           [[ $result == *"assets"* ]]; then
+            # has_thumbnails/has_previews were replaced by the assets field
             echo_success "✅ All dashboard fields are present in response"
             
             # Clean up test memory
@@ -284,39 +284,39 @@ main() {
     local tests_failed=0
     
     if run_test "Valid capsule ID" test_memories_list_valid_capsule; then
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
     else
-        ((tests_failed++))
+        tests_failed=$((tests_failed + 1))
     fi
     
     if run_test "Invalid capsule ID" test_memories_list_invalid_capsule; then
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
     else
-        ((tests_failed++))
+        tests_failed=$((tests_failed + 1))
     fi
     
     if run_test "Empty string" test_memories_list_empty_string; then
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
     else
-        ((tests_failed++))
+        tests_failed=$((tests_failed + 1))
     fi
     
     if run_test "Controlled test memories" test_memories_list_with_controlled_memories; then
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
     else
-        ((tests_failed++))
+        tests_failed=$((tests_failed + 1))
     fi
     
     if run_test "Response structure" test_memories_list_response_structure; then
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
     else
-        ((tests_failed++))
+        tests_failed=$((tests_failed + 1))
     fi
     
     if run_test "Dashboard fields validation" test_memories_list_dashboard_fields; then
-        ((tests_passed++))
+        tests_passed=$((tests_passed + 1))
     else
-        ((tests_failed++))
+        tests_failed=$((tests_failed + 1))
     fi
     
     # Final summary - suppress debug output for clean summary

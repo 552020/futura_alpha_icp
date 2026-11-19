@@ -459,7 +459,7 @@ create_test_memory() {
     fi
     
     local asset_metadata=$(create_document_asset_metadata "$name" "$description" "$tags" "$bytes_len")
-    local idem="test_$(date +%s)_$$"
+    local idem="test_$(date +%s)_$$_${RANDOM}"
     
     local result=$(dfx canister call --identity "$identity" "$canister_id" memories_create "(\"$capsule_id\", opt $inline_data, null, null, null, null, null, null, $asset_metadata, \"$idem\")" 2>/dev/null)
     

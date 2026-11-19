@@ -35,7 +35,7 @@ test_galleries_delete_basic() {
     
     # Verify gallery exists in list
     local list_result=$(dfx canister call backend galleries_list 2>/dev/null)
-    if ! is_success "$list_result" || ! echo "$list_result" | grep -q "\"$GALLERY_ID\""; then
+    if ! echo "$list_result" | grep -q "\"$GALLERY_ID\""; then  # galleries_list returns a plain vec
         echo_error "Gallery not found in list after creation"
         return 1
     fi
@@ -61,8 +61,8 @@ test_galleries_delete_verification() {
     # Get galleries list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
     
-    # Check if our deleted gallery is NOT in the list (Result<Vec<Gallery>, Error> format)
-    if is_success "$result" && echo "$result" | grep -q "\"$GALLERY_ID\""; then
+    # Check if our deleted gallery is NOT in the list (galleries_list returns vec FolderHeader)
+    if echo "$result" | grep -q "\"$GALLERY_ID\""; then
         echo_error "Gallery still found in galleries_list after deletion"
         echo_debug "galleries_list response: $result"
         return 1

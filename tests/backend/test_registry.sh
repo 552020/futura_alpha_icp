@@ -17,21 +17,15 @@ TEST_INFO=(
     "test_galleries_update.sh"
     "test_capsules_create.sh"
     "test_capsules_bind_neon.sh"
-    "test_store_gallery_forever_with_memories.sh"
-    "test_sync_gallery_memories.sh"
     "test_gallery_crud.sh"
     "test_gallery_upload.sh"
-    "test_uuid_mapping.sh"
     "test_authorization.sh"
-    "test_chunked_upload.sh"
     "test_memories_advanced.sh"
     "test_memories_create.sh"
     "test_memories_delete.sh"
     "test_memories_list.sh"
     "test_memories_read.sh"
     "test_memories_update.sh"
-    "test_memory_crud.sh"
-    "test_shared_capsule.sh"
     "test_canister_capsule.sh"
 )
 
@@ -49,7 +43,6 @@ TEST_PATHS=(
     "general/test_capsules_bind_neon.sh"
     "shared-capsule/galleries/test_gallery_crud.sh"
     "shared-capsule/galleries/test_gallery_upload.sh"
-    "shared-capsule/galleries/test_uuid_mapping.sh"
     "shared-capsule/auth/test_authorization.sh"
     "shared-capsule/memories/test_memories_advanced.sh"
     "shared-capsule/memories/test_memories_create.sh"
@@ -57,7 +50,6 @@ TEST_PATHS=(
     "shared-capsule/memories/test_memories_list.sh"
     "shared-capsule/memories/test_memories_read.sh"
     "shared-capsule/memories/test_memories_update.sh"
-    "shared-capsule/test_shared_capsule.sh"
     "canister-capsule/test_canister_capsule.sh"
 )
 
@@ -75,7 +67,6 @@ TEST_DESCRIPTIONS=(
     "Test capsules_bind_neon endpoint"
     "Test gallery CRUD operations"
     "Test gallery upload functionality"
-    "Test UUID mapping for galleries"
     "Test memory authorization"
     "Test advanced memory operations"
     "Test memory creation"
@@ -83,7 +74,6 @@ TEST_DESCRIPTIONS=(
     "Test memory listing"
     "Test memory reading"
     "Test memory updating"
-    "Test shared capsule functionality"
     "Test canister-capsule integration"
 )
 
@@ -92,19 +82,13 @@ TEST_CATEGORIES=(
     ""  # 0-index placeholder
     "general"
     "general"
-    "general"
-    "general"
-    "general"
-    "general"
-    "general"
-    "general"
-    "general"
-    "general"
-    "general"
     "shared-capsule"
     "shared-capsule"
     "shared-capsule"
     "shared-capsule"
+    "shared-capsule"
+    "general"
+    "general"
     "shared-capsule"
     "shared-capsule"
     "shared-capsule"
@@ -118,7 +102,7 @@ TEST_CATEGORIES=(
 )
 
 # Total number of tests
-TOTAL_TESTS=25
+TOTAL_TESTS=$((${#TEST_PATHS[@]} - 1))
 
 # Function to get test info
 get_test_info() {

@@ -169,7 +169,7 @@ test_retrieve_gallery_by_id() {
     local retrieve_result=$(dfx canister call backend galleries_read "(\"$gallery_id\")" 2>/dev/null)
     
     # Check if gallery was retrieved successfully
-    if is_success "$retrieve_result" && echo "$retrieve_result" | grep -q "title = \"Basic Test Gallery\""; then
+    if is_success "$retrieve_result" && echo "$retrieve_result" | grep -q "title = opt \"Basic Test Gallery\""; then
         echo_info "Gallery retrieval successful for ID: $gallery_id"
         return 0
     else
@@ -258,9 +258,9 @@ test_gallery_metadata_preservation() {
     local retrieve_result=$(dfx canister call backend galleries_read "(\"$gallery_id\")" 2>/dev/null)
     
     # Check if key metadata fields are preserved
-    if echo "$retrieve_result" | grep -q "title = \"Basic Test Gallery\"" && \
+    if echo "$retrieve_result" | grep -q "title = opt \"Basic Test Gallery\"" && \
        echo "$retrieve_result" | grep -q "description = opt \"A simple test gallery\"" && \
-       echo "$retrieve_result" | grep -q "is_public = true"; then
+       echo "$retrieve_result" | grep -q "sharing_status = variant { Public }"; then
         echo_info "Gallery metadata preservation verified successfully"
         return 0
     else

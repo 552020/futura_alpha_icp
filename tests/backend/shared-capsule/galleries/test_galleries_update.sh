@@ -63,7 +63,7 @@ test_galleries_update_basic() {
     fi
     
     # Verify title was updated
-    if echo "$result" | grep -q "title = \"Updated Gallery Title\""; then
+    if echo "$result" | grep -q "title = opt \"Updated Gallery Title\""; then
         echo_success "galleries_update correctly updated title"
     else
         echo_error "galleries_update did not update title correctly"
@@ -81,10 +81,10 @@ test_galleries_update_basic() {
     fi
     
     # Verify is_public was updated
-    if echo "$result" | grep -q "is_public = false"; then
-        echo_success "galleries_update correctly updated is_public"
+    if echo "$result" | grep -q "sharing_status = variant { Private }"; then
+        echo_success "galleries_update correctly updated visibility (sharing_status)"
     else
-        echo_error "galleries_update did not update is_public correctly"
+        echo_error "galleries_update did not update visibility: is_public is ignored by the backend (gallery/commands.rs)"
         echo_debug "Response: $result"
         return 1
     fi
@@ -108,7 +108,7 @@ test_galleries_update_partial() {
     
     # Verify response (Result<T, Error> format)
     if is_success "$result"; then
-        if echo "$result" | grep -q "title = \"Partially Updated Title\""; then
+        if echo "$result" | grep -q "title = opt \"Partially Updated Title\""; then
             echo_success "galleries_update correctly handled partial update (title only)"
         else
             echo_error "galleries_update did not update title in partial update"

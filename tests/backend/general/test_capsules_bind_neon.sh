@@ -33,6 +33,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../test_config.sh"
 source "$SCRIPT_DIR/../test_utils.sh"
+source "$SCRIPT_DIR/../shared-capsule/galleries/gallery_test_utils.sh"
 
 # Test configuration
 TEST_NAME="Capsules Bind Neon Tests"
@@ -107,22 +108,9 @@ test_capsules_bind_neon_gallery() {
     
     # Create a gallery in the capsule with unique ID
     local unique_gallery_id="test_gallery_$(date +%s)_$$"
-    local gallery_data="(record {
-        gallery = record {
-            id = \"$unique_gallery_id\";
-            title = \"Test Gallery for Binding\";
-            description = opt \"Test gallery for binding\";
-            is_public = false;
-            created_at = 0;
-            updated_at = 0;
-            owner_principal = principal \"$caller_principal\";
-            storage_location = variant { ICPOnly };
-            memory_entries = vec {};
-            bound_to_neon = false;
-        };
-        owner_principal = principal \"$caller_principal\";
-    })"
-    
+    # Current Gallery shape comes from the shared gallery builder
+    local gallery_data=$(create_basic_gallery_data "$unique_gallery_id" "Test Gallery for Binding" "Test gallery for binding" "false" "ICPOnly")
+
     local gallery_result=$(dfx canister call $CANISTER_ID galleries_create "$gallery_data" $NETWORK_FLAG 2>/dev/null)
     if ! is_success "$gallery_result"; then
         echo_error "Failed to create test gallery: $gallery_result"
@@ -130,7 +118,8 @@ test_capsules_bind_neon_gallery() {
     fi
     
     # Extract the actual gallery ID from the response
-    local gallery_id=$(echo "$gallery_result" | grep -o 'id = "[^"]*"' | sed 's/id = "//' | sed 's/"//')
+    # extract_gallery_id takes the first match; the response also has capsule_id
+    local gallery_id=$(extract_gallery_id "$gallery_result")
     if [[ -z "$gallery_id" ]]; then
         echo_error "Failed to extract gallery ID from creation response"
         return 1
@@ -169,24 +158,10 @@ test_capsules_bind_neon_memory() {
     fi
     echo_info "Using accessible capsule: $capsule_id"
     
-    # Create a memory in the capsule with minimal data using new signature
-    local memory_bytes="blob \"\""
-    local asset_metadata='(variant { Document = record { base = record { name = "test_memory_binding"; description = null; tags = vec {}; asset_type = variant { Original }; bytes = 0; mime_type = "text/plain"; sha256 = null; width = null; height = null; url = null; storage_key = null; bucket = null; asset_location = null; processing_status = null; processing_error = null; created_at = 0; updated_at = 0; deleted_at = null; }; page_count = null; document_type = null; language = null; word_count = null; } })'
-    local idempotency_key="test_idem_$(date +%s)"
-    echo_info "Creating memory with capsule_id: $capsule_id, idempotency_key: $idempotency_key"
-    
-    local memory_result=$(dfx canister call $CANISTER_ID memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idempotency_key\")" $NETWORK_FLAG 2>&1)
-    echo_info "Memory creation result: $memory_result"
-    
-    if ! is_success "$memory_result"; then
-        echo_error "Failed to create test memory: $memory_result"
-        return 1
-    fi
-    
-    # Extract the actual memory ID from the response
-    local memory_id=$(echo "$memory_result" | grep -o 'Ok = "[^"]*"' | sed 's/Ok = "//' | sed 's/"//')
+    # Create a memory with the shared helper (current 10-argument memories_create)
+    local memory_id=$(create_test_memory "$capsule_id" "test_memory_binding" "Memory for Neon binding test" '"test";' 'blob "aGVsbG8="')
     if [[ -z "$memory_id" ]]; then
-        echo_error "Failed to extract memory ID from creation response: $memory_result"
+        echo_error "Failed to create test memory in capsule $capsule_id"
         return 1
     fi
     echo_info "Created test memory: $memory_id"

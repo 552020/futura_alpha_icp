@@ -87,34 +87,71 @@ EOF
 }
 
 # Helper function to upload a test memory and return its ID
+# Delegates to create_test_memory (test_utils.sh), which uses the current
+# 10-argument memories_create signature and returns a UUID memory id.
 upload_test_memory() {
     local content="$1"
     local name="$2"
-    
-    # Generate a unique idempotency key
-    local timestamp=$(date +%s)
-    local idem="gallery_test_${timestamp}_${RANDOM}_${name}"
-    
-    local memory_bytes=$(create_test_memory_data "$content" "$name")
-    local asset_metadata=$(create_test_asset_metadata "$name" "$content")
+
     local capsule_id=$(get_test_capsule_id)
-    
     if [[ -z "$capsule_id" ]]; then
         return 1
     fi
-    
-    # Use the new API format: memories_create(capsule_id, bytes, asset_metadata, idem)
-    local result=$(dfx canister call backend memories_create "(\"$capsule_id\", $memory_bytes, $asset_metadata, \"$idem\")" 2>/dev/null)
 
-    # Check for successful Result<MemoryId, Error> response
-    if echo "$result" | grep -q "variant {" && echo "$result" | grep -q "Ok =" && echo "$result" | grep -q "mem_"; then
-        local memory_id=$(echo "$result" | grep -o '"mem_[^"]*"' | sed 's/"//g')
-        echo "$memory_id"
-        return 0
-    else
-        echo ""
-        return 1
-    fi
+    local memory_bytes=$(create_test_memory_data "$content" "$name")
+    create_test_memory "$capsule_id" "test_${name}.txt" "Test memory for gallery testing" '"test"; "gallery";' "$memory_bytes"
+}
+
+# Map the legacy storage status argument onto the current storage_location
+# (vec BlobHosting): ICPOnly -> Icp, Web2Only -> VercelBlob, Both -> both.
+storage_location_vec() {
+    case "${1:-ICPOnly}" in
+        Web2Only) echo "vec { variant { VercelBlob } }" ;;
+        Both)     echo "vec { variant { Icp }; variant { VercelBlob } }" ;;
+        *)        echo "vec { variant { Icp } }" ;;
+    esac
+}
+
+sharing_status_variant() {
+    if [[ "$1" == "true" ]]; then echo "variant { Public }"; else echo "variant { Private }"; fi
+}
+
+slugify() {
+    echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g'
+}
+
+# Build a GalleryData record in the current Candid shape:
+#   Gallery { id; capsule_id; metadata: FolderMetadata; cover_memory_id;
+#             created_at; updated_at; items: vec GalleryItem; access_entries }
+build_gallery_data() {
+    local gallery_id="$1" title="$2" description="$3" is_public="$4" storage_status="$5" items="$6" total="$7"
+    local timestamp=$(date +%s)000000000
+    local capsule_id=$(get_test_capsule_id)
+    local principal=$(dfx identity get-principal)
+
+    cat << GALLERY_EOF
+(record {
+  gallery = record {
+    id = "$gallery_id";
+    capsule_id = "$capsule_id";
+    metadata = record {
+      name = "$(slugify "$title")";
+      title = opt "$title";
+      description = opt "$description";
+      sharing_status = $(sharing_status_variant "$is_public");
+      storage_location = $(storage_location_vec "$storage_status");
+      total_memories = $total;
+      shared_count = 0;
+    };
+    cover_memory_id = null;
+    created_at = $timestamp;
+    updated_at = $timestamp;
+    items = $items;
+    access_entries = vec {};
+  };
+  owner_principal = principal "$principal";
+})
+GALLERY_EOF
 }
 
 # Helper function to create basic gallery data
@@ -124,34 +161,15 @@ create_basic_gallery_data() {
     local description="$3"
     local is_public="$4"
     local storage_status="${5:-ICPOnly}"
-    
-    local timestamp=$(date +%s)000000000
-    
-    # Generate gallery ID if none provided
+
     if [[ -z "$gallery_id" ]]; then
-        gallery_id="gallery_${timestamp}_${RANDOM}"
+        gallery_id="gallery_$(date +%s)_${RANDOM}"
     fi
-    
-    cat << EOF
-(record {
-  gallery = record {
-    id = "$gallery_id";
-    owner_principal = principal "$(dfx identity get-principal)";
-    title = "$title";
-    description = opt "$description";
-    is_public = $is_public;
-    created_at = $timestamp;
-    updated_at = $timestamp;
-    storage_location = variant { $storage_status };
-    memory_entries = vec {};
-    bound_to_neon = false;
-  };
-  owner_principal = principal "$(dfx identity get-principal)";
-})
-EOF
+
+    build_gallery_data "$gallery_id" "$title" "$description" "$is_public" "$storage_status" "vec {}" 0
 }
 
-# Helper function to create gallery data with memory entries
+# Helper function to create gallery data with memory entries (GalleryItem)
 create_gallery_data_with_memories() {
     local gallery_id="$1"
     local title="$2"
@@ -160,55 +178,35 @@ create_gallery_data_with_memories() {
     local memory_id1="$5"
     local memory_id2="${6:-}"
     local storage_status="${7:-ICPOnly}"
-    
-    local timestamp=$(date +%s)000000000
-    
-    # Generate gallery ID if none provided
+
     if [[ -z "$gallery_id" ]]; then
-        gallery_id="gallery_${timestamp}_${RANDOM}"
+        gallery_id="gallery_$(date +%s)_${RANDOM}"
     fi
-    
-    # Build memory entries
-    local memory_entries="vec {
+
+    local items="vec {
       record {
         memory_id = \"$memory_id1\";
+        memory_type = variant { Document };
         position = 1;
-        gallery_caption = opt \"First memory in gallery\";
-        is_featured = true;
-        gallery_metadata = \"{}\";
+        caption = opt \"First memory in gallery\";
+        metadata = vec {};
       };"
-    
+    local total=1
     if [[ -n "$memory_id2" ]]; then
-        memory_entries="$memory_entries
+        items="$items
       record {
         memory_id = \"$memory_id2\";
+        memory_type = variant { Document };
         position = 2;
-        gallery_caption = opt \"Second memory\";
-        is_featured = false;
-        gallery_metadata = \"{\\\"tags\\\": [\\\"secondary\\\"]}\";
+        caption = opt \"Second memory\";
+        metadata = vec { record { \"tags\"; \"secondary\" } };
       };"
+        total=2
     fi
-    
-    memory_entries="$memory_entries
+    items="$items
     }"
-    
-    cat << EOF
-(record {
-  gallery = record {
-    id = "$gallery_id";
-    owner_principal = principal "$(dfx identity get-principal)";
-    title = "$title";
-    description = opt "$description";
-    is_public = $is_public;
-    created_at = $timestamp;
-    updated_at = $timestamp;
-    storage_location = variant { $storage_status };
-    memory_entries = $memory_entries;
-    bound_to_neon = false;
-  };
-  owner_principal = principal "$(dfx identity get-principal)";
-})
-EOF
+
+    build_gallery_data "$gallery_id" "$title" "$description" "$is_public" "$storage_status" "$items" "$total"
 }
 
 # Helper function to extract gallery ID from creation response
@@ -217,10 +215,18 @@ extract_gallery_id() {
     echo "$response" | grep -o 'id = "[^"]*"' | sed 's/id = "\([^"]*\)"/\1/' | head -1
 }
 
-# Helper function to extract storage status from response
+# Helper function to extract storage status from response, reported in the
+# legacy names the tests use (ICPOnly / Web2Only / Both)
 extract_storage_status() {
     local response="$1"
-    echo "$response" | grep -o 'storage_location = variant { [^}]*}' | sed 's/storage_location = variant { \([^}]*\) }/\1/'
+    local loc=$(echo "$response" | tr '\n' ' ' | grep -o 'storage_location = vec {[^;]*;[^;]*;\?[^}]*}' | head -1)
+    local icp=0 web2=0
+    [[ "$loc" == *"Icp"* ]] && icp=1
+    [[ "$loc" == *"VercelBlob"* || "$loc" == *"S3"* || "$loc" == *"Neon"* ]] && web2=1
+    if (( icp && web2 )); then echo "Both"
+    elif (( icp )); then echo "ICPOnly"
+    elif (( web2 )); then echo "Web2Only"
+    fi
 }
 
 # Helper function to create a test gallery and return its ID
