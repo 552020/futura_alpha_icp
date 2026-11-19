@@ -160,7 +160,7 @@ impl SessionCompat {
         caller: &Principal,
         expiry_ms: u64,
     ) {
-        let now_ms = ic_cdk::api::time() / 1_000_000;
+        let now_ms = crate::capsule::time::now_icp_ms();
         let expired: Vec<u64> = self
             .meta
             .borrow()
@@ -180,7 +180,7 @@ impl SessionCompat {
 
     /// Cleanup all expired sessions (for global cleanup)
     pub fn cleanup_expired_sessions(&self, expiry_ms: u64) {
-        let now_ms = ic_cdk::api::time() / 1_000_000;
+        let now_ms = crate::capsule::time::now_icp_ms();
         let expired: Vec<u64> = self
             .meta
             .borrow()

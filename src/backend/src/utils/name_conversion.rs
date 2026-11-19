@@ -7,7 +7,9 @@
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
+/// // `utils` is a private module, so this cannot compile as a doctest;
+/// // the same cases run as unit tests below.
 /// use crate::utils::name_conversion::title_to_name;
 ///
 /// assert_eq!(title_to_name("Vacation Photo 2024"), "vacation-photo-2024");

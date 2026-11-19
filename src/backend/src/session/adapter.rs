@@ -149,6 +149,6 @@ pub struct ICClock;
 
 impl Clock for ICClock {
     fn now_ms(&self) -> u64 {
-        ic_cdk::api::time() / 1_000_000 // Convert nanoseconds to milliseconds
+        crate::capsule::time::now_icp_ms()
     }
 }

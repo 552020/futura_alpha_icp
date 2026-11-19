@@ -229,7 +229,9 @@ pub fn memories_add_inline_asset_core<E: Env, S: Store>(
 
 #[cfg(test)]
 mod tests {
-    use crate::capsule::domain::SharingStatus;
+    use crate::capsule::domain::{
+        AccessCondition, AccessEntry, GrantSource, ResourceRole, SharingStatus,
+    };
     use crate::types::*;
 
     /// Test utility to create a Memory with default values
@@ -238,8 +240,13 @@ mod tests {
         title: Option<&str>,
         _is_public: bool,
         shared_count: u32,
-        _sharing_status: &str,
+        sharing_status: &str,
     ) -> Memory {
+        let sharing_status = match sharing_status {
+            "public" => SharingStatus::Public,
+            "shared" => SharingStatus::Shared,
+            _ => SharingStatus::Private,
+        };
         Memory {
             id: id.to_string(),
             capsule_id: "test_capsule".to_string(),
@@ -264,7 +271,7 @@ mod tests {
 
                 // Dashboard fields
                 shared_count,
-                sharing_status: SharingStatus::Private, // Default to private
+                sharing_status,
                 total_size: 1000,
                 asset_count: 1,
             },
@@ -287,17 +294,33 @@ mod tests {
         assert_eq!(memory.metadata.sharing_status, SharingStatus::Private);
         assert_eq!(memory.metadata.shared_count, 0);
 
-        // TODO: Update test to use new access control system
-        // memory.access = MemoryAccess::Public {
-        //     owner_secure_code: "new_code".to_string(),
-        // };
+        // Make the memory public through the access-entry system
+        memory.access_entries.push(AccessEntry {
+            id: "public_entry".to_string(),
+            person_ref: None,
+            is_public: true,
+            grant_source: GrantSource::User,
+            source_id: None,
+            role: ResourceRole::Guest,
+            perm_mask: 0b00011, // VIEW and DOWNLOAD
+            invited_by_person_ref: None,
+            created_at: 0,
+            updated_at: 0,
+            condition: AccessCondition::Immediate,
+        });
 
         // Call update_dashboard_fields
         memory.update_dashboard_fields();
 
-        // Verify dashboard fields were recomputed
+        // Verify dashboard fields were recomputed from access_entries
         assert_eq!(memory.metadata.sharing_status, SharingStatus::Public);
-        assert_eq!(memory.metadata.shared_count, 0); // Public has no specific recipients
+        assert_eq!(memory.metadata.shared_count, 1); // one access entry
+
+        // Removing all entries makes it private again
+        memory.access_entries.clear();
+        memory.update_dashboard_fields();
+        assert_eq!(memory.metadata.sharing_status, SharingStatus::Private);
+        assert_eq!(memory.metadata.shared_count, 0);
     }
 
     #[test]

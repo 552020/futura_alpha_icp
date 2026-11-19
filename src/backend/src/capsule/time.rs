@@ -5,7 +5,6 @@
 //! - Neon database: Uses milliseconds
 //! - Magic links: Need expiration checking
 
-use ic_cdk::api::time;
 
 // ============================================================================
 // TIME CONSTANTS
@@ -42,7 +41,19 @@ pub fn neon_ms_to_icp_time(neon_time_ms: u64) -> u64 {
 /// Get current ICP time in nanoseconds
 #[allow(dead_code)]
 pub fn now_icp_ns() -> u64 {
-    time()
+    // Inside a canister (wasm32) use the IC clock. Native builds (cargo test)
+    // have no IC system API, so fall back to the system clock there.
+    #[cfg(target_arch = "wasm32")]
+    {
+        ic_cdk::api::time()
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0)
+    }
 }
 
 /// Get current ICP time in milliseconds (for Neon compatibility)

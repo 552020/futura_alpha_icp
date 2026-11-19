@@ -4,7 +4,9 @@ use std::str::FromStr;
 /// Parse a blob ID string into a u64, handling both "blob_<digits>" and "<digits>" formats
 ///
 /// # Examples
-/// ```
+/// ```ignore
+/// // `utils` is a private module, so this cannot compile as a doctest;
+/// // the same cases run as unit tests below.
 /// assert_eq!(parse_blob_id("blob_11410754707272541975").unwrap(), 11410754707272541975u64);
 /// assert_eq!(parse_blob_id("11410754707272541975").unwrap(), 11410754707272541975u64);
 /// assert!(parse_blob_id("blob_").is_err());

@@ -516,12 +516,13 @@ mod tests {
         let large_data = vec![0u8; 3 * 1024 * 1024]; // 3MB
         let blob_id = BlobId(1);
 
-        // Store the blob data in chunks
+        // Store the blob data in chunks, keyed by the same pmid_hash the
+        // metadata records (the reader looks chunks up through meta.pmid_hash)
+        let mut pmid_hash = [0u8; 32];
+        pmid_hash[0..8].copy_from_slice(&blob_id.0.to_be_bytes());
         let chunk_size = 1024 * 1024; // 1MB chunks
         let mut chunk_index = 0;
         for chunk in large_data.chunks(chunk_size) {
-            let mut pmid_hash = [0u8; 32];
-            pmid_hash[0..8].copy_from_slice(&blob_id.0.to_be_bytes());
             let page_key = (pmid_hash, chunk_index);
             STABLE_BLOB_STORE.with(|store| {
                 store.borrow_mut().insert(page_key, chunk.to_vec());
@@ -536,7 +537,7 @@ mod tests {
             size: large_data.len() as u64,
             checksum,
             created_at: 1234567890,
-            pmid_hash: [0u8; 32], // Test hash
+            pmid_hash,
         };
 
         STABLE_BLOB_META.with(|store| {
@@ -556,12 +557,29 @@ mod tests {
     fn test_read_blob_chunk_empty_chunk() {
         let blob_id = BlobId(2);
 
-        // Test reading a chunk that doesn't exist (should return empty)
+        // Unknown blob (no metadata) is reported as NotFound
+        let missing = read_blob_chunk(&BlobStore::new(), &blob_id, 0);
+        assert!(matches!(missing, Err(Error::NotFound)));
+
+        // Known blob with no stored pages: a missing chunk reads as empty,
+        // which is how read_blob_chunked detects the end of the blob
+        let mut pmid_hash = [0u8; 32];
+        pmid_hash[0..8].copy_from_slice(&blob_id.0.to_be_bytes());
+        STABLE_BLOB_META.with(|store| {
+            store.borrow_mut().insert(
+                blob_id.0,
+                crate::upload::types::BlobMeta {
+                    size: 0,
+                    checksum: [0u8; 32],
+                    created_at: 1234567890,
+                    pmid_hash,
+                },
+            );
+        });
+
         let result = read_blob_chunk(&BlobStore::new(), &blob_id, 0);
         assert!(result.is_ok());
-
-        let data = result.unwrap();
-        assert!(data.is_empty());
+        assert!(result.unwrap().is_empty());
     }
 }
 
