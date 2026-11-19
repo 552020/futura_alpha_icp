@@ -1,4 +1,5 @@
 {
+  "dfx": "0.31.0",
   "canisters": {
     "backend": {
       "candid": "src/backend/backend.did",
@@ -9,7 +10,6 @@
         "env_override": "process.env.NEXT_PUBLIC_CANISTER_ID_BACKEND"
       }
     },
-
     "canister_factory": {
       "candid": "src/canister_factory/canister_factory.did",
       "package": "canister_factory",
@@ -19,9 +19,8 @@
         "env_override": "process.env.NEXT_PUBLIC_CANISTER_ID_FACTORY"
       }
     },
-
     "internet_identity": {
-      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "candid": "https://github.com/dfinity/internet-identity/releases/download/release-2026-02-28/internet_identity.did",
       "frontend": {},
       "remote": {
         "id": {
@@ -29,13 +28,13 @@
         }
       },
       "type": "custom",
-      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz",
+      "wasm": "https://github.com/dfinity/internet-identity/releases/download/release-2026-02-28/internet_identity_dev.wasm.gz",
       "declarations": {
         "output": "src/nextjs/src/ic/declarations/internet_identity",
         "env_override": "process.env.NEXT_PUBLIC_CANISTER_ID_INTERNET_IDENTITY"
-      }
+      },
+      "init_arg": "(opt record { captcha_config = opt record { max_unsolved_captchas = 50 : nat64; captcha_trigger = variant { Static = variant { CaptchaDisabled } } } })"
     },
-
     "lab_backend": {
       "candid": "src/lab_backend/lab_backend.did",
       "package": "lab_backend",
@@ -44,11 +43,16 @@
         "output": "src/lab_frontend/src/ic/declarations_lab/lab_backend"
       }
     },
-
     "lab_frontend": {
       "type": "assets",
-      "source": ["src/lab_frontend/dist"],
-      "build": ["bash", "-lc", "cd src/lab_frontend && pnpm install && pnpm run build"]
+      "source": [
+        "src/lab_frontend/dist"
+      ],
+      "build": [
+        "bash",
+        "-lc",
+        "cd src/lab_frontend && pnpm install && pnpm run build"
+      ]
     }
   },
   "defaults": {
