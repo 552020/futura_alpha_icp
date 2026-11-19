@@ -512,23 +512,26 @@ fn memories_list(
             .and_then(|capsule| {
                 // Check if caller has read access
                 if capsule.has_read_access(&caller) {
-                    // Generate memories with asset links
-                    let memories_with_asset_links: Vec<types::MemoryHeader> = capsule
+                    // Paginate first, then build headers + asset links for the
+                    // requested page only. Building links for every memory
+                    // before slicing made the cost grow with the whole capsule
+                    // and exceeded the 5B instruction limit at ~100 memories.
+                    let total = capsule.memories.len();
+                    let start_idx = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
+
+                    let page_items: Vec<types::MemoryHeader> = capsule
                         .memories
                         .values()
+                        .skip(start_idx)
+                        .take(limit as usize)
                         .map(|memory| {
                             let header = memory.to_header();
                             generate_asset_links_for_memory_header(header, memory)
                         })
                         .collect();
 
-                    // Simple pagination implementation
-                    let start_idx = cursor.and_then(|c| c.parse::<usize>().ok()).unwrap_or(0);
-
-                    let end_idx = (start_idx + limit as usize).min(memories_with_asset_links.len());
-                    let page_items = memories_with_asset_links[start_idx..end_idx].to_vec();
-
-                    let next_cursor = if end_idx < memories_with_asset_links.len() {
+                    let end_idx = start_idx.saturating_add(page_items.len());
+                    let next_cursor = if end_idx < total {
                         Some(end_idx.to_string())
                     } else {
                         None
