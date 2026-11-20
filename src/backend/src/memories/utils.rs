@@ -47,6 +47,7 @@ pub struct AssetLinks {
 
 /// Build a single asset link with token metadata
 fn build_asset_link(
+    memory: &Memory,
     memory_id: &str,
     asset_id: &str,
     asset_kind: AssetKind,
@@ -67,8 +68,8 @@ fn build_asset_link(
         ttl_seconds
     );
 
-    let token = TokenService::mint_token(
-        memory_id.to_string(),
+    let token = TokenService::mint_token_for_memory(
+        memory,
         vec![asset_kind_to_string(asset_kind).to_string()],
         Some(vec![asset_id.to_string()]),
         ttl_seconds,
@@ -308,6 +309,7 @@ pub fn generate_asset_links_for_memory_header(
         ic_cdk::println!("🔍 [DEBUG] ✅ Found thumbnail asset: {}", asset_id);
         let (content_type, width, height, bytes, etag) = extract_asset_metadata(metadata);
         header.assets.thumbnail = Some(build_asset_link(
+            memory,
             &memory.id,
             asset_id,
             AssetKind::Thumbnail,
@@ -333,6 +335,7 @@ pub fn generate_asset_links_for_memory_header(
         ic_cdk::println!("🔍 [DEBUG] ✅ Found display asset: {}", asset_id);
         let (content_type, width, height, bytes, etag) = extract_asset_metadata(metadata);
         header.assets.display = Some(build_asset_link(
+            memory,
             &memory.id,
             asset_id,
             AssetKind::Display,
@@ -353,6 +356,7 @@ pub fn generate_asset_links_for_memory_header(
     {
         let (content_type, width, height, bytes, etag) = extract_asset_metadata(metadata);
         header.assets.original = Some(build_asset_link(
+            memory,
             &memory.id,
             asset_id,
             AssetKind::Original,

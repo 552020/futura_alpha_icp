@@ -32,6 +32,59 @@ impl TokenService {
             }
         }
 
+        Self::sign_for_caller(memory_id, variants, asset_ids, ttl_secs, caller)
+    }
+
+    /// Mint a token for a memory the caller already holds.
+    ///
+    /// For callers that loaded the memory from a capsule they verified read
+    /// access to (memories_list / memories_list_by_capsule). It applies the
+    /// same checks as `mint_token` -- VIEW permission through
+    /// `effective_perm_mask` and asset existence -- but on the memory in hand.
+    /// `mint_token` re-finds the memory through FuturaAclAdapter::can_view and
+    /// FuturaAssetStore::exists, each of which decodes every capsule the
+    /// caller can access; per token that made listing ~100 memories exceed the
+    /// 5B instruction limit.
+    pub fn mint_token_for_memory(
+        memory: &crate::memories::types::Memory,
+        variants: Vec<String>,
+        asset_ids: Option<Vec<String>>,
+        ttl_secs: u32,
+    ) -> String {
+        use crate::capsule::domain::{effective_perm_mask, Perm, PrincipalContext};
+
+        let caller = msg_caller();
+        let ctx = PrincipalContext {
+            principal: caller,
+            groups: vec![],
+            link: None,
+            now_ns: time(),
+        };
+        assert!(
+            (effective_perm_mask(memory, &ctx) & Perm::VIEW.bits()) != 0,
+            "forbidden"
+        );
+
+        if let Some(ids) = &asset_ids {
+            for id in ids {
+                let exists = memory.inline_assets.iter().any(|a| &a.asset_id == id)
+                    || memory.blob_internal_assets.iter().any(|a| &a.asset_id == id)
+                    || memory.blob_external_assets.iter().any(|a| &a.asset_id == id);
+                assert!(exists, "asset not found");
+            }
+        }
+
+        Self::sign_for_caller(memory.id.clone(), variants, asset_ids, ttl_secs, caller)
+    }
+
+    /// Build, sign and encode a token for `caller` (authorization done by caller)
+    fn sign_for_caller(
+        memory_id: String,
+        variants: Vec<String>,
+        asset_ids: Option<Vec<String>>,
+        ttl_secs: u32,
+        caller: candid::Principal,
+    ) -> String {
         // ✅ Enhanced: Allow longer TTL for memory listings (up to 30 minutes)
         // Keep 3-minute limit for direct token requests for security
         let max_ttl = if is_memory_listing_context() {
