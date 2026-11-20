@@ -155,8 +155,8 @@ test_galleries_update_verification() {
     # Get galleries list
     local result=$(dfx canister call backend galleries_list 2>/dev/null)
     
-    # Check if our updated gallery is in the list with new title (Result<Vec<Gallery>, Error> format)
-    if is_success "$result" && echo "$result" | grep -q "\"$GALLERY_ID\""; then
+    # Check if our updated gallery is in the list with new title (galleries_list returns vec FolderHeader)
+    if echo "$result" | grep -q "\"$GALLERY_ID\""; then
         if echo "$result" | grep -q "Partially Updated Title"; then
             echo_success "Gallery found in galleries_list with updated title"
         else

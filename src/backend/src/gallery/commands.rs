@@ -180,9 +180,8 @@ pub fn galleries_update(
                     if let Some(description) = update_data.description {
                         gallery.metadata.description = Some(description);
                     }
-                    if let Some(_is_public) = update_data.is_public {
-                        // Note: This field might not exist in the new Gallery struct
-                        // gallery.is_public = is_public;
+                    if let Some(is_public) = update_data.is_public {
+                        apply_visibility(gallery, is_public, ic_cdk::api::time());
                     }
 
                     gallery.updated_at = ic_cdk::api::time();
@@ -230,4 +229,133 @@ pub fn galleries_delete(gallery_id: String) -> std::result::Result<(), Error> {
             None => Err(Error::NotFound),
         }
     })
+}
+
+/// Apply a public/private change to a gallery.
+///
+/// `metadata.sharing_status` is what clients read today (the web app sets it
+/// at creation and leaves access_entries empty), and the public access entry
+/// is what the AccessControlled impl evaluates. Both are kept in step:
+/// - public: one public Guest entry (VIEW + DOWNLOAD), status Public
+/// - private: public entries removed; status Shared if non-owner entries
+///   remain, otherwise Private
+fn apply_visibility(gallery: &mut Gallery, is_public: bool, now: u64) {
+    use crate::capsule::domain::{
+        AccessCondition, AccessEntry, GrantSource, Perm, ResourceRole, SharingStatus,
+    };
+
+    if is_public {
+        if !gallery.access_entries.iter().any(|e| e.is_public) {
+            gallery.access_entries.push(AccessEntry {
+                id: format!("public_{}", gallery.id),
+                person_ref: None,
+                is_public: true,
+                grant_source: GrantSource::User,
+                source_id: None,
+                role: ResourceRole::Guest,
+                perm_mask: (Perm::VIEW | Perm::DOWNLOAD).bits(),
+                invited_by_person_ref: None,
+                created_at: now,
+                updated_at: now,
+                condition: AccessCondition::Immediate,
+            });
+        }
+        gallery.metadata.sharing_status = SharingStatus::Public;
+    } else {
+        gallery.access_entries.retain(|e| !e.is_public);
+        let shared = gallery
+            .access_entries
+            .iter()
+            .any(|e| e.person_ref.is_some() && e.role != ResourceRole::Owner);
+        gallery.metadata.sharing_status = if shared {
+            SharingStatus::Shared
+        } else {
+            SharingStatus::Private
+        };
+    }
+    gallery.metadata.shared_count = gallery
+        .access_entries
+        .iter()
+        .filter(|e| e.role != ResourceRole::Owner)
+        .count() as u32;
+}
+
+#[cfg(test)]
+mod visibility_tests {
+    use super::apply_visibility;
+    use crate::capsule::domain::{
+        AccessCondition, AccessEntry, GrantSource, ResourceRole, SharingStatus,
+    };
+    use crate::gallery::domain::Gallery;
+    use crate::types::PersonRef;
+    use candid::Principal;
+
+    fn gallery() -> Gallery {
+        Gallery {
+            id: "g1".into(),
+            capsule_id: "c1".into(),
+            metadata: crate::gallery::domain::GalleryMetadata {
+                name: "g".into(),
+                title: Some("G".into()),
+                description: None,
+                sharing_status: SharingStatus::Private,
+                storage_location: vec![],
+                total_memories: 0,
+                shared_count: 0,
+            },
+            cover_memory_id: None,
+            created_at: 0,
+            updated_at: 0,
+            items: vec![],
+            access_entries: vec![],
+        }
+    }
+
+    fn person_entry(role: ResourceRole) -> AccessEntry {
+        AccessEntry {
+            id: format!("{:?}", role),
+            person_ref: Some(PersonRef::Principal(Principal::anonymous())),
+            is_public: false,
+            grant_source: GrantSource::User,
+            source_id: None,
+            role,
+            perm_mask: 1,
+            invited_by_person_ref: None,
+            created_at: 0,
+            updated_at: 0,
+            condition: AccessCondition::Immediate,
+        }
+    }
+
+    #[test]
+    fn making_public_adds_one_public_entry() {
+        let mut g = gallery();
+        apply_visibility(&mut g, true, 1);
+        apply_visibility(&mut g, true, 2); // idempotent
+        assert_eq!(g.metadata.sharing_status, SharingStatus::Public);
+        assert_eq!(g.access_entries.iter().filter(|e| e.is_public).count(), 1);
+    }
+
+    #[test]
+    fn making_private_removes_public_entries() {
+        let mut g = gallery();
+        g.metadata.sharing_status = SharingStatus::Public; // as the web app creates it
+        apply_visibility(&mut g, true, 1);
+        apply_visibility(&mut g, false, 2);
+        assert_eq!(g.metadata.sharing_status, SharingStatus::Private);
+        assert!(g.access_entries.is_empty());
+        assert_eq!(g.metadata.shared_count, 0);
+    }
+
+    #[test]
+    fn private_with_guests_is_shared_and_owner_does_not_count() {
+        let mut g = gallery();
+        g.access_entries.push(person_entry(ResourceRole::Owner));
+        g.access_entries.push(person_entry(ResourceRole::Guest));
+        apply_visibility(&mut g, true, 1);
+        apply_visibility(&mut g, false, 2);
+        assert_eq!(g.metadata.sharing_status, SharingStatus::Shared);
+        assert_eq!(g.access_entries.len(), 2);
+        assert_eq!(g.metadata.shared_count, 1);
+    }
 }
