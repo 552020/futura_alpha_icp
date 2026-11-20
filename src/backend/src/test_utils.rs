@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 /// Create a test capsule with default values
 pub fn create_test_capsule() -> Capsule {
-    let now = ic_cdk::api::time();
+    let now = crate::capsule::time::now_icp_ns();
     let subject = PersonRef::Principal(Principal::anonymous());
 
     let mut owners = HashMap::new();
@@ -46,7 +46,7 @@ pub fn create_test_capsule() -> Capsule {
 
 /// Create a test memory with default values
 pub fn create_test_memory() -> Memory {
-    let now = ic_cdk::api::time();
+    let now = crate::capsule::time::now_icp_ns();
     let owner = PersonRef::Principal(Principal::anonymous());
 
     // Create owner access entry
@@ -112,8 +112,8 @@ pub fn create_test_public_memory() -> Memory {
         role: ResourceRole::Guest,
         perm_mask: 0b00011, // VIEW and DOWNLOAD only
         invited_by_person_ref: Some(PersonRef::Principal(Principal::anonymous())),
-        created_at: ic_cdk::api::time(),
-        updated_at: ic_cdk::api::time(),
+        created_at: crate::capsule::time::now_icp_ns(),
+        updated_at: crate::capsule::time::now_icp_ns(),
         condition: AccessCondition::Immediate,
     };
 
@@ -139,8 +139,8 @@ pub fn create_test_shared_memory() -> Memory {
         role: ResourceRole::Member,
         perm_mask: 0b00011, // VIEW and DOWNLOAD only
         invited_by_person_ref: Some(PersonRef::Principal(Principal::anonymous())),
-        created_at: ic_cdk::api::time(),
-        updated_at: ic_cdk::api::time(),
+        created_at: crate::capsule::time::now_icp_ns(),
+        updated_at: crate::capsule::time::now_icp_ns(),
         condition: AccessCondition::Immediate,
     };
 

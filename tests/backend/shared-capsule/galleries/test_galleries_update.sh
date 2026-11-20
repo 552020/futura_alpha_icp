@@ -193,6 +193,51 @@ test_old_endpoint_removed() {
 }
 
 # Main test execution
+test_galleries_update_memory_entries() {
+    echo_info "Testing galleries_update with memory_entries..."
+
+    local memory_id=$(upload_test_memory "entry content" "entry")
+    if [[ -z "$memory_id" ]]; then
+        echo_error "Failed to create memory for memory_entries test"
+        return 1
+    fi
+
+    local update_data="(record {
+        title = null; description = null; is_public = null;
+        memory_entries = opt vec { record {
+            memory_id = \"$memory_id\"; position = 1;
+            gallery_caption = opt \"Entry caption\"; is_featured = true;
+            gallery_metadata = \"{}\";
+        } };
+    })"
+    local result=$(dfx canister call backend galleries_update "(\"$GALLERY_ID\", $update_data)" 2>/dev/null)
+    if ! is_success "$result" || ! echo "$result" | grep -q "memory_id = \"$memory_id\"" \
+        || ! echo "$result" | grep -q "memory_type = variant { Document }" \
+        || ! echo "$result" | grep -q "cover_memory_id = opt \"$memory_id\""; then
+        echo_error "memory_entries were not applied as gallery items"
+        echo_debug "Response: $result"
+        return 1
+    fi
+
+    # Unknown memory ids are rejected and leave the gallery unchanged
+    local bad="(record { title = null; description = null; is_public = null;
+        memory_entries = opt vec { record { memory_id = \"no-such-memory\"; position = 1;
+        gallery_caption = null; is_featured = false; gallery_metadata = \"\"; } }; })"
+    local bad_result=$(dfx canister call backend galleries_update "(\"$GALLERY_ID\", $bad)" 2>/dev/null)
+    if ! is_failure "$bad_result"; then
+        echo_error "unknown memory id was accepted"
+        echo_debug "Response: $bad_result"
+        return 1
+    fi
+    local read_back=$(dfx canister call backend galleries_read "(\"$GALLERY_ID\")" 2>/dev/null)
+    if ! echo "$read_back" | grep -q "memory_id = \"$memory_id\""; then
+        echo_error "rejected update still changed the gallery"
+        return 1
+    fi
+
+    echo_success "memory_entries applied; unknown ids rejected"
+}
+
 main() {
     echo_header "Running $TEST_NAME"
     
@@ -207,6 +252,7 @@ main() {
     run_test "galleries_update partial update" "test_galleries_update_partial"
     run_test "galleries_update non-existent gallery" "test_galleries_update_nonexistent"
     run_test "Gallery update verification" "test_galleries_update_verification"
+    run_test "galleries_update memory_entries" "test_galleries_update_memory_entries"
     run_test "Old update_gallery endpoint removal" "test_old_endpoint_removed"
     
     echo_header "$TEST_NAME completed successfully! 🎉"
