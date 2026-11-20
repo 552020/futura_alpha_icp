@@ -133,6 +133,13 @@ test_capsules_bind_neon_gallery() {
         return 1
     fi
     echo_info "Successfully bound gallery to Neon"
+
+    # Binding must show up in the gallery's storage_location
+    local read_bound=$(dfx canister call $CANISTER_ID galleries_read "(\"$gallery_id\")" $NETWORK_FLAG 2>/dev/null)
+    if ! echo "$read_bound" | grep "storage_location = " | grep -q "Neon"; then
+        echo_error "Neon missing from storage_location after binding: $read_bound"
+        return 1
+    fi
     
     # Test unbinding gallery from Neon
     local unbind_result=$(dfx canister call $CANISTER_ID capsules_bind_neon "(variant { Gallery }, \"$gallery_id\", false)" $NETWORK_FLAG 2>&1)
@@ -141,6 +148,12 @@ test_capsules_bind_neon_gallery() {
         return 1
     fi
     echo_info "Successfully unbound gallery from Neon"
+
+    local read_unbound=$(dfx canister call $CANISTER_ID galleries_read "(\"$gallery_id\")" $NETWORK_FLAG 2>/dev/null)
+    if echo "$read_unbound" | grep "storage_location = " | grep -q "Neon"; then
+        echo_error "Neon still in storage_location after unbinding: $read_unbound"
+        return 1
+    fi
     
     return 0
 }

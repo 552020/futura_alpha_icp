@@ -177,8 +177,19 @@ pub fn resources_bind_neon(
                     {
                         // Found the capsule containing the gallery
                         let update_result = store.update(&capsule.id, |capsule| {
-                            if let Some(_gallery) = capsule.galleries.get_mut(&resource_id) {
-                                // Note: bound_to_neon field no longer exists in new Gallery struct
+                            if let Some(gallery) = capsule.galleries.get_mut(&resource_id) {
+                                // Gallery has no bound_to_neon flag since the Folder
+                                // migration; Neon is tracked in storage_location, the
+                                // same way memories track it in database_storage_edges.
+                                let locations = &mut gallery.metadata.storage_location;
+                                if bind {
+                                    if !locations.contains(&BlobHosting::Neon) {
+                                        locations.push(BlobHosting::Neon);
+                                    }
+                                } else {
+                                    locations.retain(|l| *l != BlobHosting::Neon);
+                                }
+                                gallery.updated_at = time();
                                 capsule.updated_at = time();
 
                                 // Update owner activity

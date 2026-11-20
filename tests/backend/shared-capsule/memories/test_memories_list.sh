@@ -116,8 +116,17 @@ test_memories_list_with_controlled_memories() {
     
     echo_success "✅ Created 3 test memories: $memory1_id, $memory2_id, $memory3_id"
     
-    # Call memories_list with the capsule ID and higher limit to ensure we get the newly created memories
-    local result=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", null, opt 100)" 2>/dev/null)
+    # Collect all pages: memories are ordered by id, so new ones can land on
+    # any page once the capsule holds more than one page of memories
+    local result="" page cursor="null" pages=0
+    while :; do
+        page=$(dfx canister call --identity $IDENTITY $CANISTER_ID memories_list "(\"$capsule_id\", $cursor, opt 100)" 2>/dev/null)
+        result="$result$page"
+        pages=$((pages + 1))
+        local next=$(echo "$page" | grep -o 'next_cursor = opt "[0-9]*"' | grep -o '[0-9]*')
+        [[ -z "$next" || $pages -ge 50 ]] && break
+        cursor="opt \"$next\""
+    done
     
     if [[ $result == *"variant {"* ]] && [[ $result == *"Ok ="* ]] && [[ $result == *"items"* ]]; then
         echo_success "✅ memories_list with controlled memories succeeded"
