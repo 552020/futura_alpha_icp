@@ -6,6 +6,19 @@ Futura combines **ICP** and **blockchain technologies** to safeguard the most me
 
 ---
 
+## Status (November 2026)
+
+- **Mainnet:** backend canister `izhgj-eiaaa-aaaaj-a2f7q-cai` is live. The fixes of November 2026 (memory list paging and tokens, gallery visibility, gallery items, Neon binding, inline asset links) are in `main` but **not yet deployed** to mainnet.
+- **Tests:** 261 + 2 Rust unit tests and 19 of 19 backend integration scripts pass on a local network.
+- **Tooling:** dfx is pinned to 0.31.0 in `dfx.json` (0.32.0's local network fails to start). dfx is deprecated in favour of `icp-cli`; the move is still to do.
+- **Analysis:** where the project stands and the state of ICP and blockchain are on the desk of the web app: [stand](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/stand.md), [ICP and blockchain](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/icp-and-blockchain.md).
+
+## How it is built
+
+![How Futura is built](https://raw.githubusercontent.com/552020/futura_alpha_nextjs/main/public/architecture.svg)
+
+The web app (Next.js, in [futura_alpha_nextjs](https://github.com/552020/futura_alpha_nextjs)) keeps memories on a Web2 side (Postgres and cloud files) by default. People can choose to keep them in their own capsule in this repository's backend canister instead. The browser writes there directly with the person's Internet Identity key; the web app's server only checks sign-in proofs. The plain-language explanation: [architecture](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/architecture.md).
+
 ## Current Offering
 
 At this stage, users can choose between **Web2** and **Web3 storage** options.  
@@ -94,11 +107,13 @@ User → Google OAuth → NextAuth.js Session → Link Internet Identity → Co-
 
 ## Technology Approach
 
-Futura leverages **ICP's storage innovations** and the security of decentralized infrastructure:
+Futura uses ICP for what a public network does well:
 
-- [Dom](https://x.com/dominic_w/status/1955447139347337491) (ICP) has announced unprecedented reductions in storage costs, supporting projects like **Caffeine**. We build upon this strategy to make **long-term, highly accessible storage** possible.
-- Decentralization ensures the **longevity and security** of hosted files.
-- We focus on **data ownership and ownership transfer**, particularly in the delivery of digital files.
+- **Ownership that does not depend on us:** each person's capsule is written with their own key.
+- **Rules for who may see what, and when:** access entries with conditions (scheduled, expiring, and event-based such as "after death", the last one not implemented yet).
+- **Passkey login** with Internet Identity.
+
+It is not meant to be the only copy of anyone's files: in 2026 storage on ICP costs roughly 50 times Amazon S3 per GB (details and sources on the desk page linked above).
 
 Our active canister:
 
@@ -114,50 +129,30 @@ Our active canister:
 git clone --recursive https://github.com/552020/futura_alpha_icp.git
 ```
 
-### Local dev quickstart
-
-```bash
-dfx start --background
-./scripts/deploy-local.sh
-# Optional: run Next.js locally
-cd src/nextjs && npm run dev
-```
-
 ## Local Development
 
-To test and develop locally:
+Verified on Ubuntu 24.04 (WSL2) in November 2026.
 
-0. **Setup environment**:
+1. **Toolchain** (once):
 
    ```bash
-   # Copy the example file and fill in your values
-   cp src/nextjs/.env.local.example src/nextjs/.env.local
-   # Edit src/nextjs/.env.local with your actual credentials
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   rustup target add wasm32-unknown-unknown
+   sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"   # dfxvm; dfx.json pins 0.31.0
    ```
 
-1. **Start DFX** (Internet Computer local replica):
+2. **Local network and canisters:**
 
    ```bash
    dfx start --clean --background
+   dfx deploy backend && dfx deploy canister_factory && dfx deploy internet_identity
    ```
 
-2. **Deploy canisters**:
+   On a clean network, in this order, the IDs are: backend `uxrrr-q7777-77774-qaaaq-cai`, canister_factory `uzt4z-lp777-77774-qaabq-cai`, internet_identity `umunu-kh777-77774-qaaca-cai`. Internet Identity is the dev build of release-2026-02-28 with the registration captcha disabled (`init_arg` in `dfx.json`), so browser tests can create identities.
 
-   ```bash
-   # Install required tools for the deploy script
-   cargo install generate-did
-   cargo install ic-cdk-optimizer --locked
-   cargo install candid-extractor --locked
+3. **Web app against the local network:** see [e2e/README.md](https://github.com/552020/futura_alpha_nextjs/blob/main/e2e/README.md) in the web app (Node 24, pnpm). `src/nextjs` is a submodule pointing at that repository; after `git submodule update --init src/nextjs`, the backend test scripts use its generated bindings.
 
-   chmod +x scripts/deploy-local.sh  # Only needed first time
-   ./scripts/deploy-local.sh
-   ```
-
-3. **Start Next.js development server**:
-   ```bash
-   cd src/nextjs
-   npm run dev
-   ```
+`scripts/deploy-local.sh` does steps 2 and also regenerates the `.did` file and the bindings; it needs `generate-did` and `candid-extractor` (`cargo install generate-did candid-extractor`).
 
 ## Testing
 
@@ -165,28 +160,25 @@ We've got plenty of tests to keep the codebase together. Our testing setup cover
 
 ### Frontend Testing (Next.js)
 
-**Unit Tests**: `src/nextjs/src/tests-unit/`
-
-- Application logic, authentication flows, API endpoints, and utility functions
-- Run with: `cd src/nextjs && npm run test`
-
-**Integration Tests**: `src/nextjs/tests-integration/`
-
-- Database operations, storage systems, and infrastructure testing
-- Includes shell scripts for API endpoint testing
+Lives in the web app repository ([futura_alpha_nextjs](https://github.com/552020/futura_alpha_nextjs)): `pnpm test:run` for unit and integration tests, and Playwright for the browser tests, including the Internet Identity flow against a local network ([e2e/README.md](https://github.com/552020/futura_alpha_nextjs/blob/main/e2e/README.md)).
 
 ### Backend Testing (ICP)
 
-**Rust Backend Tests**: `tests/backend/`
+**Rust unit tests** (no network needed): 261 backend + 2 canister_factory tests.
 
-- Comprehensive test suite for ICP canister functionality
-- Memory creation, deletion, and storage operations
-- Run with: `cargo test --package backend`
+```bash
+cargo test -p backend -p canister_factory
+```
 
-**PocketIC Tests**: `tests/pocket-ic/`
+**Integration scripts** against the local network: `tests/backend/`, 19 scripts listed in `tests/backend/test_registry.sh`.
 
-- Local ICP replica testing for development
-- Isolated canister testing without mainnet dependencies
+```bash
+cd tests/backend
+npm install                      # once, for the .mjs upload tests
+./run_all_tests.sh               # stops at the first failure; --start-from N to continue
+```
+
+**PocketIC tests**: `tests/pocket-ic/` (not run in November 2026).
 
 ## Deployed Canisters
 
