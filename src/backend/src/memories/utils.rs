@@ -58,7 +58,21 @@ fn build_asset_link(
     etag: Option<String>,
     ttl_seconds: u32,
 ) -> AssetLink {
-    let path = format!("/asset/{}/{}", memory_id, asset_kind_to_string(asset_kind));
+    // Inline assets are only served under the "inline" variant with an
+    // explicit id (routes/assets.rs never falls back to inline for
+    // thumbnail/display/original), so their links must say so; otherwise the
+    // link 404s. Blob assets keep the plain variant path.
+    let is_inline = memory.inline_assets.iter().any(|a| a.asset_id == asset_id);
+    let variant = if is_inline {
+        "inline"
+    } else {
+        asset_kind_to_string(asset_kind)
+    };
+    let path = if is_inline {
+        format!("/asset/{}/inline?id={}", memory_id, asset_id)
+    } else {
+        format!("/asset/{}/{}", memory_id, variant)
+    };
 
     ic_cdk::println!(
         "[TOKEN-GEN] Minting token for memory_id={} asset_id={} asset_kind={:?} ttl={}",
@@ -70,7 +84,7 @@ fn build_asset_link(
 
     let token = TokenService::mint_token_for_memory(
         memory,
-        vec![asset_kind_to_string(asset_kind).to_string()],
+        vec![variant.to_string()],
         Some(vec![asset_id.to_string()]),
         ttl_seconds,
     );
