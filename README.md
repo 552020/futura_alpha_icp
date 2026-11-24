@@ -15,7 +15,9 @@ Futura combines **ICP** and **blockchain technologies** to safeguard the most me
 
 ## How it is built
 
-![How Futura is built](https://raw.githubusercontent.com/552020/futura_alpha_nextjs/main/public/architecture.svg)
+![Futura running: who talks to whom](https://raw.githubusercontent.com/552020/futura_alpha_nextjs/main/public/diagrams/futura-running.png)
+
+Step by step, from the same sketch generator: [signing in with Internet Identity](https://raw.githubusercontent.com/552020/futura_alpha_nextjs/main/public/diagrams/signin-ii-steps.png), [uploading to ICP](https://raw.githubusercontent.com/552020/futura_alpha_nextjs/main/public/diagrams/upload-icp-steps.png), [the local test setup](https://raw.githubusercontent.com/552020/futura_alpha_nextjs/main/public/diagrams/local-test-setup-running.png).
 
 The web app (Next.js, in [futura_alpha_nextjs](https://github.com/552020/futura_alpha_nextjs)) keeps memories on a Web2 side (Postgres and cloud files) by default. People can choose to keep them in their own capsule in this repository's backend canister instead. The browser writes there directly with the person's Internet Identity key; the web app's server only checks sign-in proofs. The plain-language explanation: [architecture](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/architecture.md).
 
@@ -187,3 +189,7 @@ npm install                      # once, for the .mjs upload tests
 - **Canister ID**: `izhgj-eiaaa-aaaaj-a2f7q-cai`
 - **Canister URL**: https://izhgj-eiaaa-aaaaj-a2f7q-cai.ic0.app
 - **Candid Interface**: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=izhgj-eiaaa-aaaaj-a2f7q-cai
+
+## License
+
+MIT, see [LICENSE](LICENSE).
