@@ -9,7 +9,7 @@ Futura combines **ICP** and **blockchain technologies** to safeguard the most me
 ## Status (November 2026)
 
 - **Mainnet:** backend canister `izhgj-eiaaa-aaaaj-a2f7q-cai` is live. The fixes of November 2026 (memory list paging and tokens, gallery visibility, gallery items, Neon binding, inline asset links) are in `main` but **not yet deployed** to mainnet.
-- **Tests:** 261 + 2 Rust unit tests and 19 of 19 backend integration scripts pass on a local network.
+- **Tests:** 149 + 19 Rust unit tests and 12 PocketIC tests pass (also run by CI); 22 integration scripts run against a local network. See [tests/README.md](tests/README.md).
 - **Tooling:** dfx is pinned to 0.31.0 in `dfx.json` (0.32.0's local network fails to start). dfx is deprecated in favour of `icp-cli`; the move is still to do.
 - **Analysis:** where the project stands and the state of ICP and blockchain are on the desk of the web app: [stand](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/stand.md), [ICP and blockchain](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/icp-and-blockchain.md).
 
@@ -166,21 +166,20 @@ Lives in the web app repository ([futura_alpha_nextjs](https://github.com/552020
 
 ### Backend Testing (ICP)
 
-**Rust unit tests** (no network needed): 261 backend + 2 canister_factory tests.
+Three layers; details in [tests/README.md](tests/README.md).
 
 ```bash
-cargo test -p backend -p canister_factory
+cargo test -p backend -p canister_factory     # unit tests, no network: 149 + 19
+tests/pocket-ic/run_pocket_ic_tests.sh        # the real wasms on PocketIC: 12 tests
+cd tests/backend && ./run_all_tests.sh        # 22 scripts against a local dfx replica
 ```
 
-**Integration scripts** against the local network: `tests/backend/`, 19 scripts listed in `tests/backend/test_registry.sh`.
+The PocketIC tests cover what needs a network but no replica of your own: calls
+between canisters, timers, cycles, signed links over HTTP, and an upgrade from
+the backend as it ran before November 2026 with data in place.
 
-```bash
-cd tests/backend
-npm install                      # once, for the .mjs upload tests
-./run_all_tests.sh               # stops at the first failure; --start-from N to continue
-```
-
-**PocketIC tests**: `tests/pocket-ic/` (not run in November 2026).
+`scripts/check-did.sh` checks that the committed `.did` files match the code
+(`--fix` rewrites them). CI runs the unit tests, this check and the PocketIC tests.
 
 ## Personal canisters
 
@@ -193,9 +192,11 @@ Besides the shared backend (many users, one canister) a user can get a canister 
 
 In a personal canister only the owner may send updates (checked before the canister pays for the call); trustees can confirm or withdraw a death confirmation. The inheritance rules (`legacy_*` endpoints) work in both kinds of canister.
 
-Tests: `tests/backend/personal/test_personal_canister.sh`, `tests/backend/legacy/test_legacy_inheritance.sh`, `tests/backend/general/test_upgrade_keeps_files.sh`.
+The factory keeps personal canisters alive: once a day it asks each for its cycles and tops up those that run low, within a monthly cap per owner. See [src/canister_factory/README.md](src/canister_factory/README.md).
 
-**Before upgrading the mainnet backend:** only install code from 25 November 2026 or later. Older code saved its state over the stored files on upgrade and destroyed them.
+Tests: `tests/pocket-ic/top_up_pocket_ic.rs`, `tests/backend/personal/`, `tests/backend/legacy/test_legacy_inheritance.sh`, `tests/backend/general/test_upgrade_keeps_files.sh`.
+
+**Before upgrading the mainnet backend:** only install code from 25 November 2026 or later. Older code saved its state over the stored files on upgrade and destroyed them. The upgrade also replaces the key that signs file links: the old one was derived from public data. Deploy with `scripts/deploy-backend-ic.sh` (an upgrade; never reinstall, that wipes everything).
 
 ## Deployed Canisters
 

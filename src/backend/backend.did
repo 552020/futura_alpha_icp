@@ -528,8 +528,6 @@ service : (opt BackendInitArg) -> {
   // The cycles this canister can still spend before it freezes: the balance
   // above the freezing reserve. This is what the factory tops up against.
   cycles_liquid_balance : () -> (nat) query;
-  // Debug endpoint to compute SHA256 hash of provided bytes
-  debug_sha256 : (blob) -> (text) query;
   // TEMPORARY DEV METHOD: Clear all memories in a capsule
   // 
   // WARNING: This is a developer method that bypasses normal ACL checks

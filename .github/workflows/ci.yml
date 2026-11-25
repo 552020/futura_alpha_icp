@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Unit tests
+        run: cargo test -p backend -p canister_factory
+
+      - name: Interface files match the code
+        run: |
+          cargo install candid-extractor --locked
+          scripts/check-did.sh
+
+      # Builds both wasms, then runs them on PocketIC (downloads its server)
+      - name: PocketIC tests
+        run: tests/pocket-ic/run_pocket_ic_tests.sh

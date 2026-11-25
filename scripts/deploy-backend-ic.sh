@@ -53,9 +53,8 @@ fi
 echo "Building backend canister..."
 dfx build backend --network ic
 
-# Generate .did file
-echo "Generating .did file..."
-generate-did backend
+# The committed interface must be the one this code has
+"$(dirname "${BASH_SOURCE[0]}")/check-did.sh"
 
 # Final confirmation before deployment
 echo "FINAL CONFIRMATION: About to deploy backend canister to ICP mainnet"

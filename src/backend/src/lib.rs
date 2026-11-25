@@ -878,14 +878,6 @@ fn sessions_cleanup_expired() -> std::result::Result<String, Error> {
 // DEBUG ENDPOINTS (dev only)
 // ============================================================================
 
-/// Debug endpoint to compute SHA256 hash of provided bytes
-#[ic_cdk::query]
-fn debug_sha256(bytes: Vec<u8>) -> String {
-    use sha2::{Digest, Sha256};
-    let hash = Sha256::digest(&bytes);
-    hex::encode(hash)
-}
-
 /// Read blob data by locator (for asset retrieval)
 #[ic_cdk::query]
 fn blob_read(locator: String) -> std::result::Result<Vec<u8>, Error> {
