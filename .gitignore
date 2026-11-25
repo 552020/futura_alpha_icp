@@ -39,3 +39,10 @@ archive/
 
 # test runner resume state (runtime)
 tests/backend/.test_state
+
+# test output (runtime)
+tests/backend/logs/
+tests/backend/shared-capsule/upload/assets/output/*
+!tests/backend/shared-capsule/upload/assets/output/.gitkeep
+test-results/
+*.backup
