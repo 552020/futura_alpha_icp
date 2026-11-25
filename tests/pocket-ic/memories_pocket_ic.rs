@@ -21,7 +21,6 @@ use serde::Deserialize;
 // out of date with every change of the interface.
 use backend::types::*;
 
-type Result5 = std::result::Result<String, Error>;
 type Result6 = std::result::Result<String, Error>;
 type Result20 = std::result::Result<Memory, Error>;
 

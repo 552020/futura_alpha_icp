@@ -1,32 +1,13 @@
-type CallerStats = record {
-  created_count : nat32;
-  last_created_at : opt nat64;
-};
 type Config = record {
   next_upload_id : nat64;
   emergency_stop : bool;
   min_factory_cycles : nat;
   upload_ttl_ns : nat64;
   admins : vec principal;
-  max_canisters_per_caller : nat32;
   allowlist : opt vec principal;
   max_upload_size : nat64;
 };
-type CreateInstallRequest = record {
-  extra_controllers : opt vec principal;
-  handoff : bool;
-  mode : Mode;
-  init_arg : blob;
-  upload_id : nat64;
-  cycles : nat;
-};
-type CreateInstallResponse = record {
-  canister_id : principal;
-  module_hash_hex : text;
-  cycles_used : nat;
-};
 type FactoryStats = record {
-  unique_callers : nat64;
   total_canisters_created : nat64;
   factory_cycles_balance : nat;
   active_uploads : nat64;
@@ -35,12 +16,10 @@ type FactoryStats = record {
 type InitArg = record {
   min_factory_cycles : opt nat;
   admins : opt vec principal;
-  max_canisters_per_caller : opt nat32;
   allowlist : opt vec principal;
   upload_ttl_seconds : opt nat64;
   max_upload_size : opt nat64;
 };
-type Mode = variant { Upgrade; Install; Reinstall };
 type PersonalCanister = record {
   last_error : opt text;
   status : PersonalStatus;
@@ -62,17 +41,16 @@ type ReleaseInfo = record {
 };
 type Result = variant { Ok; Err : text };
 type Result_1 = variant { Ok : nat32; Err : text };
-type Result_10 = variant { Ok : blob; Err : text };
-type Result_11 = variant { Ok : TopUpReport; Err : text };
-type Result_12 = variant { Ok : vec TopUpReport; Err : text };
+type Result_10 = variant { Ok : TopUpReport; Err : text };
+type Result_11 = variant { Ok : vec TopUpReport; Err : text };
 type Result_2 = variant { Ok : text; Err : text };
-type Result_3 = variant { Ok : CreateInstallResponse; Err : text };
-type Result_4 = variant { Ok : PersonalCanister; Err : text };
-type Result_5 = variant { Ok : nat64; Err : text };
-type Result_6 = variant { Ok : UploadInfo; Err : text };
-type Result_7 = variant { Ok : vec PersonalCanister; Err : text };
-type Result_8 = variant { Ok : vec record { principal; nat32 }; Err : text };
-type Result_9 = variant { Ok : ReleaseInfo; Err : text };
+type Result_3 = variant { Ok : PersonalCanister; Err : text };
+type Result_4 = variant { Ok : nat64; Err : text };
+type Result_5 = variant { Ok : UploadInfo; Err : text };
+type Result_6 = variant { Ok : vec PersonalCanister; Err : text };
+type Result_7 = variant { Ok : vec record { principal; nat32 }; Err : text };
+type Result_8 = variant { Ok : ReleaseInfo; Err : text };
+type Result_9 = variant { Ok : blob; Err : text };
 type TopUpConfig = record {
   floor : nat;
   enabled : bool;
@@ -110,40 +88,37 @@ service : (opt InitArg) -> {
   cleanup_expired_uploads_manual : () -> (Result_1);
   clear_upload : (nat64) -> (Result);
   commit_upload : (nat64, UploadCommit) -> (Result_2);
-  // ===== Factory: create + install (supports Install/Reinstall/Upgrade) =====
-  create_and_install_with : (CreateInstallRequest) -> (Result_3);
   // Create (or finish creating) the caller's personal canister.
   // Idempotent: once Ready it returns the same canister.
-  create_personal_canister : () -> (Result_4);
+  create_personal_canister : () -> (Result_3);
   // ===== Upload API (chunked) =====
-  create_upload : () -> (Result_5);
+  create_upload : () -> (Result_4);
   // ===== Query endpoints =====
   get_config : () -> (Config) query;
   get_factory_stats : () -> (FactoryStats) query;
-  get_upload_info : (nat64) -> (Result_6) query;
+  get_upload_info : (nat64) -> (Result_5) query;
   health_check : () -> (text) query;
   my_personal_canister : () -> (opt PersonalCanister) query;
   // How many personal canisters the caller may still create.
   my_personal_credits : () -> (nat32) query;
-  my_stats : () -> (CallerStats) query;
   // Admin: every personal canister the factory created.
-  personal_canisters_list : () -> (Result_7) query;
+  personal_canisters_list : () -> (Result_6) query;
   // Admin: set how many personal canisters a principal may still create
   // (0 removes the entry).
   personal_credit_set : (principal, nat32) -> (Result);
   // Admin: all principals that hold credits.
-  personal_credits_list : () -> (Result_8) query;
+  personal_credits_list : () -> (Result_7) query;
   personal_open : () -> (bool) query;
   // Admin: open creation to every signed-in principal. For local test
   // networks; on mainnet this lets anybody spend the factory's cycles.
   personal_open_set : (bool) -> (Result);
-  put_chunk : (nat64, blob) -> (Result_5);
+  put_chunk : (nat64, blob) -> (Result_4);
   release_info : () -> (opt ReleaseInfo) query;
   // Admin: make a committed upload the release that new personal canisters get.
-  release_set : (nat64, text) -> (Result_9);
+  release_set : (nat64, text) -> (Result_8);
   // The released wasm, for owners who upgrade their canister themselves.
   // Check it against `release_info().sha256_hex` before installing.
-  release_wasm : () -> (Result_10) query;
+  release_wasm : () -> (Result_9) query;
   remove_admin : (principal) -> (Result);
   set_allowlist : (opt vec principal) -> (Result);
   // ===== Admin endpoints =====
@@ -155,9 +130,9 @@ service : (opt InitArg) -> {
   top_up_cap_set : (principal, opt nat) -> (Result);
   // Check one owner's canister now and top it up if needed.
   // For admins, and for the owner (the monthly cap applies either way).
-  top_up_check : (principal) -> (Result_11);
+  top_up_check : (principal) -> (Result_10);
   // Admin: check every ready canister now. The daily timer does the same.
-  top_up_check_all : () -> (Result_12);
+  top_up_check_all : () -> (Result_11);
   top_up_config : () -> (TopUpConfig) query;
   // Admin: floor, target, default monthly cap, and whether the timer runs.
   top_up_config_set : (TopUpConfig) -> (Result);

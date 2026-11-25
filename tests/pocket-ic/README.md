@@ -22,7 +22,7 @@ The server bundled with dfx 0.31 is 11.0.0 and is refused.
 |---|---|---|
 | `backend_pocket_ic.rs` | 4 | The backend starts and answers; the signing key made at install is replaced by a random one, once, and kept across upgrades; a file is served only for a link the canister signed (no token, changed token, other file are refused); an upgrade from the old backend in `fixtures/` keeps the data |
 | `memories_pocket_ic.rs` | 5 | Memories: create and read, update, delete, idempotent creation, a stranger cannot delete |
-| `top_up_pocket_ic.rs` | 3 | Cycles top-up of personal canisters by the factory: who may read the cycles, floor and target, monthly cap and its reset in a new month, the hourly timer (also after a factory upgrade), a canister that stops reporting, rescue of a frozen canister, the factory's own minimum |
+| `top_up_pocket_ic.rs` | 4 | A stranger cannot spend the factory's cycles. Cycles top-up of personal canisters by the factory: who may read the cycles, floor and target, monthly cap and its reset in a new month, the hourly timer (also after a factory upgrade), a canister that stops reporting, rescue of a frozen canister, the factory's own minimum |
 
 `common.rs` holds what the three share: loading a wasm and installing a backend.
 

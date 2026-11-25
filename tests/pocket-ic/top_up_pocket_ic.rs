@@ -204,7 +204,6 @@ impl World {
 /// Init argument of the factory
 #[derive(CandidType)]
 struct FactoryInitArg {
-    max_canisters_per_caller: Option<u32>,
     min_factory_cycles: Option<u128>,
     allowlist: Option<Vec<Principal>>,
     admins: Option<Vec<Principal>>,
@@ -229,7 +228,6 @@ fn setup_with(factory_cycles: u128, min_factory_cycles: Option<u128>) -> World {
     let factory = pic.create_canister_with_settings(Some(admin), None);
     pic.add_cycles(factory, factory_cycles);
     let init = FactoryInitArg {
-        max_canisters_per_caller: None,
         min_factory_cycles,
         allowlist: None,
         admins: None,
@@ -521,6 +519,36 @@ fn the_factory_keeps_its_own_minimum() {
     assert_eq!(rep.sent, 0);
     assert!(rep.note.contains("factory low on cycles"), "{}", rep.note);
     println!("ok: the factory sends only what it holds above its minimum");
+}
+
+/// The factory holds the cycle pool. Only what an admin set up may spend it:
+/// a stranger can neither upload a wasm nor have a canister created.
+#[test]
+fn a_stranger_cannot_spend_the_factorys_cycles() {
+    let w = setup();
+    let before = w.pic.cycle_balance(w.factory);
+
+    let upload: Res<u64> = w
+        .update(w.factory, w.stranger, "create_upload", ())
+        .unwrap();
+    assert!(upload.unwrap_err().contains("Admin access required"));
+
+    let created: Res<PersonalCanister> = w
+        .update(w.factory, w.stranger, "create_personal_canister", ())
+        .unwrap();
+    assert!(created.unwrap_err().contains("no credit"));
+
+    // The endpoint that created a canister for any caller, with as many of
+    // the factory's cycles as the caller named, is gone
+    let gone = w.pic.update_call(
+        w.factory,
+        w.stranger,
+        "create_and_install_with",
+        encode_args(()).unwrap(),
+    );
+    assert!(gone.is_err());
+
+    assert_near(w.pic.cycle_balance(w.factory), before, "the factory's cycles");
 }
 
 #[test]

@@ -1,118 +1,41 @@
-# Canister Factory
+# Canister factory
 
-A production-ready canister factory for creating and managing user canisters on the Internet Computer.
+Gives each user who wants one a canister of their own, running the same
+backend code as the shared canister, and keeps it supplied with cycles. The
+model is Juno's: the factory creates the canister, installs a fixed release,
+hands it over and can no longer touch it.
 
-## Features
+Code: `src/lib.rs` (settings, admins, wasm upload), `src/personal.rs`
+(releases, credits, creation, registry), `src/top_up.rs` (cycles).
 
-- 🔒 **Security**: Admin controls, allowlists, emergency stop
-- 📦 **Chunked Uploads**: Handle large WASM files efficiently
-- ✅ **Hash Verification**: SHA-256 integrity checking
-- 🔄 **Multiple Install Modes**: Install, Reinstall, Upgrade
-- 📊 **Statistics & Monitoring**: Track usage and health
-- 🧹 **Automatic Cleanup**: TTL-based upload expiration
-- 💰 **Cycles Management**: Configurable balance limits
-- 🛡️ **Rate Limiting**: Per-caller quotas
+## How a personal canister comes to be
 
-## Quick Start
-
-### 1. Deploy the Factory
-
-```bash
-# Deploy locally
-dfx deploy canister_factory --argument '(
-  opt record {
-    max_canisters_per_caller = opt (50 : nat32);
-    min_factory_cycles = opt (10_000_000_000_000 : nat);
-    admins = opt vec { principal "your-admin-principal" };
-    max_upload_size = opt (100_000_000 : nat64);
-    upload_ttl_seconds = opt (86400 : nat64);
-  }
-)'
-
-# Or with defaults
-dfx deploy canister_factory
-```
-
-### 2. Upload WASM File
+1. **An admin releases the backend wasm.** `scripts/factory-release.sh <version> [network]`
+   builds the backend, uploads it in chunks and calls `release_set`. New
+   canisters always get this release; nobody else can upload code.
+2. **An admin gives a user a credit:** `personal_credit_set(principal, 1)`. The
+   web app's server does this after sign-up or payment. Without a credit there
+   is no canister: creating one costs the factory real cycles.
+3. **The user calls `create_personal_canister`.** The factory creates a
+   canister with itself and the user as controllers, installs the release with
+   the user as owner, then removes itself. The user is the only controller.
+   The credit is used up when the canister exists. A failed step is resumed by
+   calling again; no second canister is created.
+4. **Upgrades are pulled by the owner:** download `release_wasm`, compare with
+   `release_info().sha256_hex`, install with their own identity. The factory
+   cannot push code.
 
 ```bash
-# Create upload session
-dfx canister call canister_factory create_upload
-
-# Upload chunks (repeat for each chunk)
-dfx canister call canister_factory put_chunk '(1, blob "wasm_chunk_data")'
-
-# Commit with hash
-dfx canister call canister_factory commit_upload '(
-  1,
-  record { expected_sha256_hex = "your_calculated_sha256_hex" }
-)'
+dfx canister call canister_factory personal_credit_set '(principal "<user>", 1)'
+dfx canister call canister_factory create_personal_canister        # as the user
+dfx canister call canister_factory my_personal_canister            # as the user
+dfx canister call canister_factory personal_canisters_list         # admin: all of them
 ```
 
-### 3. Create User Canister
+On a local test network creation can be opened to everybody with
+`personal_open_set '(true)'`. Never on mainnet.
 
-```bash
-dfx canister call canister_factory create_and_install_with '(
-  record {
-    upload_id = 1 : nat64;
-    extra_controllers = null;
-    init_arg = blob "candid_encoded_init_args";
-    mode = variant { Install };
-    cycles = 1_000_000_000_000 : nat;
-    handoff = true;
-  }
-)'
-```
-
-## Configuration Options
-
-| Parameter                  | Type            | Default  | Description                   |
-| -------------------------- | --------------- | -------- | ----------------------------- |
-| `max_canisters_per_caller` | `nat32`         | 100      | Max canisters per user        |
-| `min_factory_cycles`       | `nat`           | 5T       | Min cycles to keep in factory |
-| `allowlist`                | `vec principal` | None     | Allowed callers (if set)      |
-| `admins`                   | `vec principal` | Deployer | Factory administrators        |
-| `max_upload_size`          | `nat64`         | 50MB     | Max WASM file size            |
-| `upload_ttl_seconds`       | `nat64`         | 24h      | Upload expiration time        |
-
-## Admin Functions
-
-```bash
-# Emergency stop
-dfx canister call canister_factory set_emergency_stop '(true)'
-
-# Update allowlist
-dfx canister call canister_factory set_allowlist '(
-  opt vec {
-    principal "allowed-user-1";
-    principal "allowed-user-2";
-  }
-)'
-
-# Add admin
-dfx canister call canister_factory add_admin '(principal "new-admin")'
-
-# Manual cleanup
-dfx canister call canister_factory cleanup_expired_uploads_manual
-```
-
-## Monitoring
-
-```bash
-# Check factory health
-dfx canister call canister_factory health_check
-
-# Get factory statistics
-dfx canister call canister_factory get_factory_stats
-
-# Check personal usage
-dfx canister call canister_factory my_stats
-
-# View configuration
-dfx canister call canister_factory get_config
-```
-
-## Cycles top-up of personal canisters
+## Cycles top-up
 
 After the hand-off the factory is not a controller of a personal canister. It
 can still keep it alive: the canister reports its cycles to the factory that
@@ -153,92 +76,43 @@ answer the factory. Their owner names it once:
 dfx canister call <personal canister> personal_factory_set '(opt principal "<factory>")'
 ```
 
-Tests: `tests/pocket-ic/top_up_pocket_ic.rs` (timer, month change, upgrade,
-frozen canister, on PocketIC) and `tests/backend/personal/test_top_up.sh` (on
-the local replica).
+## Settings
 
-## Integration Example
+Install argument (all optional):
 
-For your family memory app, here's how to integrate the factory:
+| Field | Default | Meaning |
+|---|---|---|
+| `admins` | the deployer | Who may release, give credits and change settings |
+| `min_factory_cycles` | 5T | The factory creates and tops up only while it holds more than this |
+| `allowlist` | none | If set, only these principals may call `create_personal_canister` (they still need a credit) |
+| `max_upload_size` | 50 MB | Largest wasm an admin can upload |
+| `upload_ttl_seconds` | 24 h | An upload not turned into a release is dropped after this |
 
-```rust
-// In your main backend canister
-use candid::{encode_one, Principal};
+Later, by an admin: `add_admin`, `remove_admin`, `set_allowlist`,
+`set_emergency_stop` (refuses every creation), `set_personal_canister_cycles`
+(what a new canister starts with, default 2T), `cleanup_expired_uploads_manual`.
 
-pub async fn create_user_canister(
-    factory_id: Principal,
-    user_profile: UserProfile,
-) -> Result<Principal, String> {
-    // 1. Upload user canister WASM (done once, reuse upload_id)
-    let upload_id = 1u64; // Pre-uploaded user canister WASM
+Open queries: `get_config`, `get_factory_stats`, `health_check` (says whether the
+balance is above the minimum), `version`, `release_info`.
 
-    // 2. Prepare init args for user canister
-    let init_arg = encode_one(UserCanisterInit {
-        owner: ic_cdk::caller(),
-        profile: user_profile,
-    })?;
+## What spends the factory's cycles
 
-    // 3. Create the canister
-    let request = CreateInstallRequest {
-        upload_id,
-        extra_controllers: None,
-        init_arg,
-        mode: Mode::Install,
-        cycles: 1_000_000_000_000, // 1T cycles
-        handoff: true,
-    };
+Only two things, both set up by an admin: creating a canister for a principal
+with a credit, and topping up a canister in the registry within its cap.
+There used to be a generic endpoint (`create_and_install_with`) that created a
+canister for any caller with as many cycles as the caller named; it was
+removed in November 2026.
 
-    let response: CreateInstallResponse = ic_cdk::call(
-        factory_id,
-        "create_and_install_with",
-        (request,)
-    ).await?;
+Keep the factory funded: at 2T per new canister and up to 3T per owner per
+month, a hundred owners can cost 300T a month in the worst case.
 
-    Ok(response.canister_id)
-}
-```
-
-## Security Best Practices
-
-1. **Set Admin List**: Always configure admins on deployment
-2. **Use Allowlists**: For controlled beta releases
-3. **Monitor Cycles**: Set appropriate minimum balance
-4. **Regular Cleanup**: Monitor upload storage usage
-5. **Emergency Stop**: Have a plan for emergency situations
-
-## Error Handling
-
-Common errors and solutions:
-
-- `"Factory low on cycles"`: Top up factory canister
-- `"Per-caller canister limit reached"`: Increase limit or clean up old canisters
-- `"Upload too large"`: Check file size limits
-- `"hash mismatch"`: Verify SHA-256 calculation
-- `"Caller not in allowlist"`: Add caller to allowlist
-
-## Development
+## Tests
 
 ```bash
-# Build
-cargo build --target wasm32-unknown-unknown --release
-
-# Test
-cargo test
-
-# Generate Candid
-dfx generate canister_factory
+cargo test -p canister_factory                      # the decisions, saved-state compatibility
+tests/pocket-ic/run_pocket_ic_tests.sh top_up       # factory and personal canister on PocketIC
+tests/backend/personal/                             # shell tests against a local replica
 ```
 
-## Production Deployment
-
-For mainnet deployment:
-
-1. Set proper admin principals
-2. Configure reasonable quotas
-3. Fund with sufficient cycles
-4. Set up monitoring alerts
-5. Plan upgrade procedures
-
-## License
-
-This canister factory is part of the Futura family memory sharing application.
+`canister_factory.did` is written by `scripts/check-did.sh --fix` from the
+code's own export; do not edit it by hand.

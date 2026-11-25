@@ -4,8 +4,8 @@ Three layers, from fast to slow. State of 25 November 2026.
 
 | Layer | Where | Needs | Run | Count |
 |---|---|---|---|---|
-| Unit tests | next to the code, `src/backend`, `src/canister_factory` | nothing | `cargo test -p backend -p canister_factory` | 149 + 19 |
-| PocketIC tests | `tests/pocket-ic/` | the built wasms | `tests/pocket-ic/run_pocket_ic_tests.sh` | 12 |
+| Unit tests | next to the code, `src/backend`, `src/canister_factory` | nothing | `cargo test -p backend -p canister_factory` | 149 + 20 |
+| PocketIC tests | `tests/pocket-ic/` | the built wasms | `tests/pocket-ic/run_pocket_ic_tests.sh` | 13 |
 | Shell tests | `tests/backend/` | a local dfx replica with the canisters deployed | `tests/backend/run_all_tests.sh` | 22 |
 
 ## Unit tests

@@ -1,16 +1,5 @@
 use candid::{CandidType, Principal};
 use ic_cdk::api::msg_caller;
-use ic_cdk::call::Call;
-use ic_cdk::management_canister::{
-    install_code,
-    update_settings,
-    CanisterId, // type alias
-    CanisterInstallMode,
-    CanisterSettings,
-    CreateCanisterArgs,
-    InstallCodeArgs,
-    UpdateSettingsArgs,
-};
 use ic_cdk_macros::{init, post_upgrade, pre_upgrade, query, update};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -31,8 +20,6 @@ const DEFAULT_MAX_UPLOAD_SIZE: u64 = 50_000_000; // 50MB max WASM size
 
 #[derive(CandidType, Deserialize)]
 pub struct InitArg {
-    /// Optional per-caller cap (default 100).
-    pub max_canisters_per_caller: Option<u32>,
     /// Optional minimal cycles balance to keep in factory (default 5T).
     pub min_factory_cycles: Option<u128>,
     /// Optional allowed callers; if present, only these may use the factory.
@@ -54,42 +41,6 @@ pub struct UploadInfo {
     pub created_at_time_ns: u64,
 }
 
-#[derive(CandidType, Serialize, Deserialize, Default, Clone)]
-pub struct CallerStats {
-    pub created_count: u32,
-    pub last_created_at: Option<u64>,
-}
-
-#[derive(CandidType, Serialize, Deserialize)]
-pub enum Mode {
-    Install,
-    Reinstall,
-    Upgrade,
-}
-
-#[derive(CandidType, Serialize, Deserialize)]
-pub struct CreateInstallRequest {
-    /// Upload id previously created by `create_upload`.
-    pub upload_id: u64,
-    /// Optional extra controllers to add along with the caller.
-    pub extra_controllers: Option<Vec<Principal>>,
-    /// Candid-encoded init arg expected by the target canister (may be empty).
-    pub init_arg: Vec<u8>,
-    /// Install mode.
-    pub mode: Mode,
-    /// Attach this many cycles to `create_canister`.
-    pub cycles: u128,
-    /// If true, hand off control exclusively to caller (+extras) after install.
-    pub handoff: bool,
-}
-
-#[derive(CandidType, Serialize, Deserialize)]
-pub struct CreateInstallResponse {
-    pub canister_id: Principal,
-    pub module_hash_hex: String,
-    pub cycles_used: u128,
-}
-
 #[derive(CandidType, Serialize, Deserialize)]
 pub struct UploadCommit {
     /// Expected SHA-256 of the concatenated wasm.
@@ -102,14 +53,12 @@ pub struct FactoryStats {
     pub total_uploads: u64,
     pub active_uploads: u64,
     pub factory_cycles_balance: u128,
-    pub unique_callers: u64,
 }
 
 /// ===== Internal stable state =====
 
 #[derive(CandidType, Serialize, Deserialize, Clone)]
 struct Config {
-    max_canisters_per_caller: u32,
     min_factory_cycles: u128,
     max_upload_size: u64,
     upload_ttl_ns: u64,
@@ -122,7 +71,6 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            max_canisters_per_caller: 100,
             min_factory_cycles: 5_000_000_000_000, // 5T cycles
             max_upload_size: DEFAULT_MAX_UPLOAD_SIZE,
             upload_ttl_ns: DEFAULT_UPLOAD_TTL_NS,
@@ -138,7 +86,6 @@ impl Default for Config {
 struct State {
     cfg: Config,
     uploads: BTreeMap<u64, UploadInfo>,
-    caller_stats: BTreeMap<Principal, CallerStats>,
     total_canisters_created: u64,
     /// Releases and the per-user registry (personal.rs). Optional so that
     /// state saved before it existed still restores.
@@ -199,25 +146,6 @@ fn bump_upload_id() -> u64 {
     })
 }
 
-fn caller_stats_ok(caller: Principal) -> Result<(), String> {
-    STATE.with(|s| {
-        let st = s.borrow();
-        let used = st
-            .caller_stats
-            .get(&caller)
-            .map(|x| x.created_count)
-            .unwrap_or(0);
-        if used >= st.cfg.max_canisters_per_caller {
-            Err(format!(
-                "Per-caller canister limit reached: {}/{}",
-                used, st.cfg.max_canisters_per_caller
-            ))
-        } else {
-            Ok(())
-        }
-    })
-}
-
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(bytes);
@@ -250,9 +178,6 @@ fn cleanup_expired_uploads() -> u32 {
 fn init(arg: Option<InitArg>) {
     let mut st = STATE.with(|s| s.borrow().clone());
     if let Some(a) = arg {
-        if let Some(m) = a.max_canisters_per_caller {
-            st.cfg.max_canisters_per_caller = m;
-        }
         if let Some(m) = a.min_factory_cycles {
             st.cfg.min_factory_cycles = m;
         }
@@ -301,7 +226,9 @@ fn post_upgrade() {
 #[update]
 async fn create_upload() -> Result<u64, String> {
     let caller = msg_caller();
-    must_allowed(caller)?;
+    // Uploads exist to release a wasm (personal.rs): admins only. An open
+    // upload API lets anybody fill the factory's memory.
+    must_be_admin(caller)?;
     must_have_cycles_left()?;
 
     // Clean up expired uploads opportunistically
@@ -416,145 +343,6 @@ async fn clear_upload(upload_id: u64) -> Result<(), String> {
     })
 }
 
-/// ===== Factory: create + install (supports Install/Reinstall/Upgrade) =====
-
-#[update]
-async fn create_and_install_with(
-    req: CreateInstallRequest,
-) -> Result<CreateInstallResponse, String> {
-    let caller = msg_caller();
-    must_allowed(caller)?;
-    must_have_cycles_left()?;
-    caller_stats_ok(caller)?;
-
-    let initial_balance = ic_cdk::api::canister_cycle_balance();
-
-    // Retrieve and assemble wasm
-    let (wasm_bytes, module_hash_hex) = STATE.with(|s| {
-        let st = s.borrow();
-        let up = st
-            .uploads
-            .get(&req.upload_id)
-            .ok_or_else(|| "upload_id not found".to_string())?;
-        if up.owner != caller {
-            return Err("not owner of upload".into());
-        }
-        if up.committed_hash.is_none() {
-            return Err("upload not committed".into());
-        }
-        let mut buf = Vec::with_capacity(up.total_len as usize);
-        for c in &up.chunks {
-            buf.extend_from_slice(c);
-        }
-        let hex = sha256_hex(&buf);
-        Ok::<(Vec<u8>, String), String>((buf, hex))
-    })?;
-
-    // Create the canister with caller as controller (+ optional extras)
-    let mut controllers = vec![caller];
-    if let Some(mut extras) = req.extra_controllers.clone() {
-        controllers.append(&mut extras);
-    }
-
-    let create_args = CreateCanisterArgs {
-        settings: Some(CanisterSettings {
-            controllers: Some(controllers.clone()),
-            compute_allocation: None,
-            memory_allocation: None,
-            freezing_threshold: None,
-            reserved_cycles_limit: None,
-            log_visibility: None,
-            wasm_memory_limit: None,
-            wasm_memory_threshold: None,
-        }),
-    };
-
-    let res = Call::unbounded_wait(Principal::management_canister(), "create_canister")
-        .with_arg(&create_args)
-        .with_cycles(req.cycles)
-        .await
-        .map_err(|e| format!("create_canister failed: {e:?}"))?;
-
-    // The response is decoded using .candid::<T>()
-    // The reply is `record { canister_id : principal }`
-    let canister_id: CanisterId = res
-        .candid::<ic_cdk::management_canister::CreateCanisterResult>()
-        .map_err(|e| format!("Candid decode failed: {e:?}"))?
-        .canister_id;
-
-    // Install/reinstall/upgrade
-    let mode = match req.mode {
-        Mode::Install => CanisterInstallMode::Install,
-        Mode::Reinstall => CanisterInstallMode::Reinstall,
-        Mode::Upgrade => CanisterInstallMode::Upgrade(None),
-    };
-
-    let install_args = InstallCodeArgs {
-        mode,
-        canister_id,
-        wasm_module: wasm_bytes,
-        arg: req.init_arg.clone(),
-    };
-
-    // install_code(install_args)
-    //     .await
-    //     .map_err(|(code, msg)| format!("install_code failed: {code:?}: {msg}"))?;
-
-    // install_code(&install_args)
-    //     .await
-    //     .map_err(|(code, msg)| format!("install_code failed: {code:?}: {msg}"))?;
-
-    install_code(&install_args)
-        .await
-        .map_err(|e| format!("install_code failed: {e:?}"))?;
-
-    // Optional handoff: ensure only caller (+extras) remain as controllers.
-    if req.handoff {
-        let upd = UpdateSettingsArgs {
-            canister_id,
-            settings: CanisterSettings {
-                controllers: Some(controllers),
-                compute_allocation: None,
-                memory_allocation: None,
-                freezing_threshold: None,
-                reserved_cycles_limit: None,
-                log_visibility: None,
-                wasm_memory_limit: None,
-                wasm_memory_threshold: None,
-            },
-        };
-        update_settings(&upd)
-            .await
-            .map_err(|e| format!("update_settings failed: {e:?}"))?;
-    }
-
-    let final_balance = ic_cdk::api::canister_cycle_balance();
-    let cycles_used = initial_balance.saturating_sub(final_balance);
-
-    // Bump caller stats, clean upload (to free memory)
-    STATE.with(|s| {
-        let mut st = s.borrow_mut();
-        st.caller_stats
-            .entry(caller)
-            .and_modify(|c| {
-                c.created_count += 1;
-                c.last_created_at = Some(ic_cdk::api::time());
-            })
-            .or_insert_with(|| CallerStats {
-                created_count: 1,
-                last_created_at: Some(ic_cdk::api::time()),
-            });
-        st.uploads.remove(&req.upload_id);
-        st.total_canisters_created += 1;
-    });
-
-    Ok(CreateInstallResponse {
-        canister_id,
-        module_hash_hex,
-        cycles_used,
-    })
-}
-
 /// ===== Admin endpoints =====
 
 #[update]
@@ -623,18 +411,6 @@ fn get_config() -> Config {
 }
 
 #[query]
-fn my_stats() -> CallerStats {
-    let caller = msg_caller();
-    STATE.with(|s| {
-        s.borrow()
-            .caller_stats
-            .get(&caller)
-            .cloned()
-            .unwrap_or_default()
-    })
-}
-
-#[query]
 fn get_factory_stats() -> FactoryStats {
     STATE.with(|s| {
         let st = s.borrow();
@@ -643,7 +419,6 @@ fn get_factory_stats() -> FactoryStats {
             total_uploads: st.cfg.next_upload_id - 1,
             active_uploads: st.uploads.len() as u64,
             factory_cycles_balance: ic_cdk::api::canister_cycle_balance(),
-            unique_callers: st.caller_stats.len() as u64,
         }
     })
 }
@@ -698,6 +473,69 @@ fn export_candid() -> String {
 mod tests {
     use super::*;
 
+    /// State as the factory saved it while it still had the generic
+    /// create-and-install endpoint: two fields more than today.
+    #[test]
+    fn state_saved_by_the_older_factory_still_loads() {
+        #[derive(CandidType, Serialize)]
+        struct OldCallerStats {
+            created_count: u32,
+            last_created_at: Option<u64>,
+        }
+        #[derive(CandidType, Serialize)]
+        struct OldConfig {
+            max_canisters_per_caller: u32,
+            min_factory_cycles: u128,
+            max_upload_size: u64,
+            upload_ttl_ns: u64,
+            allowlist: Option<BTreeSet<Principal>>,
+            admins: BTreeSet<Principal>,
+            next_upload_id: u64,
+            emergency_stop: bool,
+        }
+        #[derive(CandidType, Serialize)]
+        struct OldState {
+            cfg: OldConfig,
+            uploads: BTreeMap<u64, UploadInfo>,
+            caller_stats: BTreeMap<Principal, OldCallerStats>,
+            total_canisters_created: u64,
+            personal: Option<personal::PersonalState>,
+        }
+        let admin = Principal::from_slice(&[1; 29]);
+        let old = OldState {
+            cfg: OldConfig {
+                max_canisters_per_caller: 100,
+                min_factory_cycles: 7,
+                max_upload_size: 8,
+                upload_ttl_ns: 9,
+                allowlist: None,
+                admins: [admin].into(),
+                next_upload_id: 4,
+                emergency_stop: true,
+            },
+            uploads: BTreeMap::new(),
+            caller_stats: [(
+                admin,
+                OldCallerStats {
+                    created_count: 2,
+                    last_created_at: Some(5),
+                },
+            )]
+            .into(),
+            total_canisters_created: 3,
+            personal: Some(personal::PersonalState::default()),
+        };
+        // The same encoding stable_save uses: a tuple of one
+        let bytes = candid::encode_args((old,)).unwrap();
+        let (new,): (State,) = candid::decode_args(&bytes).unwrap();
+        assert_eq!(new.cfg.min_factory_cycles, 7);
+        assert_eq!(new.cfg.next_upload_id, 4);
+        assert!(new.cfg.emergency_stop);
+        assert!(new.cfg.admins.contains(&admin));
+        assert_eq!(new.total_canisters_created, 3);
+        assert!(new.personal.is_some());
+    }
+
     /// Run with `-- --ignored --nocapture` to print the interface the code
     /// exports, for comparing with the hand-kept canister_factory.did
     #[test]
@@ -717,7 +555,6 @@ mod tests {
     #[test]
     fn config_defaults() {
         let config = Config::default();
-        assert_eq!(config.max_canisters_per_caller, 100);
         assert_eq!(config.min_factory_cycles, 5_000_000_000_000);
         assert_eq!(config.max_upload_size, DEFAULT_MAX_UPLOAD_SIZE);
         assert!(!config.emergency_stop);

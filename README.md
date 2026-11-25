@@ -9,7 +9,7 @@ Futura combines **ICP** and **blockchain technologies** to safeguard the most me
 ## Status (November 2026)
 
 - **Mainnet:** backend canister `izhgj-eiaaa-aaaaj-a2f7q-cai` is live. The fixes of November 2026 (memory list paging and tokens, gallery visibility, gallery items, Neon binding, inline asset links) are in `main` but **not yet deployed** to mainnet.
-- **Tests:** 149 + 19 Rust unit tests and 12 PocketIC tests pass (also run by CI); 22 integration scripts run against a local network. See [tests/README.md](tests/README.md).
+- **Tests:** 149 + 20 Rust unit tests and 13 PocketIC tests pass (also run by CI); 22 integration scripts run against a local network. See [tests/README.md](tests/README.md).
 - **Tooling:** dfx is pinned to 0.31.0 in `dfx.json` (0.32.0's local network fails to start). dfx is deprecated in favour of `icp-cli`; the move is still to do.
 - **Analysis:** where the project stands and the state of ICP and blockchain are on the desk of the web app: [stand](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/stand.md), [ICP and blockchain](https://github.com/552020/futura_alpha_nextjs/blob/main/docs/desk/icp-and-blockchain.md).
 
@@ -169,8 +169,8 @@ Lives in the web app repository ([futura_alpha_nextjs](https://github.com/552020
 Three layers; details in [tests/README.md](tests/README.md).
 
 ```bash
-cargo test -p backend -p canister_factory     # unit tests, no network: 149 + 19
-tests/pocket-ic/run_pocket_ic_tests.sh        # the real wasms on PocketIC: 12 tests
+cargo test -p backend -p canister_factory     # unit tests, no network: 149 + 20
+tests/pocket-ic/run_pocket_ic_tests.sh        # the real wasms on PocketIC: 13 tests
 cd tests/backend && ./run_all_tests.sh        # 22 scripts against a local dfx replica
 ```
 
