@@ -328,6 +328,8 @@ async fn check_owner(owner: Principal) -> Result<TopUpReport, String> {
     // 2) decide and book before the deposit, so a second call sees it
     let month = month_of(now);
     let cap = record.monthly_cap.unwrap_or(cfg.monthly_cap);
+    // Read before with_personal: both borrow the factory state
+    let spare = factory_spare();
     let decision = with_personal(|p| {
         let e = p.canisters.get_mut(&owner).ok_or("entry vanished")?;
         let r = e.top_up.get_or_insert_with(TopUpRecord::default);
@@ -340,7 +342,7 @@ async fn check_owner(owner: Principal) -> Result<TopUpReport, String> {
             cfg.target,
             cap,
             sent_in_month(r, month),
-            factory_spare(),
+            spare,
         );
         if let Decision::Send(cycles) = d {
             book(r, cycles, month);

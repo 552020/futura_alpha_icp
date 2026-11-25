@@ -195,25 +195,32 @@ pub fn ping(
 ) -> std::result::Result<Vec<crate::types::MemoryPresenceResult>, Error> {
     let caller = PersonRef::from_caller();
 
-    let results: Vec<crate::types::MemoryPresenceResult> = memory_ids
-        .iter()
-        .map(|memory_id| {
-            // Check if memory exists in any of the caller's accessible capsules
-            let exists = with_capsule_store(|store| {
-                let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-                all_capsules.items.iter().any(|capsule| {
-                    // Check if caller has read access to this capsule
-                    capsule.has_read_access(&caller) &&
-                        // Check if memory exists in this capsule
-                        capsule.memories.contains_key(memory_id)
-                })
-            });
+    // Read the capsules once, not once per id: with many capsules that ran
+    // into the instruction limit for a list of 50 ids.
+    let present: Vec<bool> = with_capsule_store(|store| {
+        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
+        let readable: Vec<_> = all_capsules
+            .items
+            .iter()
+            .filter(|capsule| capsule.has_read_access(&caller))
+            .collect();
+        memory_ids
+            .iter()
+            .map(|memory_id| {
+                readable
+                    .iter()
+                    .any(|capsule| capsule.memories.contains_key(memory_id))
+            })
+            .collect()
+    });
 
-            crate::types::MemoryPresenceResult {
-                memory_id: memory_id.clone(),
-                metadata_present: exists,
-                asset_present: exists, // For now, assume if metadata exists, asset exists
-            }
+    let results: Vec<crate::types::MemoryPresenceResult> = memory_ids
+        .into_iter()
+        .zip(present)
+        .map(|(memory_id, exists)| crate::types::MemoryPresenceResult {
+            memory_id,
+            metadata_present: exists,
+            asset_present: exists, // For now, assume if metadata exists, asset exists
         })
         .collect();
 

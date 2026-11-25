@@ -30,6 +30,7 @@ TEST_INFO=(
     "test_legacy_inheritance.sh"
     "test_upgrade_keeps_files.sh"
     "test_personal_canister.sh"
+    "test_top_up.sh"
 )
 
 # Test paths (indexed by test number)
@@ -57,6 +58,7 @@ TEST_PATHS=(
     "legacy/test_legacy_inheritance.sh"
     "general/test_upgrade_keeps_files.sh"
     "personal/test_personal_canister.sh"
+    "personal/test_top_up.sh"
 )
 
 # Test descriptions (indexed by test number)
@@ -84,6 +86,7 @@ TEST_DESCRIPTIONS=(
     "Test inheritance: trustees, death confirmation, heir access"
     "Test that an upgrade keeps uploaded files"
     "Test personal canisters: factory creates, hands off, owner upgrades"
+    "Test cycles top-up of personal canisters: floor, monthly cap"
 )
 
 # Test categories (indexed by test number)
@@ -110,6 +113,7 @@ TEST_CATEGORIES=(
     "canister-capsule"
     "legacy"
     "general"
+    "personal"
     "personal"
 )
 
