@@ -1414,7 +1414,7 @@ fn memories_list_assets(
 #[ic_cdk::init]
 async fn init(arg: Option<personal::BackendInitArg>) {
     // Personal mode if the factory passed an owner; shared mode otherwise
-    personal::init(arg);
+    personal::init(arg, ic_cdk::api::msg_caller());
 
     // Initialize HTTP secret store
     http::secret_store::init().await;
@@ -1495,6 +1495,29 @@ fn inspect_message() {
 #[ic_cdk::query]
 fn canister_mode() -> personal::CanisterMode {
     personal::mode()
+}
+
+fn must_read_cycles() {
+    let caller = ic_cdk::api::msg_caller();
+    if !personal::may_read_cycles(&caller, ic_cdk::api::is_controller(&caller)) {
+        ic_cdk::trap("cycles are shown to the owner and the factory only");
+    }
+}
+
+/// All cycles this canister holds, including the part the network keeps
+/// back as the freezing reserve. For the owner and the factory.
+#[ic_cdk::query]
+fn cycles_balance() -> u128 {
+    must_read_cycles();
+    ic_cdk::api::canister_cycle_balance()
+}
+
+/// The cycles this canister can still spend before it freezes: the balance
+/// above the freezing reserve. This is what the factory tops up against.
+#[ic_cdk::query]
+fn cycles_liquid_balance() -> u128 {
+    must_read_cycles();
+    ic_cdk::api::canister_liquid_cycle_balance()
 }
 
 // ============================================================================

@@ -37,6 +37,8 @@ pub const MEM_ADMINS: MemoryId = MemoryId::new(9);
 
 // Personal-canister owner (personal.rs); empty in shared mode
 pub const MEM_PERSONAL_OWNER: MemoryId = MemoryId::new(10);
+/// Personal mode: the principal that installed this canister (its factory)
+pub const MEM_PERSONAL_FACTORY: MemoryId = MemoryId::new(12);
 
 // Personal-canister creation state, saved across upgrades (upgrade.rs)
 pub const MEM_MIGRATION_STATE: MemoryId = MemoryId::new(11);
