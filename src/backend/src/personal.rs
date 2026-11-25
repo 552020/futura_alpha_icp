@@ -84,6 +84,22 @@ pub fn check_can_create_capsule(caller: &Principal) -> Result<(), Error> {
     }
 }
 
+/// Updates that people other than the owner may send to a personal canister:
+/// trustees confirming or withdrawing, and the sign-in handshake.
+const OPEN_UPDATES: [&str; 3] = [
+    "legacy_confirm_death",
+    "legacy_withdraw_confirmation",
+    "register_with_nonce",
+];
+
+/// Should an update call from outside be accepted at all?
+pub fn accepts_update(caller: &Principal, method: &str) -> bool {
+    match owner() {
+        None => true, // shared canister: every endpoint does its own checks
+        Some(owner) => &owner == caller || OPEN_UPDATES.contains(&method),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,6 +118,26 @@ mod tests {
         assert_eq!(mode(), CanisterMode::Personal { owner: owner_p });
         assert!(check_can_create_capsule(&owner_p).is_ok());
         assert_eq!(check_can_create_capsule(&other), Err(Error::Unauthorized));
+        set_owner(None);
+    }
+
+    #[test]
+    fn a_personal_canister_accepts_updates_from_its_owner_only() {
+        let (owner_p, other) = (
+            Principal::from_slice(&[1; 29]),
+            Principal::from_slice(&[2; 29]),
+        );
+        set_owner(None);
+        assert!(accepts_update(&other, "memories_create"));
+
+        set_owner(Some(owner_p));
+        assert!(accepts_update(&owner_p, "memories_create"));
+        assert!(!accepts_update(&other, "memories_create"));
+        assert!(!accepts_update(&other, "uploads_put_chunk"));
+        assert!(!accepts_update(&Principal::anonymous(), "capsules_create"));
+        // what a trustee needs
+        assert!(accepts_update(&other, "legacy_confirm_death"));
+        assert!(accepts_update(&other, "legacy_withdraw_confirmation"));
         set_owner(None);
     }
 }

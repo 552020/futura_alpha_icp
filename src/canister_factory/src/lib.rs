@@ -284,7 +284,10 @@ fn pre_upgrade() {
 
 #[post_upgrade]
 fn post_upgrade() {
-    let (st,): (State,) = ic_cdk::storage::stable_restore().unwrap_or_default();
+    // Trap instead of starting empty: a failed upgrade is rolled back by the
+    // network, an empty state would forget every canister and the release.
+    let (st,): (State,) = ic_cdk::storage::stable_restore()
+        .expect("post_upgrade: cannot read the saved state; upgrade rolled back");
     STATE.with(|s| *s.borrow_mut() = st);
 }
 

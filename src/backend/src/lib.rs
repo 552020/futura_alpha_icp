@@ -649,6 +649,17 @@ fn uploads_begin(capsule_id: CapsuleId, expected_chunks: u32, idem: String) -> R
     }
 }
 
+/// Only the caller who began an upload session may feed or finish it. Checked
+/// before the rolling hash is touched, so a stranger who knows a session id
+/// cannot corrupt or cancel somebody else's upload.
+fn require_session_owner(session_id: u64) -> std::result::Result<(), Error> {
+    let session = upload::service::session_caller(session_id).ok_or(Error::NotFound)?;
+    if session != ic_cdk::api::msg_caller() {
+        return Err(Error::NotFound);
+    }
+    Ok(())
+}
+
 /// Upload a chunk for an active session
 #[ic_cdk::update]
 async fn uploads_put_chunk(
@@ -656,6 +667,7 @@ async fn uploads_put_chunk(
     chunk_idx: u32,
     bytes: Vec<u8>,
 ) -> std::result::Result<(), Error> {
+    require_session_owner(session_id)?;
     // Breadcrumb logging: log what we receive from Candid
     let hex = bytes
         .iter()
@@ -694,6 +706,9 @@ async fn uploads_put_chunk(
 /// Commit chunks to create final memory
 #[ic_cdk::update]
 async fn uploads_finish(session_id: u64, expected_sha256: Vec<u8>, total_len: u64) -> Result15 {
+    if let Err(e) = require_session_owner(session_id) {
+        return Result15::Err(e);
+    }
     ic_cdk::println!("FINISH_START sid={} expected_len={}", session_id, total_len);
 
     // Verify rolling hash FIRST (before any other operations)
@@ -791,15 +806,6 @@ async fn uploads_abort(session_id: u64) -> std::result::Result<(), Error> {
 // SESSION MANAGEMENT ENDPOINTS (Development/Debug)
 // ============================================================================
 
-/// Clear all upload sessions (development/debugging only)
-#[ic_cdk::update]
-fn sessions_clear_all() -> std::result::Result<String, Error> {
-    memory::with_capsule_store_mut(|_store| {
-        upload::service::clear_all_sessions();
-        Ok("All sessions cleared".to_string())
-    })
-}
-
 /// Get session statistics for monitoring
 #[ic_cdk::query]
 fn sessions_stats() -> std::result::Result<String, Error> {
@@ -854,19 +860,6 @@ fn sessions_cleanup_expired() -> std::result::Result<String, Error> {
 // EMERGENCY RECOVERY ENDPOINTS (Admin Only)
 // ============================================================================
 
-/// Emergency function to clear all stable memory data
-/// WARNING: This will delete all stored data and should only be used for recovery
-#[ic_cdk::update]
-fn clear_all_stable_memory() -> std::result::Result<(), Error> {
-    // Only allow admin to call this
-    let caller = ic_cdk::api::msg_caller();
-    if !admin::is_admin(&caller) {
-        return Err(types::Error::Unauthorized);
-    }
-
-    memory::clear_all_stable_memory().map_err(types::Error::Internal)
-}
-
 // ============================================================================
 // CHUNKED ASSET UPLOAD ENDPOINTS - ICP Canister API
 // ============================================================================
@@ -909,11 +902,34 @@ fn blob_get_meta(locator: String) -> std::result::Result<types::BlobMeta, Error>
     upload::blob_store::blob_get_meta(locator)
 }
 
+/// Does a capsule the caller may write to hold a memory that uses this blob?
+fn caller_owns_blob(blob_id: &str) -> bool {
+    let caller = types::PersonRef::from_caller();
+    with_capsule_store(|store| {
+        store
+            .paginate(None, u32::MAX, capsule_store::types::PaginationOrder::Asc)
+            .items
+            .iter()
+            .filter(|c| c.has_write_access(&caller))
+            .any(|c| {
+                c.memories.values().any(|m| {
+                    m.blob_internal_assets
+                        .iter()
+                        .any(|a| a.blob_ref.locator == blob_id)
+                })
+            })
+    })
+}
+
 /// Delete blob by ID (unified endpoint for all blob types)
 #[ic_cdk::update]
 fn blob_delete(blob_id: String) -> types::Result6 {
     // Determine blob type and handle accordingly
     if blob_id.starts_with("blob_") {
+        // Only for a blob that one of the caller's own capsules refers to
+        if !caller_owns_blob(&blob_id) {
+            return types::Result6::Err(Error::NotFound);
+        }
         // Internal blob (ICP blob store)
         match upload::blob_store::blob_delete(blob_id) {
             Ok(()) => types::Result6::Ok("Internal blob deleted successfully".to_string()),
@@ -940,44 +956,6 @@ fn blob_delete(blob_id: String) -> types::Result6 {
             blob_id
         )))
     }
-}
-
-/// Debug endpoint to upload chunk with base64 data (dev only)
-#[ic_cdk::update]
-async fn debug_put_chunk_b64(
-    session_id: u64,
-    chunk_idx: u32,
-    b64: String,
-) -> std::result::Result<(), Error> {
-    let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
-        .map_err(|_| types::Error::InvalidArgument("bad base64".into()))?;
-    memory::with_capsule_store_mut(|store| {
-        let session_id = upload::types::SessionId(session_id);
-        upload::service::put_chunk(store, &session_id, chunk_idx, bytes)
-    })
-}
-
-/// Debug endpoint to finish upload with hex hash (dev only)
-#[ic_cdk::update]
-async fn debug_finish_hex(
-    session_id: u64,
-    sha256_hex: String,
-    total_len: u64,
-) -> std::result::Result<String, Error> {
-    let bytes =
-        hex::decode(sha256_hex).map_err(|_| types::Error::InvalidArgument("bad hex".into()))?;
-    if bytes.len() != 32 {
-        return Err(types::Error::InvalidArgument(
-            "hash must be 32 bytes".into(),
-        ));
-    }
-    let mut hash_array = [0u8; 32];
-    hash_array.copy_from_slice(&bytes);
-
-    memory::with_capsule_store_mut(|store| {
-        let session_id = upload::types::SessionId(session_id);
-        upload::service::commit(store, session_id, hash_array, total_len)
-    })
 }
 
 // ============================================================================
@@ -1173,6 +1151,10 @@ async fn post_upgrade() {
             });
             admin::import_admins_from_upgrade(admin_data);
             canister_factory::import_migration_state_from_upgrade(migration_data);
+        } else {
+            // Do not continue: the memory manager would start empty over the
+            // old data. Trapping rolls the upgrade back and keeps everything.
+            ic_cdk::trap("post_upgrade: cannot read the snapshot of the previous version");
         }
     }
 
@@ -1188,9 +1170,10 @@ async fn post_upgrade() {
                 }
             });
             admin::import_admins_from_upgrade(admin_data);
+        } else {
+            ic_cdk::trap("post_upgrade: cannot read the snapshot of the previous version");
         }
     }
-    // If restore fails, start with empty state (no panic)
 
     ic_cdk::println!("Post-upgrade: stable memory structures restored automatically");
 
@@ -1201,42 +1184,6 @@ async fn post_upgrade() {
     ic_cdk::api::certified_data_set(
         ic_http_certification::utils::skip_certification_certified_data(),
     );
-}
-
-// DEBUG: Cross-call canary to test StableBTreeMap persistence
-#[ic_cdk::update]
-fn debug_blob_write_canary(pmid: String, idx: u32, n: u32) {
-    use crate::upload::blob_store::pmid_hash32;
-    let stem = pmid_hash32(&pmid);
-    let payload = vec![0xAA; n as usize];
-    ic_cdk::println!("CANARY_WRITE pmid={} idx={} len={}", pmid, idx, n);
-    upload::blob_store::STABLE_BLOB_STORE.with(|s| {
-        s.borrow_mut().insert((stem, idx), payload);
-    });
-}
-
-#[ic_cdk::query]
-fn debug_blob_read_canary(pmid: String, idx: u32) -> Option<u32> {
-    use crate::upload::blob_store::pmid_hash32;
-    let stem = pmid_hash32(&pmid);
-    let result = upload::blob_store::STABLE_BLOB_STORE
-        .with(|s| s.borrow().get(&(stem, idx)).map(|v| v.len() as u32));
-    ic_cdk::println!("CANARY_READ pmid={} idx={} result={:?}", pmid, idx, result);
-    result
-}
-
-// Temporary diagnostic endpoint to probe inline bytes length
-#[ic_cdk::update]
-fn _probe_inline_len(content: Option<Vec<u8>>) -> (u64, Vec<u8>) {
-    match content {
-        Some(b) => {
-            let len = b.len() as u64;
-            let mut p = b.clone();
-            p.truncate(8);
-            (len, p)
-        }
-        None => (0, vec![]),
-    }
 }
 
 // ============================================================================
@@ -1288,6 +1235,18 @@ fn dev_clear_all_memories_in_capsule(
     capsule_id: String,
     delete_assets: bool,
 ) -> Result<crate::memories::types::BulkDeleteResult, Error> {
+    // Wipes a capsule: only for someone who may write to it
+    let caller = types::PersonRef::from_caller();
+    let allowed = with_capsule_store(|store| {
+        store
+            .get(&capsule_id)
+            .map(|c| c.has_write_access(&caller))
+            .unwrap_or(false)
+    });
+    if !allowed {
+        return Err(Error::NotFound);
+    }
+
     use crate::memories::core::_dev_clear_all_memories_in_capsule_core;
     use crate::memories::{CanisterEnv, StoreAdapter};
 
@@ -1518,6 +1477,20 @@ fn mint_http_tokens_bulk(
 }
 
 // Export the interface for the smart contract.
+/// Runs before an update call from outside is accepted (and before the canister
+/// pays for it). In a personal canister only the owner may send updates,
+/// except the few that invited people need. Calls from other canisters do not
+/// pass through here: every endpoint still checks access itself.
+#[ic_cdk::inspect_message]
+fn inspect_message() {
+    let method = ic_cdk::api::msg_method_name();
+    if personal::accepts_update(&ic_cdk::api::msg_caller(), &method) {
+        ic_cdk::api::accept_message();
+    } else {
+        ic_cdk::trap("this personal canister accepts updates from its owner only");
+    }
+}
+
 /// Shared canister (many users) or the personal canister of one owner
 #[ic_cdk::query]
 fn canister_mode() -> personal::CanisterMode {

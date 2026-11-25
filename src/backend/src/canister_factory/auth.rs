@@ -628,10 +628,11 @@ mod tests {
         let user = test_principal(1);
         assert!(ensure_owner(user).is_err(), "Should fail with no capsules");
 
-        // First caller becomes admin due to auto-bootstrap
+        // No bootstrap: a stranger does not become admin of a canister
+        // that has no admins yet
         assert!(
-            ensure_admin(user).is_ok(),
-            "First caller should become admin"
+            ensure_admin(user).is_err(),
+            "First caller must not become admin"
         );
 
         // Test with maximum length name (100 characters)

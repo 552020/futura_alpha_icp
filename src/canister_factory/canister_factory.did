@@ -77,6 +77,7 @@ type UploadInfo = record {
   total_len : nat64;
   chunks : vec blob;
 };
+type Result_10 = variant { Ok : vec record { principal; nat32 }; Err : text };
 service : (opt InitArg) -> {
   __get_candid_interface_tmp_hack : () -> (text) query;
   add_admin : (principal) -> (Result);
@@ -97,8 +98,19 @@ service : (opt InitArg) -> {
   health_check : () -> (text) query;
   my_personal_canister : () -> (opt PersonalCanister) query;
   my_stats : () -> (CallerStats) query;
+  // How many personal canisters the caller may still create.
+  my_personal_credits : () -> (nat32) query;
   // Admin: every personal canister the factory created.
   personal_canisters_list : () -> (Result_7) query;
+  // Admin: set how many personal canisters a principal may still create
+  // (0 removes the entry).
+  personal_credit_set : (principal, nat32) -> (Result);
+  // Admin: all principals that hold credits.
+  personal_credits_list : () -> (Result_10) query;
+  personal_open : () -> (bool) query;
+  // Admin: open creation to every signed-in principal. For local test
+  // networks; on mainnet this lets anybody spend the factory's cycles.
+  personal_open_set : (bool) -> (Result);
   put_chunk : (nat64, blob) -> (Result_5);
   release_info : () -> (opt ReleaseInfo) query;
   // Admin: make a committed upload the release that new personal canisters get.

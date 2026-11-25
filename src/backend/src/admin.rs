@@ -31,22 +31,27 @@ thread_local! {
 pub struct AdminStore;
 
 impl AdminStore {
-    /// Check if principal is an admin (auto-bootstrap first caller)
+    /// Check if principal is an admin (superadmin, controller, stored admin, or the personal owner)
     pub fn is_admin(principal: &Principal) -> bool {
         // Superadmins are always considered admins
         if is_superadmin(principal) {
             return true;
         }
 
-        Self::with_admins_mut(|admins| {
-            // If no admins exist, the first caller becomes admin
-            if admins.is_empty() {
-                admins.insert(*principal, ());
-                return true;
-            }
+        // Whoever controls the canister (may install code) is an admin anyway
+        #[cfg(target_arch = "wasm32")]
+        if ic_cdk::api::is_controller(principal) {
+            return true;
+        }
 
-            admins.contains_key(principal)
-        })
+        // In a personal canister its owner is the admin
+        if crate::personal::owner().as_ref() == Some(principal) {
+            return true;
+        }
+
+        // No bootstrap: "the first caller becomes admin" let any stranger
+        // make themselves admin of a canister that had none.
+        Self::with_admins(|admins| admins.contains_key(principal))
     }
 
     /// Add new admin (only superadmins can add admins)
@@ -169,7 +174,7 @@ pub fn is_superadmin(principal: &Principal) -> bool {
 }
 
 // Convenience functions that use AdminStore for backward compatibility
-/// Check if principal is an admin (auto-bootstrap first caller)
+/// Check if principal is an admin (superadmin, controller, stored admin, or the personal owner)
 pub fn is_admin(principal: &Principal) -> bool {
     AdminStore::is_admin(principal)
 }

@@ -118,6 +118,14 @@ pub fn begin_upload(
 
 // Note: begin_upload_chunked legacy method removed - use begin_upload instead
 
+/// The principal that began an upload session, if the session exists.
+pub fn session_caller(session_id: u64) -> Option<candid::Principal> {
+    with_session_compat(|sessions| sessions.get(&SessionId(session_id)))
+        .ok()
+        .flatten()
+        .map(|s| s.caller)
+}
+
 /// Upload a chunk for an active session.
 ///
 /// Semantics:

@@ -182,6 +182,21 @@ npm install                      # once, for the .mjs upload tests
 
 **PocketIC tests**: `tests/pocket-ic/` (not run in November 2026).
 
+## Personal canisters
+
+Besides the shared backend (many users, one canister) a user can get a canister of their own, the way Juno gives out satellites. The same backend code runs in both.
+
+1. An admin releases the backend wasm to the factory: `scripts/factory-release.sh <version> [network]`.
+2. An admin allows a user one canister: `dfx canister call canister_factory personal_credit_set '(principal "<user>", 1)'`. Creation costs the factory cycles, so it is closed without a credit. On a local test network it can be opened for everybody with `personal_open_set '(true)'`.
+3. The user calls `create_personal_canister`. The factory creates the canister, installs the release with the user as owner, then removes itself as controller. From then on only the user controls it.
+4. Upgrades are pulled by the owner: download `release_wasm`, compare with `release_info().sha256_hex`, install with their own identity.
+
+In a personal canister only the owner may send updates (checked before the canister pays for the call); trustees can confirm or withdraw a death confirmation. The inheritance rules (`legacy_*` endpoints) work in both kinds of canister.
+
+Tests: `tests/backend/personal/test_personal_canister.sh`, `tests/backend/legacy/test_legacy_inheritance.sh`, `tests/backend/general/test_upgrade_keeps_files.sh`.
+
+**Before upgrading the mainnet backend:** only install code from 25 November 2026 or later. Older code saved its state over the stored files on upgrade and destroyed them.
+
 ## Deployed Canisters
 
 ### Backend Canister (ICP Mainnet)

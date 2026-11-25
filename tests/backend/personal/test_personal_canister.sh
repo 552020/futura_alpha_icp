@@ -32,12 +32,28 @@ RELEASE_SHA=$(dfx canister call canister_factory release_info 2>&1 | q | grep -o
 r=$(dfx canister call --identity anonymous canister_factory create_personal_canister 2>&1 | q)
 expect "anonymous callers get no canister" "$r" "anonymous"
 
+# Creation costs the factory cycles: closed unless an admin gave a credit
+WAS_OPEN=$(dfx canister call canister_factory personal_open 2>&1 | q | grep -o 'true\|false')
+trap 'dfx canister call canister_factory personal_open_set "($WAS_OPEN)" >/dev/null 2>&1 || true; dfx identity remove "$USER_ID" >/dev/null 2>&1 || true' EXIT
+dfx canister call canister_factory personal_open_set '(false)' >/dev/null 2>&1
+r=$(dfx canister call --identity "$USER_ID" canister_factory create_personal_canister 2>&1 | q)
+expect "without a credit there is no canister" "$r" "no credit"
+r=$(dfx canister call --identity "$USER_ID" canister_factory my_personal_canister 2>&1 | q)
+expect "and the refused call leaves nothing in the registry" "$r" "(null)"
+r=$(dfx canister call --identity "$USER_ID" canister_factory personal_credit_set "(principal \"$USER_P\", 1)" 2>&1 | q)
+expect "a user cannot give themselves a credit" "$r" "Admin access required"
+dfx canister call canister_factory personal_credit_set "(principal \"$USER_P\", 1)" >/dev/null 2>&1
+r=$(dfx canister call --identity "$USER_ID" canister_factory my_personal_credits 2>&1 | q)
+expect "the admin gives one credit" "$r" "(1 : nat32)"
+
 r=$(dfx canister call --identity "$USER_ID" canister_factory create_personal_canister 2>&1 | q)
 expect "the factory creates the user's canister" "$r" "status = variant { Ready }"
 PC=$(echo "$r" | grep -oE 'canister_id = opt principal "[^"]+"' | cut -d'"' -f2)
 
 r=$(dfx canister call --identity "$USER_ID" canister_factory create_personal_canister 2>&1 | q)
 expect "asking again returns the same canister" "$r" "$PC"
+r=$(dfx canister call --identity "$USER_ID" canister_factory my_personal_credits 2>&1 | q)
+expect "the credit is used up" "$r" "(0 : nat32)"
 
 st=$(dfx canister status --identity "$USER_ID" "$PC" 2>&1)
 [[ "$(echo "$st" | grep Controllers | xargs)" == "Controllers: $USER_P" ]] || fail "controllers are not exactly the user: $(echo "$st" | grep Controllers)"
@@ -51,7 +67,7 @@ r=$(pc "$USER_ID" canister_mode)
 expect "it runs in personal mode for this user" "$r" "Personal = record { owner = principal \"$USER_P\""
 
 r=$(pc "$OTHER_ID" capsules_create '(null)')
-expect "another user cannot create a capsule in it" "$r" "Unauthorized"
+expect "updates from anybody else are turned away at the door" "$r" "owner only"
 r=$(pc "$USER_ID" capsules_create '(null)')
 expect "the owner creates their capsule" "$r" "Ok ="
 CAPSULE=$(echo "$r" | grep -o 'id = "capsule_[^"]*"' | head -1 | cut -d'"' -f2)
@@ -86,6 +102,6 @@ expect "the memory is still there after the upgrade" "$r" "Ok ="
 r=$(pc "$USER_ID" canister_mode)
 expect "and it is still this user's personal canister" "$r" "owner = principal \"$USER_P\""
 r=$(pc "$OTHER_ID" capsules_create '(null)')
-expect "and still closed to others" "$r" "Unauthorized"
+expect "and still closed to others" "$r" "owner only"
 
 echo_success "✅ All personal canister tests passed ($PC)"
