@@ -1,27 +1,15 @@
 [package]
-name = "http-integration-tests"
+name = "pocket-ic-tests"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "http_integration_tests"
-path = "http_integration_tests.rs"
-
-[[bin]]
-name = "hello_world_pocket_ic"
-path = "hello_world_pocket_ic.rs"
+name = "backend_pocket_ic"
+path = "backend_pocket_ic.rs"
 
 [[bin]]
 name = "memories_pocket_ic"
 path = "memories_pocket_ic.rs"
-
-[[bin]]
-name = "simple_memory_test"
-path = "simple_memory_test.rs"
-
-[[bin]]
-name = "simple_pocket_ic"
-path = "simple_pocket_ic.rs"
 
 [[bin]]
 name = "top_up_pocket_ic"

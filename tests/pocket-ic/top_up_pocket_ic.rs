@@ -12,7 +12,11 @@
 //!
 //! PocketIC starts its own server process; a running dfx replica is not touched.
 
+#[path = "common.rs"]
+mod common;
+
 use candid::{decode_one, encode_args, encode_one, CandidType, Nat, Principal};
+use common::{install_backend, wasm, T};
 use flate2::{write::GzEncoder, Compression};
 use ic_cdk::management_canister::CanisterSettings;
 use pocket_ic::PocketIc;
@@ -21,7 +25,6 @@ use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::time::Duration;
 
-const T: u128 = 1_000_000_000_000;
 const HOUR: Duration = Duration::from_secs(60 * 60);
 const DAY: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -77,19 +80,9 @@ struct UploadCommit {
     expected_sha256_hex: String,
 }
 
-#[derive(CandidType, Deserialize)]
-struct BackendInitArg {
-    owner: Option<Principal>,
-}
-
 type Res<T> = Result<T, String>;
 
 // ---- helpers ----------------------------------------------------------------
-
-fn wasm(name: &str) -> Vec<u8> {
-    let path = format!("../../target/wasm32-unknown-unknown/release/{name}.wasm");
-    std::fs::read(&path).unwrap_or_else(|e| panic!("{path}: {e}; build the wasms first"))
-}
 
 fn gzip(bytes: &[u8]) -> Vec<u8> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
@@ -535,14 +528,7 @@ fn a_shared_backend_shows_its_cycles_to_controllers_only() {
     let pic = PocketIc::new();
     let controller = Principal::from_slice(&[1; 29]);
     let stranger = Principal::from_slice(&[3; 29]);
-    let backend = pic.create_canister_with_settings(Some(controller), None);
-    pic.add_cycles(backend, 5 * T);
-    pic.install_canister(
-        backend,
-        wasm("backend"),
-        encode_one(None::<BackendInitArg>).unwrap(),
-        Some(controller),
-    );
+    let backend = install_backend(&pic, controller);
     let raw = pic
         .query_call(backend, controller, "cycles_balance", encode_args(()).unwrap())
         .expect("a controller reads the balance");

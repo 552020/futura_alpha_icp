@@ -1,48 +1,19 @@
 #!/bin/bash
-
-# PocketIC Test Runner - Optimized for Performance
-# 
-# This script runs PocketIC tests with optimal settings to avoid
-# the common issues of slow/hanging tests.
+# Build the canisters and run the PocketIC tests.
 #
-# Usage: ./tests/pocket-ic/run_pocket_ic_tests.sh [test_name]
-# Example: ./tests/pocket-ic/run_pocket_ic_tests.sh test_create_and_read_memory_happy_path
+#   tests/pocket-ic/run_pocket_ic_tests.sh            # all three binaries
+#   tests/pocket-ic/run_pocket_ic_tests.sh top_up     # one of: backend, memories, top_up
+#
+# PocketIC runs its own server process; a dfx replica is not touched.
+# The crate needs server 10.0.0 and downloads it on first use. To skip the
+# download, point POCKET_IC_BIN at that binary.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-# Change to project root directory
-cd "$(dirname "$0")/../.."
+cargo build --target wasm32-unknown-unknown --release -p backend -p canister_factory
 
-echo "🚀 Running PocketIC tests with optimized settings..."
-echo "📁 Working directory: $(pwd)"
-
-# Set environment variables for better performance
-export RUST_LOG=warn  # Reduce log noise
-export RUST_BACKTRACE=1  # Better error reporting
-
-# Check if a specific test was requested
-if [ $# -eq 1 ]; then
-    TEST_NAME="$1"
-    echo "🎯 Running specific test: $TEST_NAME"
-    TEST_FILTER="--test $TEST_NAME"
-else
-    echo "🧪 Running all PocketIC tests"
-    TEST_FILTER="--test memories_pocket_ic"
-fi
-
-# Run tests with optimal settings:
-# - --release: Use optimized build (faster execution)
-# - --test-threads=1: Avoid PocketIC server conflicts
-# - --nocapture: Show output for debugging
-# - --package backend: Only run backend tests
-
-echo "📦 Building in release mode..."
-cargo build --release --package backend
-
-echo "🧪 Running PocketIC tests..."
-cargo test --release \
-    --package backend \
-    $TEST_FILTER \
-    -- \
-    --test-threads=1 \
-    --nocapture
-
-echo "✅ PocketIC tests completed!"
+cd tests/pocket-ic
+for name in ${1:-backend memories top_up}; do
+    # One at a time: every test starts its own PocketIC instance
+    cargo test --bin "${name}_pocket_ic" -- --test-threads=1
+done

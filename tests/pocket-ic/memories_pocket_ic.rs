@@ -10,372 +10,33 @@
 //! - Consider running with `cargo test --release` for better performance
 //! - Use `--test-threads=1` to avoid PocketIC server conflicts
 
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use candid::{CandidType, Decode, Encode, Principal};
 use pocket_ic::PocketIc;
 use serde::Deserialize;
-// Note: pocket-ic returns Result<Vec<u8>, (RejectionCode, String)> for calls
+// The reply and argument types are the backend's own: a copy kept here went
+// out of date with every change of the interface.
+use backend::types::*;
 
-// ============================================================================
-// UPDATED TYPE DEFINITIONS TO MATCH CURRENT BACKEND.DID
-// ============================================================================
-
-#[derive(CandidType, Deserialize, Clone)]
-enum AssetType {
-    Preview,
-    Metadata,
-    Derivative,
-    Original,
-    Thumbnail,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-struct AssetMetadataBase {
-    url: Option<String>,
-    height: Option<u32>,
-    updated_at: u64,
-    asset_type: AssetType,
-    sha256: Option<Vec<u8>>,
-    name: String,
-    storage_key: Option<String>,
-    tags: Vec<String>,
-    processing_error: Option<String>,
-    mime_type: String,
-    description: Option<String>,
-    created_at: u64,
-    deleted_at: Option<u64>,
-    bytes: u64,
-    asset_location: Option<String>,
-    width: Option<u32>,
-    processing_status: Option<String>,
-    bucket: Option<String>,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-struct ImageAssetMetadata {
-    dpi: Option<u32>,
-    color_space: Option<String>,
-    base: AssetMetadataBase,
-    exif_data: Option<String>,
-    compression_ratio: Option<f32>,
-    orientation: Option<u8>,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-enum AssetMetadata {
-    Note(NoteAssetMetadata),
-    Image(ImageAssetMetadata),
-    Document(DocumentAssetMetadata),
-    Audio(AudioAssetMetadata),
-    Video(VideoAssetMetadata),
-}
-
-// Capsule type for capsule creation
-#[derive(CandidType, Deserialize, Clone)]
-struct Capsule {
-    pub id: String,
-    pub subject: String, // PersonRef as String for simplicity
-    pub created_at: u64,
-    pub updated_at: u64,
-}
-
-// Only the variants we're using need concrete structs
-#[derive(CandidType, Deserialize, Clone)]
-struct NoteAssetMetadata {
-    base: AssetMetadataBase,
-    language: Option<String>,
-    word_count: Option<u32>,
-    format: Option<String>,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-struct DocumentAssetMetadata {
-    document_type: Option<String>,
-    base: AssetMetadataBase,
-    language: Option<String>,
-    page_count: Option<u32>,
-    word_count: Option<u32>,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-struct AudioAssetMetadata {
-    duration: Option<u64>,
-    base: AssetMetadataBase,
-    codec: Option<String>,
-    channels: Option<u8>,
-    sample_rate: Option<u32>,
-    bit_depth: Option<u8>,
-    bitrate: Option<u64>,
-}
-
-#[derive(CandidType, Deserialize, Clone)]
-struct VideoAssetMetadata {
-    duration: Option<u64>,
-    base: AssetMetadataBase,
-    codec: Option<String>,
-    frame_rate: Option<f32>,
-    resolution: Option<String>,
-    bitrate: Option<u64>,
-    aspect_ratio: Option<f32>,
-}
-
-#[derive(CandidType, Deserialize)]
-struct BlobRef {
-    len: u64,
-    locator: String,
-    hash: Option<Vec<u8>>,
-}
-
-#[derive(CandidType, Deserialize)]
-enum StorageEdgeBlobType {
-    S3,
-    Icp,
-    VercelBlob,
-    Ipfs,
-    Neon,
-    Arweave,
-}
-
-// Results
-#[derive(CandidType, Deserialize, Debug)]
-enum Error {
-    Internal(String),
-    NotFound,
-    Unauthorized,
-    InvalidArgument(String),
-    ResourceExhausted,
-    NotImplemented(String),
-    Conflict(String),
-}
-
-// Updated Result types to match current backend.did
-#[derive(CandidType, Deserialize)]
-enum Result6 {
-    Ok(String),
-    Err(Error),
-}
-
-#[derive(CandidType, Deserialize)]
-enum Result20 {
-    Ok(Memory),
-    Err(Error),
-}
-
-// Legacy Result types for backward compatibility
-#[derive(CandidType, Deserialize)]
-enum Result5 {
-    Ok(String),
-    Err(Error),
-}
-
-#[derive(CandidType, Deserialize)]
-enum Result11 {
-    Ok(Memory),
-    Err(Error),
-}
-
-// Read model (updated to match current backend.did)
-#[derive(CandidType, Deserialize)]
-struct Memory {
-    id: String,
-    inline_assets: Vec<MemoryAssetInline>,
-    capsule_id: String,
-    metadata: MemoryMetadata,
-    blob_internal_assets: Vec<MemoryAssetBlobInternal>,
-    blob_external_assets: Vec<MemoryAssetBlobExternal>,
-    access_entries: Vec<AccessEntry>,
-}
-
-#[derive(CandidType, Deserialize)]
-struct MemoryMetadata {
-    title: Option<String>,
-    updated_at: u64,
-    sharing_status: SharingStatus,
-    date_of_memory: Option<u64>,
-    memory_type: MemoryType,
-    tags: Vec<String>,
-    has_thumbnails: bool,
-    content_type: String,
-    people_in_memory: Option<Vec<String>>,
-    has_previews: bool,
-    database_storage_edges: Vec<StorageEdgeDatabaseType>,
-    description: Option<String>,
-    created_at: u64,
-    created_by: Option<String>,
-    total_size: u64,
-    thumbnail_url: Option<String>,
-    parent_folder_id: Option<String>,
-    asset_count: u32,
-    deleted_at: Option<u64>,
-    primary_asset_url: Option<String>,
-    shared_count: u32,
-    file_created_at: Option<u64>,
-    location: Option<String>,
-    memory_notes: Option<String>,
-    uploaded_at: u64,
-}
-
-#[derive(CandidType, Deserialize)]
-enum SharingStatus {
-    Shared,
-    Private,
-    Public,
-}
-
-#[derive(CandidType, Deserialize)]
-enum MemoryType {
-    Image,
-    Video,
-    Audio,
-    Document,
-    Note,
-}
-
-// Updated AccessEntry to match current backend.did
-#[derive(CandidType, Deserialize)]
-struct AccessEntry {
-    id: String,
-    is_public: bool,
-    updated_at: u64,
-    role: ResourceRole,
-    source_id: Option<String>,
-    created_at: u64,
-    person_ref: Option<PersonRef>,
-    invited_by_person_ref: Option<PersonRef>,
-    grant_source: GrantSource,
-    perm_mask: u32,
-    condition: AccessCondition,
-}
-
-#[derive(CandidType, Deserialize)]
-enum ResourceRole {
-    Guest,
-    Member,
-    SuperAdmin,
-    Admin,
-    Owner,
-}
-
-#[derive(CandidType, Deserialize)]
-enum GrantSource {
-    MagicLink,
-    System,
-    Group,
-    User,
-}
-
-#[derive(CandidType, Deserialize)]
-enum AccessCondition {
-    Immediate,
-    EventTriggered { event: AccessEvent },
-    Scheduled { accessible_after: u64 },
-    ExpiresAt { expires: u64 },
-}
-
-#[derive(CandidType, Deserialize)]
-enum AccessEvent {
-    CapsuleMaturity(u32),
-    Graduation,
-    AfterDeath,
-    Wedding,
-    Birthday(u32),
-    Custom(String),
-    ConnectionCount(u32),
-    Anniversary(u32),
-}
-
-#[derive(CandidType, Deserialize)]
-enum PersonRef {
-    Opaque(String),
-    Principal(Principal),
-}
-
-// Legacy MemoryAccess type for backward compatibility in tests
-#[derive(CandidType, Deserialize)]
-enum MemoryAccess {
-    Public {
-        owner_secure_code: String,
-    },
-    Private {
-        owner_secure_code: String,
-    },
-    Custom {
-        individuals: Vec<Principal>,
-        groups: Vec<String>,
-        owner_secure_code: String,
-    },
-    TimeBased {
-        accessible_after: u64,
-        access: Box<MemoryAccess>,
-        owner_secure_code: String,
-    },
-    EventBased {
-        trigger_event: String, // Simplified
-        access: Box<MemoryAccess>,
-        owner_secure_code: String,
-    },
-}
-
-#[derive(CandidType, Deserialize)]
-struct MemoryAssetInline {
-    metadata: AssetMetadata,
-    bytes: Vec<u8>,
-    asset_id: String,
-}
-
-#[derive(CandidType, Deserialize)]
-struct MemoryAssetBlobInternal {
-    metadata: AssetMetadata,
-    blob_ref: BlobRef,
-    asset_id: String,
-}
-
-#[derive(CandidType, Deserialize)]
-struct MemoryAssetBlobExternal {
-    url: Option<String>,
-    metadata: AssetMetadata,
-    storage_key: String,
-    asset_id: String,
-    location: StorageEdgeBlobType,
-}
-
-#[derive(CandidType, Deserialize)]
-enum StorageEdgeDatabaseType {
-    Icp,
-    Neon,
-}
-
-#[derive(CandidType, Deserialize)]
-struct MemoryUpdateData {
-    metadata: Option<MemoryMetadata>,
-    name: Option<String>,
-    access_entries: Option<Vec<AccessEntry>>,
-}
-
-#[derive(CandidType, Deserialize)]
-struct MemoryOperationResponse {
-    success: bool,
-    memory_id: Option<String>,
-    message: String,
-}
+type Result5 = std::result::Result<String, Error>;
+type Result6 = std::result::Result<String, Error>;
+type Result20 = std::result::Result<Memory, Error>;
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
-fn load_backend_wasm() -> Vec<u8> {
-    let path = std::env::var("BACKEND_WASM_PATH")
-        .unwrap_or_else(|_| "../../target/wasm32-unknown-unknown/release/backend.wasm".into());
-    std::fs::read(path).expect("read backend.wasm")
-}
 
 /// Create a new canister with optimized setup
 fn create_test_canister() -> (PocketIc, Principal, Vec<u8>) {
     let pic = PocketIc::new();
-    let wasm = load_backend_wasm();
+    let wasm = common::wasm("backend");
     let canister_id = pic.create_canister();
     pic.add_cycles(canister_id, 2_000_000_000_000);
-    pic.install_canister(canister_id, wasm.clone(), vec![], None);
+    pic.install_canister(canister_id, wasm.clone(), candid::encode_args(()).unwrap(), None);
     (pic, canister_id, wasm)
 }
 
@@ -530,13 +191,13 @@ fn test_create_and_read_memory_happy_path() -> Result<()> {
 #[test]
 fn test_delete_forbidden_for_non_owner() -> Result<()> {
     let mut pic = PocketIc::new();
-    let wasm = load_backend_wasm();
+    let wasm = common::wasm("backend");
     let owner = Principal::from_slice(&[1; 29]);
     let stranger = Principal::from_slice(&[2; 29]);
     let canister_id = pic.create_canister();
     pic.add_cycles(canister_id, 2_000_000_000_000);
     // Use None for sender = PocketIC's default controller (already authorized)
-    pic.install_canister(canister_id, wasm, vec![], None);
+    pic.install_canister(canister_id, wasm, candid::encode_args(()).unwrap(), None);
 
     // First, create a capsule for the owner
     let capsule_id = create_capsule_for_user(&mut pic, canister_id, owner)?;
@@ -615,11 +276,11 @@ fn test_delete_forbidden_for_non_owner() -> Result<()> {
 #[test]
 fn test_memory_creation_idempotency() -> Result<()> {
     let mut pic = PocketIc::new();
-    let wasm = load_backend_wasm();
+    let wasm = common::wasm("backend");
     let controller = Principal::from_slice(&[1; 29]);
     let canister_id = pic.create_canister();
     pic.add_cycles(canister_id, 2_000_000_000_000);
-    pic.install_canister(canister_id, wasm, vec![], None);
+    pic.install_canister(canister_id, wasm, candid::encode_args(()).unwrap(), None);
 
     // First, create a capsule for the user
     let capsule_id = create_capsule_for_user(&mut pic, canister_id, controller)?;
@@ -707,11 +368,11 @@ fn test_memory_creation_idempotency() -> Result<()> {
 #[test]
 fn test_memory_update_roundtrip() -> Result<()> {
     let mut pic = PocketIc::new();
-    let wasm = load_backend_wasm();
+    let wasm = common::wasm("backend");
     let controller = Principal::from_slice(&[1; 29]);
     let canister_id = pic.create_canister();
     pic.add_cycles(canister_id, 2_000_000_000_000);
-    pic.install_canister(canister_id, wasm, vec![], None);
+    pic.install_canister(canister_id, wasm, candid::encode_args(()).unwrap(), None);
 
     // First, create a capsule for the user
     let capsule_id = create_capsule_for_user(&mut pic, canister_id, controller)?;
@@ -765,7 +426,7 @@ fn test_memory_update_roundtrip() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
 
     // The memories_update function returns Result_20 (Ok: Memory, Err: Error)
-    let update_resp = match Decode!(&raw, Result20)? {
+    let _update_resp = match Decode!(&raw, Result20)? {
         Result20::Ok(memory) => {
             println!("✅ Update successful, memory ID: {}", memory.id);
             memory
@@ -803,11 +464,11 @@ fn test_memory_crud_full_workflow() -> Result<()> {
     }
 
     let mut pic = PocketIc::new();
-    let wasm = load_backend_wasm();
+    let wasm = common::wasm("backend");
     let controller = Principal::from_slice(&[1; 29]);
     let canister_id = pic.create_canister();
     pic.add_cycles(canister_id, 2_000_000_000_000);
-    pic.install_canister(canister_id, wasm, vec![], None);
+    pic.install_canister(canister_id, wasm, candid::encode_args(()).unwrap(), None);
 
     // First, create a capsule for the user
     let capsule_id = create_capsule_for_user(&mut pic, canister_id, controller)?;
@@ -878,7 +539,7 @@ fn test_memory_crud_full_workflow() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Update call failed: {:?}", e))?;
 
     // The memories_update function returns Result_20 (Ok: Memory, Err: Error)
-    let update_resp = match Decode!(&raw, Result20)? {
+    let _update_resp = match Decode!(&raw, Result20)? {
         Result20::Ok(memory) => {
             println!("✅ CRUD Update successful, memory ID: {}", memory.id);
             memory
