@@ -292,9 +292,11 @@ fn a_file_is_served_only_for_a_link_the_canister_signed() {
 /// Upgrading from a backend as it ran before November 2026 (commit bee859d,
 /// `fixtures/`): that version wrote a snapshot over the start of stable
 /// memory in `pre_upgrade`, and its signing key is the guessable one.
-/// The data must come through, and the key must be replaced.
+/// The capsule and its inline file must come through, and the key must be
+/// replaced. Inline only: files in the blob store are lost by the old
+/// `pre_upgrade` on a plain upgrade (see upgrade.rs, --skip-pre-upgrade).
 #[test]
-fn an_upgrade_from_the_old_backend_keeps_the_data() {
+fn an_upgrade_from_the_old_backend_keeps_capsules_and_inline_files() {
     let pic = PocketIc::new();
     let backend = pic.create_canister_with_settings(Some(controller()), None);
     pic.add_cycles(backend, 5 * common::T);
