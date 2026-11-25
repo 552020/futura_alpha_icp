@@ -1501,6 +1501,19 @@ fn canister_mode() -> personal::CanisterMode {
     personal::mode()
 }
 
+/// The factory that may read this personal canister's cycles and tops it up
+#[ic_cdk::query]
+fn personal_factory() -> Option<Principal> {
+    personal::factory()
+}
+
+/// Owner only: name the factory that may read this canister's cycles
+/// (`null`: nobody but the owner, which also ends top-ups).
+#[ic_cdk::update]
+fn personal_factory_set(factory: Option<Principal>) -> std::result::Result<(), Error> {
+    personal::set_factory_by_owner(&ic_cdk::api::msg_caller(), factory)
+}
+
 fn must_read_cycles() {
     let caller = ic_cdk::api::msg_caller();
     if !personal::may_read_cycles(&caller, ic_cdk::api::is_controller(&caller)) {

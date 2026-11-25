@@ -685,6 +685,11 @@ service : (opt BackendInitArg) -> {
   mint_http_tokens_bulk : (vec text, vec text, opt vec text, nat32) -> (
       vec record { text; text },
     ) query;
+  // The factory that may read this personal canister's cycles and tops it up
+  personal_factory : () -> (opt principal) query;
+  // Owner only: name the factory that may read this canister's cycles
+  // (`null`: nobody but the owner, which also ends top-ups).
+  personal_factory_set : (opt principal) -> (Result);
   register_with_nonce : (text) -> (Result);
   remove_admin : (principal) -> (Result);
   // Clean up expired sessions

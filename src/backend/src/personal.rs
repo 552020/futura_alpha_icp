@@ -84,6 +84,24 @@ pub fn factory() -> Option<Principal> {
     })
 }
 
+/// Owner only: name the factory that may read this canister's cycles, or
+/// none. For personal canisters installed before the factory was remembered,
+/// and for an owner who wants no top-ups.
+pub fn set_factory_by_owner(caller: &Principal, factory: Option<Principal>) -> Result<(), Error> {
+    match owner() {
+        Some(owner) if &owner == caller => {
+            if factory == Some(Principal::anonymous()) {
+                return Err(Error::InvalidArgument(
+                    "the anonymous principal cannot be the factory".to_string(),
+                ));
+            }
+            set_factory(factory);
+            Ok(())
+        }
+        _ => Err(Error::Unauthorized),
+    }
+}
+
 /// May this caller read the canister's cycles? In a personal canister the
 /// owner and the factory; in the shared canister its controllers.
 pub fn may_read_cycles(caller: &Principal, is_controller: bool) -> bool {
@@ -211,5 +229,30 @@ mod tests {
         assert!(!may_read_cycles(&Principal::anonymous(), false));
         set_owner(None);
         set_factory(None);
+    }
+
+    #[test]
+    fn only_the_owner_names_the_factory() {
+        let (owner_p, factory_p, other) = (
+            Principal::from_slice(&[1; 29]),
+            Principal::from_slice(&[3; 10]),
+            Principal::from_slice(&[2; 29]),
+        );
+        // shared canister: nobody
+        set_owner(None);
+        set_factory(None);
+        assert_eq!(set_factory_by_owner(&other, Some(factory_p)), Err(Error::Unauthorized));
+
+        set_owner(Some(owner_p));
+        assert_eq!(set_factory_by_owner(&other, Some(other)), Err(Error::Unauthorized));
+        assert_eq!(set_factory_by_owner(&factory_p, Some(factory_p)), Err(Error::Unauthorized));
+        assert!(set_factory_by_owner(&owner_p, Some(Principal::anonymous())).is_err());
+        assert_eq!(factory(), None);
+
+        assert_eq!(set_factory_by_owner(&owner_p, Some(factory_p)), Ok(()));
+        assert!(may_read_cycles(&factory_p, false));
+        assert_eq!(set_factory_by_owner(&owner_p, None), Ok(()));
+        assert!(!may_read_cycles(&factory_p, false));
+        set_owner(None);
     }
 }
