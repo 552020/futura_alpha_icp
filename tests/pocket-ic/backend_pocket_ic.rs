@@ -8,7 +8,7 @@
 mod common;
 
 use backend::types::{
-    AssetMetadata, AssetMetadataBase, AssetType, BlobRef, Capsule, Error, ImageAssetMetadata,
+    AssetMetadata, AssetMetadataBase, AssetType, BlobRef, Error, ImageAssetMetadata,
     Memory, PersonRef, StorageEdgeBlobType,
 };
 use backend::personal::CanisterMode;
@@ -123,14 +123,16 @@ fn the_signing_key_is_replaced_by_a_random_one_once() {
     );
 }
 
-#[test]
-fn a_file_is_served_only_for_a_link_the_canister_signed() {
-    let pic = PocketIc::new();
-    let backend = install_backend(&pic, controller());
-    ticks(&pic); // the random signing key is in place
-    let owner = Principal::from_slice(&[2; 29]);
+/// The reply of `capsules_create`, as far as a test needs it. The old
+/// backend in `fixtures/` answers with an older Capsule; its id is the same.
+#[derive(CandidType, Deserialize)]
+struct CapsuleId {
+    id: String,
+}
 
-    // A capsule with one memory holding a small inline file
+/// A capsule for `owner` with one memory holding `file` inline.
+/// Returns the memory id.
+fn store_file(pic: &PocketIc, backend: Principal, owner: Principal, file: &[u8]) -> String {
     let raw = pic
         .update_call(
             backend,
@@ -139,9 +141,8 @@ fn a_file_is_served_only_for_a_link_the_canister_signed() {
             encode_one(None::<PersonRef>).unwrap(),
         )
         .unwrap();
-    let capsule = decode_one::<Result<Capsule, Error>>(&raw).unwrap().unwrap();
+    let capsule = decode_one::<Result<CapsuleId, Error>>(&raw).unwrap().unwrap();
 
-    let file = vec![7u8, 1, 7, 1];
     let now = pic.get_time().as_nanos_since_unix_epoch();
     let metadata = AssetMetadata::Image(ImageAssetMetadata {
         base: AssetMetadataBase {
@@ -177,7 +178,7 @@ fn a_file_is_served_only_for_a_link_the_canister_signed() {
             "memories_create",
             encode_args((
                 capsule.id,
-                Some(file.clone()),
+                Some(file.to_vec()),
                 None::<BlobRef>,
                 None::<StorageEdgeBlobType>,
                 None::<String>,
@@ -190,11 +191,47 @@ fn a_file_is_served_only_for_a_link_the_canister_signed() {
             .unwrap(),
         )
         .unwrap();
-    let memory_id = decode_one::<Result<String, Error>>(&raw).unwrap().unwrap();
+    decode_one::<Result<String, Error>>(&raw).unwrap().unwrap()
+}
+
+fn read_memory(pic: &PocketIc, backend: Principal, who: Principal, memory_id: &str) -> Memory {
     let raw = pic
-        .query_call(backend, owner, "memories_read", encode_one(&memory_id).unwrap())
+        .query_call(backend, who, "memories_read", encode_one(memory_id).unwrap())
         .unwrap();
-    let memory = decode_one::<Result<Memory, Error>>(&raw).unwrap().unwrap();
+    decode_one::<Result<Memory, Error>>(&raw).unwrap().unwrap()
+}
+
+/// A signed link to the inline file of a memory, as its owner gets it
+fn signed_link(pic: &PocketIc, backend: Principal, who: Principal, memory: &Memory) -> String {
+    let asset_id = memory.inline_assets[0].asset_id.clone();
+    let raw = pic
+        .query_call(
+            backend,
+            who,
+            "mint_http_token",
+            encode_args((
+                memory.id.clone(),
+                vec!["inline".to_string()],
+                Some(vec![asset_id.clone()]),
+                180u32,
+            ))
+            .unwrap(),
+        )
+        .expect("mint a link");
+    let token: String = decode_one(&raw).unwrap();
+    format!("/asset/{}/inline?id={asset_id}&token={token}", memory.id)
+}
+
+#[test]
+fn a_file_is_served_only_for_a_link_the_canister_signed() {
+    let pic = PocketIc::new();
+    let backend = install_backend(&pic, controller());
+    ticks(&pic); // the random signing key is in place
+    let owner = Principal::from_slice(&[2; 29]);
+
+    let file = vec![7u8, 1, 7, 1];
+    let memory_id = store_file(&pic, backend, owner, &file);
+    let memory = read_memory(&pic, backend, owner, &memory_id);
     let asset_id = memory.inline_assets[0].asset_id.clone();
 
     // The owner gets a link; a stranger does not
@@ -249,6 +286,54 @@ fn a_file_is_served_only_for_a_link_the_canister_signed() {
     ticks(&pic);
     let served = get(&pic, backend, &format!("{path}&token={token}"));
     assert_eq!(served.status_code, 200, "the link survives an upgrade");
+}
+
+
+/// Upgrading from a backend as it ran before November 2026 (commit bee859d,
+/// `fixtures/`): that version wrote a snapshot over the start of stable
+/// memory in `pre_upgrade`, and its signing key is the guessable one.
+/// The data must come through, and the key must be replaced.
+#[test]
+fn an_upgrade_from_the_old_backend_keeps_the_data() {
+    let pic = PocketIc::new();
+    let backend = pic.create_canister_with_settings(Some(controller()), None);
+    pic.add_cycles(backend, 5 * common::T);
+    let old = std::fs::read("fixtures/backend-bee859d.wasm.gz").expect("old backend fixture");
+    pic.install_canister(backend, old, encode_args(()).unwrap(), Some(controller()));
+    let owner = Principal::from_slice(&[2; 29]);
+
+    let file = vec![9u8, 8, 7, 6, 5];
+    let memory_id = store_file(&pic, backend, owner, &file);
+    assert_eq!(key_replacements(&pic, backend), 0, "the old backend keeps its first key");
+
+    pic.upgrade_canister(
+        backend,
+        wasm("backend"),
+        encode_args(()).unwrap(),
+        Some(controller()),
+    )
+    .expect("upgrade from the old backend");
+    ticks(&pic);
+
+    let memory = read_memory(&pic, backend, owner, &memory_id);
+    assert_eq!(memory.inline_assets[0].bytes, file, "the file came through");
+    assert_eq!(key_replacements(&pic, backend), 1, "the guessable key is gone");
+    let link = signed_link(&pic, backend, owner, &memory);
+    assert_eq!(get(&pic, backend, &link).body, file, "and it is served");
+
+    // Once more, now from the new version to itself
+    pic.upgrade_canister(
+        backend,
+        wasm("backend"),
+        encode_args(()).unwrap(),
+        Some(controller()),
+    )
+    .expect("second upgrade");
+    ticks(&pic);
+    let memory = read_memory(&pic, backend, owner, &memory_id);
+    assert_eq!(memory.inline_assets[0].bytes, file);
+    assert_eq!(key_replacements(&pic, backend), 1);
+    assert_eq!(get(&pic, backend, &link).status_code, 200, "the link survives");
 }
 
 fn main() {}
