@@ -35,6 +35,15 @@ pub const MEM_BLOB_COUNTER: MemoryId = MemoryId::new(8);
 // Admin storage
 pub const MEM_ADMINS: MemoryId = MemoryId::new(9);
 
+// Personal-canister owner (personal.rs); empty in shared mode
+pub const MEM_PERSONAL_OWNER: MemoryId = MemoryId::new(10);
+
+// Personal-canister creation state, saved across upgrades (upgrade.rs)
+pub const MEM_MIGRATION_STATE: MemoryId = MemoryId::new(11);
+
+// HTTP token secrets (http/adapters/secret_store.rs)
+pub const MEM_SECRETS: MemoryId = MemoryId::new(42);
+
 thread_local! {
     /// Global memory manager for all stable structures
     /// This ensures no MemoryId collisions across modules

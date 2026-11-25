@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 // Internal imports
 use crate::capsule::domain::Capsule;
-use crate::capsule_store::{types::PaginationOrder as Order, CapsuleStore};
+use crate::capsule_store::CapsuleStore;
 use crate::memory::{with_capsule_store, with_capsule_store_mut};
 use crate::types::{
     CapsuleHeader, CapsuleId, CapsuleInfo, CapsuleUpdateData, Error, Result13, Result14,
@@ -32,10 +32,12 @@ pub mod legacy;
 pub mod memories;
 mod memory;
 mod person;
+pub mod personal;
 mod session;
 mod state;
 pub mod types;
 mod unified_types;
+mod upgrade;
 mod upload;
 mod user;
 mod utils;
@@ -1134,49 +1136,31 @@ fn get_migration_stats(
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Stable memory structures (StableBTreeMap) automatically persist their data
-    // No explicit action needed for stable memory - ic-stable-structures handles this
-
-    // For backward compatibility, also serialize thread_local data using the old approach
-    let capsule_data = with_capsule_store(|store| {
-        let all_capsules = store.paginate(None, u32::MAX, Order::Asc);
-        all_capsules
-            .items
-            .into_iter()
-            .map(|capsule| (capsule.id.clone(), capsule))
-            .collect::<Vec<(String, Capsule)>>()
-    });
-    let admin_data = admin::export_admins_for_upgrade();
-
+    // Stable structures persist by themselves. Do NOT stable_save here: it
+    // overwrites the memory manager and loses the blob store (see upgrade.rs).
     #[cfg(feature = "migration")]
-    {
-        // Also serialize migration state if migration feature is enabled
-        let migration_data = canister_factory::export_migration_state_for_upgrade();
-        ic_cdk::storage::stable_save((capsule_data, admin_data, migration_data))
-            .expect("Failed to save data to stable storage");
-    }
-
-    #[cfg(not(feature = "migration"))]
-    {
-        // Save without migration data if migration feature is disabled
-        ic_cdk::storage::stable_save((capsule_data, admin_data))
-            .expect("Failed to save data to stable storage");
-    }
-
-    ic_cdk::println!("Pre-upgrade: stable memory structures will persist automatically");
+    upgrade::save_migration_state(&canister_factory::export_migration_state_for_upgrade());
 }
 
 #[ic_cdk::post_upgrade]
 async fn post_upgrade() {
-    // UUID v7 generation no longer requires initialization - using proper IC primitives
+    // Must come first, before any stable structure is touched (see upgrade.rs)
+    let legacy_snapshot = upgrade::legacy_snapshot_present();
 
     // Stable memory structures (StableBTreeMap) automatically restore their data
     // No explicit action needed for stable memory - ic-stable-structures handles this
 
     // For backward compatibility, restore thread_local data using the old approach
     #[cfg(feature = "migration")]
-    {
-        // Restore capsules, admins, and migration state after upgrade
+    if !legacy_snapshot {
+        if let Some(state) = upgrade::load_migration_state() {
+            canister_factory::import_migration_state_from_upgrade(state);
+        }
+    }
+
+    #[cfg(feature = "migration")]
+    if legacy_snapshot {
+        // Upgrading from a version that snapshotted in pre_upgrade: restore once
         if let Ok((capsule_data, admin_data, migration_data)) = ic_cdk::storage::stable_restore::<(
             Vec<(String, Capsule)>,
             Vec<Principal>,
@@ -1193,8 +1177,8 @@ async fn post_upgrade() {
     }
 
     #[cfg(not(feature = "migration"))]
-    {
-        // Restore capsules and admins only if migration feature is disabled
+    if legacy_snapshot {
+        // Upgrading from a version that snapshotted in pre_upgrade: restore once
         if let Ok((capsule_data, admin_data)) =
             ic_cdk::storage::stable_restore::<(Vec<(String, Capsule)>, Vec<Principal>)>()
         {
@@ -1469,7 +1453,10 @@ fn memories_list_assets(
 // ============================================================================
 
 #[ic_cdk::init]
-async fn init() {
+async fn init(arg: Option<personal::BackendInitArg>) {
+    // Personal mode if the factory passed an owner; shared mode otherwise
+    personal::init(arg);
+
     // Initialize HTTP secret store
     http::secret_store::init().await;
 
@@ -1531,6 +1518,12 @@ fn mint_http_tokens_bulk(
 }
 
 // Export the interface for the smart contract.
+/// Shared canister (many users) or the personal canister of one owner
+#[ic_cdk::query]
+fn canister_mode() -> personal::CanisterMode {
+    personal::mode()
+}
+
 // ============================================================================
 // INHERITANCE ("legacy"): trustees, death confirmation, events, shared reads
 // See legacy.rs for the rules.

@@ -99,6 +99,7 @@ type AudioAssetMetadata = record {
   bitrate : opt nat64;
 };
 type BackendHosting = variant { Icp; Vercel };
+type BackendInitArg = record { owner : opt principal };
 type BlobHosting = variant { S3; Icp; VercelBlob; Ipfs; Neon; Arweave };
 type BlobMeta = record { size : nat64; chunk_count : nat32 };
 type BlobRef = record { len : nat64; locator : text; hash : opt blob };
@@ -109,6 +110,7 @@ type BulkDeleteResult = record {
 };
 type BulkFailure = record { id : text; err : Error };
 type BulkResult = record { ok : vec text; failed : vec BulkFailure };
+type CanisterMode = variant { Shared; Personal : record { owner : principal } };
 type CanisterSizeStats = record {
   remaining_capacity_bytes : nat64;
   max_size_bytes : nat64;
@@ -526,7 +528,7 @@ type VideoAssetMetadata = record {
   bitrate : opt nat64;
   aspect_ratio : opt float32;
 };
-service : () -> {
+service : (opt BackendInitArg) -> {
   _probe_inline_len : (opt blob) -> (nat64, blob);
   add_admin : (principal) -> (Result);
   // Get a specific asset from a memory by asset_id
@@ -554,6 +556,8 @@ service : () -> {
   calculate_gallery_capsule_size : (Gallery) -> (nat64) query;
   // Calculate just the gallery size (without capsule overhead)
   calculate_gallery_size : (Gallery) -> (nat64) query;
+  // Shared canister (many users) or the personal canister of one owner
+  canister_mode : () -> (CanisterMode) query;
   capsules_bind_neon : (ResourceType, text, bool) -> (Result);
   capsules_create : (opt PersonRef) -> (Result_5);
   capsules_delete : (text) -> (Result);

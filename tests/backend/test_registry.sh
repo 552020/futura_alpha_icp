@@ -28,6 +28,8 @@ TEST_INFO=(
     "test_memories_update.sh"
     "test_canister_capsule.sh"
     "test_legacy_inheritance.sh"
+    "test_upgrade_keeps_files.sh"
+    "test_personal_canister.sh"
 )
 
 # Test paths (indexed by test number)
@@ -53,6 +55,8 @@ TEST_PATHS=(
     "shared-capsule/memories/test_memories_update.sh"
     "canister-capsule/test_canister_capsule.sh"
     "legacy/test_legacy_inheritance.sh"
+    "general/test_upgrade_keeps_files.sh"
+    "personal/test_personal_canister.sh"
 )
 
 # Test descriptions (indexed by test number)
@@ -78,6 +82,8 @@ TEST_DESCRIPTIONS=(
     "Test memory updating"
     "Test canister-capsule integration"
     "Test inheritance: trustees, death confirmation, heir access"
+    "Test that an upgrade keeps uploaded files"
+    "Test personal canisters: factory creates, hands off, owner upgrades"
 )
 
 # Test categories (indexed by test number)
@@ -103,6 +109,8 @@ TEST_CATEGORIES=(
     "shared-capsule"
     "canister-capsule"
     "legacy"
+    "general"
+    "personal"
 )
 
 # Total number of tests

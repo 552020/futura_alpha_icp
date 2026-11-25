@@ -13,6 +13,11 @@ use ic_cdk::api::time;
 pub fn capsules_create(subject: Option<PersonRef>) -> std::result::Result<Capsule, Error> {
     let caller = PersonRef::from_caller();
 
+    // In a personal canister only its owner may create capsules
+    if let PersonRef::Principal(p) = &caller {
+        crate::personal::check_can_create_capsule(p)?;
+    }
+
     // Check if caller already has a self-capsule when creating self-capsule
     let is_self_capsule = subject.is_none();
 

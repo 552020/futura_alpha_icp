@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod personal;
+#[allow(unused_imports)]
+use personal::{PersonalCanister, ReleaseInfo};
+
 /// ===== Configuration Constants =====
 const MAX_CHUNK_SIZE: usize = 2_000_000; // 2MB per chunk
 const DEFAULT_UPLOAD_TTL_NS: u64 = 24 * 60 * 60 * 1_000_000_000; // 24 hours in nanoseconds
@@ -134,6 +138,9 @@ struct State {
     uploads: BTreeMap<u64, UploadInfo>,
     caller_stats: BTreeMap<Principal, CallerStats>,
     total_canisters_created: u64,
+    /// Releases and the per-user registry (personal.rs). Optional so that
+    /// state saved before it existed still restores.
+    personal: Option<personal::PersonalState>,
 }
 
 thread_local! {
@@ -461,9 +468,11 @@ async fn create_and_install_with(
         .map_err(|e| format!("create_canister failed: {e:?}"))?;
 
     // The response is decoded using .candid::<T>()
-    let (canister_id,): (CanisterId,) = res
-        .candid()
-        .map_err(|e| format!("Candid decode failed: {e:?}"))?;
+    // The reply is `record { canister_id : principal }`
+    let canister_id: CanisterId = res
+        .candid::<ic_cdk::management_canister::CreateCanisterResult>()
+        .map_err(|e| format!("Candid decode failed: {e:?}"))?
+        .canister_id;
 
     // Install/reinstall/upgrade
     let mode = match req.mode {

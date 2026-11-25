@@ -2,7 +2,7 @@ use crate::http::core_types::SecretStore;
 use candid::{CandidType, Decode, Encode};
 use ic_cdk::management_canister::raw_rand;
 use ic_stable_structures::{
-    memory_manager::{MemoryId, MemoryManager, VirtualMemory},
+    memory_manager::VirtualMemory,
     DefaultMemoryImpl, StableCell, Storable,
 };
 use once_cell::unsync::OnceCell; // unsync version
@@ -38,8 +38,9 @@ thread_local! {
 }
 
 pub async fn init() {
-    let mm = MemoryManager::init(DefaultMemoryImpl::default());
-    let mem = mm.get(MemoryId::new(42));
+    // The one global memory manager: a second manager over the same stable
+    // memory hands out buckets the first one does not know about.
+    let mem = crate::memory::MM.with(|m| m.borrow().get(crate::memory::MEM_SECRETS));
 
     // Use deterministic initialization during init (system calls not allowed)
     let seeded = Secrets {
@@ -55,8 +56,9 @@ pub async fn init() {
 }
 
 pub fn post_upgrade() {
-    let mm = MemoryManager::init(DefaultMemoryImpl::default());
-    let mem = mm.get(MemoryId::new(42));
+    // The one global memory manager: a second manager over the same stable
+    // memory hands out buckets the first one does not know about.
+    let mem = crate::memory::MM.with(|m| m.borrow().get(crate::memory::MEM_SECRETS));
     let cell = StableCell::init(
         mem,
         Secrets {
