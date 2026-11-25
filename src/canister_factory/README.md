@@ -112,6 +112,51 @@ dfx canister call canister_factory my_stats
 dfx canister call canister_factory get_config
 ```
 
+## Cycles top-up of personal canisters
+
+After the hand-off the factory is not a controller of a personal canister. It
+can still keep it alive: the canister reports its cycles to the factory that
+installed it, and depositing cycles needs no rights.
+
+- Every hour a timer looks whether the last check is a day old; if so, the
+  factory asks each `Ready` canister for `cycles_liquid_balance` (the cycles it
+  can spend before it freezes).
+- Below the floor (default 1T) it deposits up to the target (default 2T).
+- Per owner it sends at most the monthly cap (default 3T per calendar month,
+  UTC), and it never goes below its own `min_factory_cycles`.
+- A frozen canister cannot answer; if it reported before, it counts as empty
+  and is topped up.
+- A canister whose owner installed other code can report anything. It still
+  gets no more than its monthly cap.
+
+```bash
+# Settings (admin). enabled = false stops the timer; the calls below still work
+dfx canister call canister_factory top_up_config
+dfx canister call canister_factory top_up_config_set \
+  '(record { enabled = true; floor = 1_000_000_000_000; target = 2_000_000_000_000; monthly_cap = 3_000_000_000_000 })'
+
+# Another cap for one owner (admin); null = default, 0 = no top-ups
+dfx canister call canister_factory top_up_cap_set '(principal "<owner>", opt 10_000_000_000_000)'
+
+# Check now: one owner (admin, or the owner for themselves), or all (admin)
+dfx canister call canister_factory top_up_check '(principal "<owner>")'
+dfx canister call canister_factory top_up_check_all
+
+# What happened: last balance, last top-up, this month's total, last error
+dfx canister call canister_factory personal_canisters_list
+```
+
+Personal canisters installed before the backend remembered its factory do not
+answer the factory. Their owner names it once:
+
+```bash
+dfx canister call <personal canister> personal_factory_set '(opt principal "<factory>")'
+```
+
+Tests: `tests/pocket-ic/top_up_pocket_ic.rs` (timer, month change, upgrade,
+frozen canister, on PocketIC) and `tests/backend/personal/test_top_up.sh` (on
+the local replica).
+
 ## Integration Example
 
 For your family memory app, here's how to integrate the factory:

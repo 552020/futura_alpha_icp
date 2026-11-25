@@ -735,10 +735,13 @@ dependencies = [
  "backend",
  "candid",
  "chrono",
+ "flate2",
+ "hex",
  "ic-cdk",
  "pocket-ic",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
 ]
 

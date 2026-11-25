@@ -56,6 +56,21 @@ The tests verify:
 - ✅ **Access Control**: Owner vs non-owner permissions
 - ✅ **Error Handling**: Proper error responses for invalid operations
 
+### `top_up_pocket_ic.rs`
+
+Cycles top-up of personal canisters by the factory: who may read the cycles,
+floor and target, the monthly cap and its reset in a new month, the hourly
+timer (also after a factory upgrade), a canister that stops reporting, the
+rescue of a frozen canister, and the factory's own minimum.
+
+```bash
+cargo build --target wasm32-unknown-unknown --release -p backend -p canister_factory
+cd tests/pocket-ic && cargo test --bin top_up_pocket_ic -- --nocapture
+```
+
+Needs the PocketIC server 10.0.0 (the crate downloads it on first use, or set
+`POCKET_IC_BIN`). It runs its own server; a dfx replica is not touched.
+
 ## Current Status
 
 **✅ All PocketIC Tests Working:**
