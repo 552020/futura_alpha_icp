@@ -85,19 +85,7 @@ impl TokenService {
         ttl_secs: u32,
         caller: candid::Principal,
     ) -> String {
-        // ✅ Enhanced: Allow longer TTL for memory listings (up to 30 minutes)
-        // Keep 3-minute limit for direct token requests for security
-        let max_ttl = if is_memory_listing_context() {
-            1800 // 30 minutes for memory listings
-        } else {
-            180 // 3 minutes for direct requests
-        };
-
-        let ttl = if ttl_secs == 0 {
-            180 // Default to 3 minutes
-        } else {
-            ttl_secs.min(max_ttl)
-        };
+        let ttl = effective_ttl(ttl_secs);
 
         // build payload
         let mut nonce = [0u8; 12];
@@ -203,88 +191,32 @@ impl TokenService {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use candid::Principal;
+/// A link asked for without a lifetime lives this long
+const DEFAULT_TTL_SECS: u32 = 180;
+/// The longest a link may live, whatever the caller asks for
+const MAX_TTL_SECS: u32 = 1800;
 
-    /// Helper function to create a test principal
-    fn create_test_principal(id: &str) -> Principal {
-        Principal::from_text(id).unwrap_or_else(|_| {
-            let bytes = id.as_bytes();
-            let mut principal_bytes = [0u8; 29];
-            let len = bytes.len().min(29);
-            principal_bytes[..len].copy_from_slice(&bytes[..len]);
-            Principal::from_slice(&principal_bytes)
-        })
-    }
-
-    #[test]
-    fn test_token_service_creation() {
-        // Test that the service can be instantiated
-        let _service = TokenService;
-        // This test mainly ensures the module compiles correctly
-    }
-
-    #[test]
-    fn test_bulk_token_parameters() {
-        // Test parameter validation logic
-        let memory_ids = vec!["memory-1".to_string(), "memory-2".to_string()];
-        let variants = vec!["thumbnail".to_string()];
-        let asset_ids: Option<Vec<String>> = None;
-        let ttl_secs = 300;
-
-        // Test TTL logic
-        let ttl = if ttl_secs == 0 {
-            180
-        } else {
-            ttl_secs.min(180)
-        };
-        assert_eq!(ttl, 180); // Should be capped at 180
-
-        // Test TTL with zero
-        let ttl_zero = if 0 == 0 { 180 } else { 0.min(180) };
-        assert_eq!(ttl_zero, 180);
-
-        // Test TTL with large value
-        let ttl_large = if 1000 == 0 { 180 } else { 1000.min(180) };
-        assert_eq!(ttl_large, 180);
-    }
-
-    #[test]
-    fn test_nonce_generation() {
-        // Test nonce generation logic
-        let time_bytes = [1, 2, 3, 4, 5, 6, 7, 8];
-        let caller_bytes = [9, 10, 11, 12];
-        let memory_bytes = b"test-memory";
-
-        let mut nonce = [0u8; 12];
-        for i in 0..12 {
-            nonce[i] = time_bytes[i % 8]
-                ^ caller_bytes[i % caller_bytes.len()]
-                ^ memory_bytes[i % memory_bytes.len()];
-        }
-
-        // Nonce should not be all zeros
-        assert_ne!(nonce, [0u8; 12]);
-
-        // Nonce should be deterministic for same inputs
-        let mut nonce2 = [0u8; 12];
-        for i in 0..12 {
-            nonce2[i] = time_bytes[i % 8]
-                ^ caller_bytes[i % caller_bytes.len()]
-                ^ memory_bytes[i % memory_bytes.len()];
-        }
-        assert_eq!(nonce, nonce2);
+/// How long a link lives: what was asked for, at most `MAX_TTL_SECS`;
+/// 0 means "the default".
+fn effective_ttl(ttl_secs: u32) -> u32 {
+    if ttl_secs == 0 {
+        DEFAULT_TTL_SECS
+    } else {
+        ttl_secs.min(MAX_TTL_SECS)
     }
 }
 
-// Helper function to determine if we're in a memory listing context
-fn is_memory_listing_context() -> bool {
-    // This could be determined by:
-    // 1. A context parameter passed to the function
-    // 2. Stack trace analysis
-    // 3. A thread-local context variable
-    // For now, we'll use a simple approach based on TTL request
-    true // Assume memory listing context for now
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_link_lives_as_long_as_asked_within_the_maximum() {
+        assert_eq!(effective_ttl(0), DEFAULT_TTL_SECS);
+        assert_eq!(effective_ttl(1), 1);
+        assert_eq!(effective_ttl(600), 600);
+        assert_eq!(effective_ttl(MAX_TTL_SECS), MAX_TTL_SECS);
+        assert_eq!(effective_ttl(MAX_TTL_SECS + 1), MAX_TTL_SECS);
+        assert_eq!(effective_ttl(u32::MAX), MAX_TTL_SECS);
+    }
 }

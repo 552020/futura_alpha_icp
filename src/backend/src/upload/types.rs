@@ -1,4 +1,4 @@
-use crate::types::{CapsuleId, MemoryId, MemoryType};
+use crate::types::MemoryType;
 use candid::{CandidType, Decode, Deserialize, Encode};
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::Serialize;
@@ -91,17 +91,6 @@ pub struct ChunkData {
     pub received_at: u64,
 }
 
-/// Commit response for upload operations
-#[derive(Clone, Debug, CandidType, Deserialize, Serialize)]
-pub struct CommitResponse {
-    pub success: bool,
-    pub memory_id: String,
-    pub final_hash: String,
-    pub total_bytes: u64,
-    pub message: String,
-    pub error: Option<crate::types::Error>,
-}
-
 // Size constants aligned with senior developer feedback
 pub const INLINE_MAX: u64 = 32 * 1024; // 32KB (fits in Capsule bound)
 pub const CHUNK_SIZE: usize = 1_800_000; // 1.8MB - ICP expert recommended optimal size
@@ -175,38 +164,6 @@ impl Storable for BlobId {
 
 // Re-export SessionStatus from session module to avoid duplication
 pub use crate::session::types::SessionStatus;
-
-/// Upload session metadata with crash safety and authorization
-#[derive(Clone, Debug, CandidType, Deserialize)]
-pub struct SessionMeta {
-    pub capsule_id: CapsuleId,
-    pub provisional_memory_id: MemoryId,
-    pub caller: candid::Principal,
-    pub chunk_count: u32,
-    pub expected_len: Option<u64>,
-    pub expected_hash: Option<[u8; 32]>,
-    pub status: SessionStatus,
-    pub created_at: u64,
-    pub idem: String,
-}
-
-impl Storable for SessionMeta {
-    const BOUND: Bound = Bound::Bounded {
-        max_size: 2048,
-        is_fixed_size: false,
-    };
-
-    fn to_bytes(&self) -> Cow<'_, [u8]> {
-        Cow::Owned(Encode!(&(1u16, self)).expect("Failed to encode SessionMeta"))
-    }
-
-    fn from_bytes(bytes: Cow<[u8]>) -> Self {
-        let (version, meta): (u16, SessionMeta) =
-            Decode!(bytes.as_ref(), (u16, SessionMeta)).expect("Failed to decode SessionMeta");
-        assert_eq!(version, 1, "Unsupported SessionMeta version");
-        meta
-    }
-}
 
 /// Blob metadata for integrity verification
 #[derive(Clone, Debug, CandidType, Deserialize)]

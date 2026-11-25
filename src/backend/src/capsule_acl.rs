@@ -78,7 +78,6 @@ mod tests {
     use super::*;
     use crate::types::PersonRef;
     use candid::Principal;
-    use std::collections::BTreeMap;
 
     fn create_test_person(id: &str) -> PersonRef {
         // Create a valid Principal from a simple string

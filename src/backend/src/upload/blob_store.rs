@@ -8,16 +8,9 @@ use ic_stable_structures::{StableBTreeMap, StableCell};
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 
-/// Deterministic hash of provisional_memory_id for stable chunk keys
-/// CRITICAL: This MUST be used everywhere chunks are written/read
-/// Includes session_id to prevent parallel key collisions
-pub fn pmid_hash32(pmid: &str) -> [u8; 32] {
-    let mut h = Sha256::new();
-    h.update(pmid.as_bytes());
-    h.finalize().into()
-}
-
-/// Deterministic hash including session_id for parallel-safe chunk keys
+/// Deterministic hash of provisional memory id and session id: the stable
+/// key of a chunk. Must be used wherever chunks are written or read; the
+/// session id keeps parallel uploads apart.
 pub fn pmid_session_hash32(pmid: &str, session_id: u64) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update(pmid.as_bytes());

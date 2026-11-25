@@ -165,13 +165,6 @@ mod blob_store_tests {
     }
 
     #[test]
-    fn test_blob_store_creation() {
-        let blob_store = create_test_blob_store();
-        // Test that we can create a blob store without errors
-        assert!(true, "Blob store creation should succeed");
-    }
-
-    #[test]
     fn test_blob_id_generation() {
         let id1 = BlobId::new();
         let id2 = BlobId::new();

@@ -221,6 +221,7 @@ impl SessionCompat {
     }
 
     /// Clear all sessions
+    #[cfg(test)]
     pub fn clear_all_sessions(&self) {
         *self.svc.borrow_mut() = SessionService::new();
         self.meta.borrow_mut().clear();

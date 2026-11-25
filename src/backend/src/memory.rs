@@ -135,16 +135,3 @@ where
 // Note: post_upgrade hook is defined in lib.rs to avoid conflicts
 // The stable memory data will be automatically restored by ic-stable-structures
 
-// ============================================================================
-// HELPER FUNCTIONS FOR STABLE MEMORY OPERATIONS
-// ============================================================================
-
-// Helper to clear all stable memory data (for emergency recovery)
-
-pub fn clear_all_stable_memory() -> Result<(), String> {
-    // Note: clear_new() modifies in place and returns ()
-    // STABLE_MEMORY_ARTIFACTS removed - artifacts system deleted
-    // STABLE_UPLOAD_SESSIONS removed - using new SessionStore
-    // STABLE_CHUNK_DATA removed - using active chunk storage in upload/sessions.rs
-    Ok(())
-}

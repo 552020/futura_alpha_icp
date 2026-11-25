@@ -231,10 +231,6 @@ mod tests {
             }
         }
 
-        fn get_data(&self) -> Vec<u8> {
-            self.data.borrow().clone()
-        }
-
         fn get_writes(&self) -> Vec<(u64, usize)> {
             self.writes.borrow().clone()
         }

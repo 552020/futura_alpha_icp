@@ -122,11 +122,6 @@ impl AdminStore {
         Self::with_admins(|admins| admins.iter().map(|(k, _)| k).collect())
     }
 
-    /// Export all admins for upgrade persistence
-    pub fn export_admins_for_upgrade() -> Vec<Principal> {
-        Self::with_admins(|admins| admins.iter().map(|(k, _)| k).collect())
-    }
-
     /// Import admins from stable storage after canister upgrade
     pub fn import_admins_from_upgrade(admin_data: Vec<Principal>) {
         Self::with_admins_mut(|admins| {
@@ -208,11 +203,6 @@ pub fn list_superadmins() -> Vec<Principal> {
         .iter()
         .map(|s| Principal::from_text(s).unwrap_or_else(|_| Principal::anonymous()))
         .collect()
-}
-
-/// Export all admins for upgrade persistence
-pub fn export_admins_for_upgrade() -> Vec<Principal> {
-    AdminStore::export_admins_for_upgrade()
 }
 
 /// Import admins from stable storage after canister upgrade
