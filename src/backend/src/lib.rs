@@ -824,6 +824,10 @@ fn sessions_stats() -> std::result::Result<String, Error> {
 /// List all sessions for debugging
 #[ic_cdk::query]
 fn sessions_list() -> std::result::Result<String, Error> {
+    // Shows who uploads into which capsule: admins only
+    if !admin::is_admin(&ic_cdk::api::msg_caller()) {
+        return Err(Error::Unauthorized);
+    }
     memory::with_capsule_store_mut(|_store| {
         let sessions = upload::service::list_upload_sessions();
 
