@@ -1,144 +1,59 @@
 #!/bin/bash
 
-# Test Registry for Backend Integration Tests
-# This file defines all available tests with their numbers and metadata
+# Test registry for the backend integration tests (shell, against a replica).
+# One row per test: "category|path under tests/backend|description".
+# The row number is the test number the runner uses, so add new tests at the end.
 
-# Test definitions using indexed arrays (compatible with older bash versions)
-
-# Test names (indexed by test number)
-TEST_INFO=(
-    ""  # 0-index placeholder
-    "test_capsules_list.sh"
-    "test_capsules_read.sh"
-    "test_memories_ping.sh"
-    "test_galleries_list.sh"
-    "test_galleries_create.sh"
-    "test_galleries_delete.sh"
-    "test_galleries_update.sh"
-    "test_capsules_create.sh"
-    "test_capsules_bind_neon.sh"
-    "test_gallery_crud.sh"
-    "test_gallery_upload.sh"
-    "test_authorization.sh"
-    "test_memories_advanced.sh"
-    "test_memories_create.sh"
-    "test_memories_delete.sh"
-    "test_memories_list.sh"
-    "test_memories_read.sh"
-    "test_memories_update.sh"
-    "test_canister_capsule.sh"
-    "test_legacy_inheritance.sh"
-    "test_upgrade_keeps_files.sh"
-    "test_personal_canister.sh"
-    "test_top_up.sh"
-)
-
-# Test paths (indexed by test number)
-TEST_PATHS=(
-    ""  # 0-index placeholder
-    "general/test_capsules_list.sh"
-    "general/test_capsules_read.sh"
-    "shared-capsule/memories/test_memories_ping.sh"
-    "shared-capsule/galleries/test_galleries_list.sh"
-    "shared-capsule/galleries/test_galleries_create.sh"
-    "shared-capsule/galleries/test_galleries_delete.sh"
-    "shared-capsule/galleries/test_galleries_update.sh"
-    "general/test_capsules_create.sh"
-    "general/test_capsules_bind_neon.sh"
-    "shared-capsule/galleries/test_gallery_crud.sh"
-    "shared-capsule/galleries/test_gallery_upload.sh"
-    "shared-capsule/auth/test_authorization.sh"
-    "shared-capsule/memories/test_memories_advanced.sh"
-    "shared-capsule/memories/test_memories_create.sh"
-    "shared-capsule/memories/test_memories_delete.sh"
-    "shared-capsule/memories/test_memories_list.sh"
-    "shared-capsule/memories/test_memories_read.sh"
-    "shared-capsule/memories/test_memories_update.sh"
-    "canister-capsule/test_canister_capsule.sh"
-    "legacy/test_legacy_inheritance.sh"
-    "general/test_upgrade_keeps_files.sh"
-    "personal/test_personal_canister.sh"
-    "personal/test_top_up.sh"
-)
-
-# Test descriptions (indexed by test number)
-TEST_DESCRIPTIONS=(
-    ""  # 0-index placeholder
-    "Test capsules_list endpoint functionality"
-    "Test capsules_read_basic and capsules_read_full"
-    "Test memories_ping endpoint (memory presence)"
-    "Test galleries_list endpoint"
-    "Test galleries_create endpoint"
-    "Test galleries_delete endpoint"
-    "Test galleries_update endpoint"
-    "Test capsules_create endpoint"
-    "Test capsules_bind_neon endpoint"
-    "Test gallery CRUD operations"
-    "Test gallery upload functionality"
-    "Test memory authorization"
-    "Test advanced memory operations"
-    "Test memory creation"
-    "Test memory deletion"
-    "Test memory listing"
-    "Test memory reading"
-    "Test memory updating"
-    "Test canister-capsule integration"
-    "Test inheritance: trustees, death confirmation, heir access"
-    "Test that an upgrade keeps uploaded files"
-    "Test personal canisters: factory creates, hands off, owner upgrades"
-    "Test cycles top-up of personal canisters: floor, monthly cap"
-)
-
-# Test categories (indexed by test number)
-TEST_CATEGORIES=(
-    ""  # 0-index placeholder
-    "general"
-    "general"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "general"
-    "general"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "shared-capsule"
-    "canister-capsule"
-    "legacy"
-    "general"
-    "personal"
-    "personal"
+TESTS=(
+    ""  # test numbers start at 1
+    "general|general/test_capsules_list.sh|Test capsules_list endpoint functionality"
+    "general|general/test_capsules_read.sh|Test capsules_read_basic and capsules_read_full"
+    "shared-capsule|shared-capsule/memories/test_memories_ping.sh|Test memories_ping endpoint (memory presence)"
+    "shared-capsule|shared-capsule/galleries/test_galleries_list.sh|Test galleries_list endpoint"
+    "shared-capsule|shared-capsule/galleries/test_galleries_create.sh|Test galleries_create endpoint"
+    "shared-capsule|shared-capsule/galleries/test_galleries_delete.sh|Test galleries_delete endpoint"
+    "shared-capsule|shared-capsule/galleries/test_galleries_update.sh|Test galleries_update endpoint"
+    "general|general/test_capsules_create.sh|Test capsules_create endpoint"
+    "general|general/test_capsules_bind_neon.sh|Test capsules_bind_neon endpoint"
+    "shared-capsule|shared-capsule/galleries/test_gallery_crud.sh|Test gallery CRUD operations"
+    "shared-capsule|shared-capsule/galleries/test_gallery_upload.sh|Test gallery upload functionality"
+    "shared-capsule|shared-capsule/auth/test_authorization.sh|Test memory authorization"
+    "shared-capsule|shared-capsule/memories/test_memories_advanced.sh|Test advanced memory operations"
+    "shared-capsule|shared-capsule/memories/test_memories_create.sh|Test memory creation"
+    "shared-capsule|shared-capsule/memories/test_memories_delete.sh|Test memory deletion"
+    "shared-capsule|shared-capsule/memories/test_memories_list.sh|Test memory listing"
+    "shared-capsule|shared-capsule/memories/test_memories_read.sh|Test memory reading"
+    "shared-capsule|shared-capsule/memories/test_memories_update.sh|Test memory updating"
+    "legacy|legacy/test_legacy_inheritance.sh|Test inheritance: trustees, death confirmation, heir access"
+    "general|general/test_upgrade_keeps_files.sh|Test that an upgrade keeps uploaded files"
+    "personal|personal/test_personal_canister.sh|Test personal canisters: factory creates, hands off, owner upgrades"
+    "personal|personal/test_top_up.sh|Test cycles top-up of personal canisters: floor, monthly cap"
 )
 
 # Total number of tests
-TOTAL_TESTS=$((${#TEST_PATHS[@]} - 1))
+TOTAL_TESTS=$((${#TESTS[@]} - 1))
 
 # Function to get test info
+# One field of a test's row: 1 category, 2 path, 3 description
+test_field() {
+    echo "${TESTS[$1]}" | cut -d'|' -f"$2"
+}
+
+# The script's file name
 get_test_info() {
-    local test_num=$1
-    echo "${TEST_INFO[$test_num]}"
+    basename "$(test_field "$1" 2)"
 }
 
 get_test_path() {
-    local test_num=$1
-    echo "${TEST_PATHS[$test_num]}"
+    test_field "$1" 2
 }
 
 get_test_description() {
-    local test_num=$1
-    echo "${TEST_DESCRIPTIONS[$test_num]}"
+    test_field "$1" 3
 }
 
 get_test_category() {
-    local test_num=$1
-    echo "${TEST_CATEGORIES[$test_num]}"
+    test_field "$1" 1
 }
 
 # Function to list all tests
@@ -169,6 +84,7 @@ is_valid_test() {
 }
 
 # Export functions for use in other scripts
+export -f test_field
 export -f get_test_info
 export -f get_test_path
 export -f get_test_description

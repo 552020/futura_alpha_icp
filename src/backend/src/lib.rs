@@ -21,7 +21,6 @@ thread_local! {
 // Import modules
 mod admin;
 mod auth;
-mod canister_factory;
 pub mod capsule;
 pub mod capsule_acl;
 pub mod capsule_store;
@@ -962,211 +961,27 @@ fn blob_delete(blob_id: String) -> types::Result6 {
     }
 }
 
-// ============================================================================
-// PERSONAL CANISTER MANAGEMENT (22 functions)
-// ============================================================================
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::update]
-async fn create_personal_canister() -> canister_factory::PersonalCanisterCreationResponse {
-    match canister_factory::create_personal_canister().await {
-        Ok(response) => response,
-        Err(error) => canister_factory::PersonalCanisterCreationResponse {
-            success: false,
-            canister_id: None,
-            message: format!("Personal canister creation failed: {error}"),
-        },
-    }
-}
-
-#[ic_cdk::query]
-fn get_creation_status() -> Option<canister_factory::CreationStatusResponse> {
-    canister_factory::get_creation_status()
-}
-
-#[ic_cdk::query]
-fn get_personal_canister_id(user: Principal) -> Option<Principal> {
-    canister_factory::get_personal_canister_id(user)
-}
-
-#[ic_cdk::query]
-fn get_my_personal_canister_id() -> Option<Principal> {
-    canister_factory::get_my_personal_canister_id()
-}
-
-#[ic_cdk::query]
-fn get_detailed_creation_status() -> Option<canister_factory::DetailedCreationStatus> {
-    canister_factory::get_detailed_creation_status()
-}
-
-// Admin personal canister creation functions
-#[ic_cdk::query]
-fn get_user_creation_status(
-    user: Principal,
-) -> std::result::Result<Option<canister_factory::DetailedCreationStatus>, Error> {
-    canister_factory::get_user_creation_status(user)
-}
-
-#[ic_cdk::query]
-fn get_user_migration_status(
-    user: Principal,
-) -> std::result::Result<Option<canister_factory::DetailedCreationStatus>, Error> {
-    get_user_creation_status(user)
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn list_all_creation_states(
-) -> std::result::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, Error> {
-    canister_factory::list_all_creation_states()
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn list_all_migration_states(
-) -> std::result::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, Error> {
-    list_all_creation_states()
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn get_creation_states_by_status(
-    status: canister_factory::CreationStatus,
-) -> std::result::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, Error> {
-    canister_factory::get_creation_states_by_status(status)
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn get_migration_states_by_status(
-    status: canister_factory::CreationStatus,
-) -> std::result::Result<Vec<(Principal, canister_factory::DetailedCreationStatus)>, Error> {
-    get_creation_states_by_status(status)
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::update]
-fn clear_creation_state(user: Principal) -> std::result::Result<bool, Error> {
-    canister_factory::clear_creation_state(user)
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::update]
-fn clear_migration_state(user: Principal) -> std::result::Result<bool, Error> {
-    clear_creation_state(user)
-}
-
-// Admin controls for migration (only available with migration feature)
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::update]
-fn set_personal_canister_creation_enabled(enabled: bool) -> std::result::Result<(), Error> {
-    canister_factory::set_personal_canister_creation_enabled(enabled)
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn get_personal_canister_creation_stats(
-) -> std::result::Result<canister_factory::PersonalCanisterCreationStats, Error> {
-    canister_factory::get_personal_canister_creation_stats()
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn is_personal_canister_creation_enabled() -> std::result::Result<bool, Error> {
-    canister_factory::is_personal_canister_creation_enabled()
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn is_migration_enabled() -> std::result::Result<bool, Error> {
-    canister_factory::is_migration_enabled()
-}
-
-// Legacy function names for backward compatibility
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::update]
-async fn migrate_capsule() -> canister_factory::PersonalCanisterCreationResponse {
-    create_personal_canister().await
-}
-
-#[cfg(any(feature = "migration", feature = "personal_canister_creation"))]
-#[ic_cdk::query]
-fn get_migration_status() -> Option<canister_factory::CreationStatusResponse> {
-    get_creation_status()
-}
-
-#[cfg(feature = "migration")]
-#[ic_cdk::query]
-fn get_detailed_migration_status() -> Option<canister_factory::DetailedCreationStatus> {
-    get_detailed_creation_status()
-}
-
-#[cfg(feature = "migration")]
-#[ic_cdk::update]
-fn set_migration_enabled(enabled: bool) -> std::result::Result<(), Error> {
-    set_personal_canister_creation_enabled(enabled)
-}
-
-#[cfg(feature = "migration")]
-#[ic_cdk::query]
-fn get_migration_stats(
-) -> std::result::Result<canister_factory::PersonalCanisterCreationStats, Error> {
-    get_personal_canister_creation_stats()
-}
-
-// pub use memories::*; // Disabled for now
-
 // Persistence hooks for canister upgrades
 #[ic_cdk::pre_upgrade]
 fn pre_upgrade() {
-    // Stable structures persist by themselves. Do NOT stable_save here: it
-    // overwrites the memory manager and loses the blob store (see upgrade.rs).
-    #[cfg(feature = "migration")]
-    upgrade::save_migration_state(&canister_factory::export_migration_state_for_upgrade());
+    // Nothing to do: everything lives in stable structures, which persist by
+    // themselves. Do NOT stable_save here: it overwrites the memory manager
+    // and loses the blob store (see upgrade.rs).
 }
 
 #[ic_cdk::post_upgrade]
 async fn post_upgrade() {
     // Must come first, before any stable structure is touched (see upgrade.rs)
-    let legacy_snapshot = upgrade::legacy_snapshot_present();
-
-    // Stable memory structures (StableBTreeMap) automatically restore their data
-    // No explicit action needed for stable memory - ic-stable-structures handles this
-
-    // For backward compatibility, restore thread_local data using the old approach
-    #[cfg(feature = "migration")]
-    if !legacy_snapshot {
-        if let Some(state) = upgrade::load_migration_state() {
-            canister_factory::import_migration_state_from_upgrade(state);
-        }
-    }
-
-    #[cfg(feature = "migration")]
-    if legacy_snapshot {
-        // Upgrading from a version that snapshotted in pre_upgrade: restore once
-        if let Ok((capsule_data, admin_data, migration_data)) = ic_cdk::storage::stable_restore::<(
-            Vec<(String, Capsule)>,
-            Vec<Principal>,
-            canister_factory::PersonalCanisterCreationStateData,
-        )>() {
-            with_capsule_store_mut(|store| {
-                for (id, capsule) in capsule_data {
-                    store.upsert(id, capsule);
-                }
-            });
-            admin::import_admins_from_upgrade(admin_data);
-            canister_factory::import_migration_state_from_upgrade(migration_data);
-        } else {
-            // Do not continue: the memory manager would start empty over the
-            // old data. Trapping rolls the upgrade back and keeps everything.
-            ic_cdk::trap("post_upgrade: cannot read the snapshot of the previous version");
-        }
-    }
-
-    #[cfg(not(feature = "migration"))]
-    if legacy_snapshot {
-        // Upgrading from a version that snapshotted in pre_upgrade: restore once
-        if let Ok((capsule_data, admin_data)) =
-            ic_cdk::storage::stable_restore::<(Vec<(String, Capsule)>, Vec<Principal>)>()
+    if upgrade::legacy_snapshot_present() {
+        // Upgrading from a version that snapshotted in pre_upgrade: restore
+        // once. The third value of that snapshot was the state of the old
+        // in-backend canister factory; it is read and dropped.
+        if let Ok((capsule_data, admin_data, _old_factory_state)) =
+            ic_cdk::storage::stable_restore::<(
+                Vec<(String, Capsule)>,
+                Vec<Principal>,
+                candid::Reserved,
+            )>()
         {
             with_capsule_store_mut(|store| {
                 for (id, capsule) in capsule_data {
@@ -1175,6 +990,8 @@ async fn post_upgrade() {
             });
             admin::import_admins_from_upgrade(admin_data);
         } else {
+            // Do not continue: the memory manager would start empty over the
+            // old data. Trapping rolls the upgrade back and keeps everything.
             ic_cdk::trap("post_upgrade: cannot read the snapshot of the previous version");
         }
     }

@@ -1,4 +1,3 @@
-use crate::canister_factory::PersonalCanisterCreationStateData;
 use crate::capsule_store::Store;
 use ic_stable_structures::memory_manager::{MemoryId, MemoryManager};
 use ic_stable_structures::DefaultMemoryImpl;
@@ -40,8 +39,9 @@ pub const MEM_PERSONAL_OWNER: MemoryId = MemoryId::new(10);
 /// Personal mode: the principal that installed this canister (its factory)
 pub const MEM_PERSONAL_FACTORY: MemoryId = MemoryId::new(12);
 
-// Personal-canister creation state, saved across upgrades (upgrade.rs)
-pub const MEM_MIGRATION_STATE: MemoryId = MemoryId::new(11);
+// MemoryId 11 is retired: it held the state of the canister factory that
+// used to live in the backend. Do not reuse it; deployed canisters may still
+// have bytes there.
 
 // HTTP token secrets (http/adapters/secret_store.rs)
 pub const MEM_SECRETS: MemoryId = MemoryId::new(42);
@@ -51,11 +51,6 @@ thread_local! {
     /// This ensures no MemoryId collisions across modules
     pub static MM: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
-
-
-    // Migration state storage (only available with migration feature)
-    #[cfg(feature = "migration")]
-    static MIGRATION_STATE: std::cell::RefCell<PersonalCanisterCreationStateData> = std::cell::RefCell::new(PersonalCanisterCreationStateData::default());
 }
 
 // ============================================================================
@@ -109,22 +104,6 @@ where
 // BACKWARD COMPATIBILITY ALIASES
 // ============================================================================
 
-// Migration state access functions (only available with migration feature)
-#[cfg(feature = "migration")]
-pub fn with_migration_state_mut<F, R>(f: F) -> R
-where
-    F: FnOnce(&mut PersonalCanisterCreationStateData) -> R,
-{
-    MIGRATION_STATE.with(|state| f(&mut state.borrow_mut()))
-}
-
-#[cfg(feature = "migration")]
-pub fn with_migration_state<F, R>(f: F) -> R
-where
-    F: FnOnce(&PersonalCanisterCreationStateData) -> R,
-{
-    MIGRATION_STATE.with(|state| f(&state.borrow()))
-}
 // ============================================================================
 // CANISTER UPGRADE HOOKS - Stable Memory Persistence
 // ============================================================================

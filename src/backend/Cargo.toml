@@ -7,9 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["migration", "upload"]
-migration = []
-personal_canister_creation = []
+default = ["upload"]
 upload = []
 
 [dependencies]

@@ -174,32 +174,8 @@ type ConnectionGroup = record {
 };
 type ConnectionStatus = variant { Blocked; Accepted; Revoked; Pending };
 type ControllerState = record { granted_at : nat64; granted_by : PersonRef };
-type CreationStatus = variant {
-  Importing;
-  Creating;
-  Failed;
-  Exporting;
-  Installing;
-  Completed;
-  Verifying;
-  NotStarted;
-};
-type CreationStatusResponse = record {
-  status : CreationStatus;
-  canister_id : opt principal;
-  message : opt text;
-};
 type DatabaseHosting = variant { Icp; Neon };
 type DeathConfirmation = record { trustee : principal; confirmed_at : nat64 };
-type DetailedCreationStatus = record {
-  status : CreationStatus;
-  progress_message : text;
-  canister_id : opt principal;
-  error_message : opt text;
-  created_at : nat64;
-  cycles_consumed : nat;
-  completed_at : opt nat64;
-};
 type DocumentAssetMetadata = record {
   document_type : opt text;
   base : AssetMetadataBase;
@@ -454,17 +430,6 @@ type NoteAssetMetadata = record {
 type OwnerState = record { last_activity_at : nat64; since : nat64 };
 type Page = record { next_cursor : opt text; items : vec MemoryHeader };
 type PersonRef = variant { Opaque : text; Principal : principal };
-type PersonalCanisterCreationResponse = record {
-  canister_id : opt principal;
-  message : text;
-  success : bool;
-};
-type PersonalCanisterCreationStats = record {
-  total_successes : nat64;
-  total_failures : nat64;
-  total_attempts : nat64;
-  total_cycles_consumed : nat;
-};
 type ResourceRole = variant { Guest; Member; SuperAdmin; Admin; Owner };
 type ResourceType = variant { Memory; Capsule; Gallery };
 type Result = variant { Ok; Err : Error };
@@ -473,29 +438,22 @@ type Result14 = variant { Ok : principal; Err : Error };
 type Result15 = variant { Ok : UploadFinishResult; Err : Error };
 type Result6 = variant { Ok : text; Err : Error };
 type Result_1 = variant { Ok : MemoryAssetData; Err : Error };
-type Result_10 = variant { Ok : Gallery; Err : Error };
-type Result_11 = variant {
-  Ok : vec record { principal; DetailedCreationStatus };
-  Err : Error;
-};
-type Result_12 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
-type Result_13 = variant { Ok : opt DetailedCreationStatus; Err : Error };
-type Result_14 = variant { Ok : UserSettingsResponse; Err : Error };
-type Result_15 = variant { Ok : LegacyStatus; Err : Error };
-type Result_16 = variant { Ok : AssetCleanupResult; Err : Error };
-type Result_17 = variant { Ok : BulkResult; Err : Error };
-type Result_18 = variant { Ok : Page; Err : Error };
-type Result_19 = variant { Ok : MemoryAssetsList; Err : Error };
+type Result_10 = variant { Ok : UserSettingsResponse; Err : Error };
+type Result_11 = variant { Ok : LegacyStatus; Err : Error };
+type Result_12 = variant { Ok : AssetCleanupResult; Err : Error };
+type Result_13 = variant { Ok : BulkResult; Err : Error };
+type Result_14 = variant { Ok : Page; Err : Error };
+type Result_15 = variant { Ok : MemoryAssetsList; Err : Error };
+type Result_16 = variant { Ok : vec MemoryPresenceResult; Err : Error };
+type Result_17 = variant { Ok : Memory; Err : Error };
 type Result_2 = variant { Ok : AssetRemovalResult; Err : Error };
-type Result_20 = variant { Ok : vec MemoryPresenceResult; Err : Error };
-type Result_21 = variant { Ok : Memory; Err : Error };
 type Result_3 = variant { Ok : BlobMeta; Err : Error };
 type Result_4 = variant { Ok : blob; Err : Error };
 type Result_5 = variant { Ok : Capsule; Err : Error };
 type Result_6 = variant { Ok : CapsuleInfo; Err : Error };
-type Result_7 = variant { Ok : bool; Err : Error };
-type Result_8 = variant { Ok : BulkDeleteResult; Err : Error };
-type Result_9 = variant { Ok : Folder; Err : Error };
+type Result_7 = variant { Ok : BulkDeleteResult; Err : Error };
+type Result_8 = variant { Ok : Folder; Err : Error };
+type Result_9 = variant { Ok : Gallery; Err : Error };
 type SharingStatus = variant { Shared; Private; Public };
 type StorageBackend = variant { S3; Icp; VercelBlob; Ipfs; Arweave };
 type UploadConfig = record {
@@ -564,9 +522,6 @@ service : (opt BackendInitArg) -> {
   capsules_read_basic : (opt text) -> (Result_6) query;
   capsules_read_full : (opt text) -> (Result_5) query;
   capsules_update : (text, CapsuleUpdateData) -> (Result_5);
-  clear_creation_state : (principal) -> (Result_7);
-  clear_migration_state : (principal) -> (Result_7);
-  create_personal_canister : () -> (PersonalCanisterCreationResponse);
   // All cycles this canister holds, including the part the network keeps
   // back as the freezing reserve. For the owner and the factory.
   cycles_balance : () -> (nat) query;
@@ -584,63 +539,47 @@ service : (opt BackendInitArg) -> {
   // TODO: Implement proper ACL checks and individual memory deletion
   // TODO: Add proper error handling and rollback mechanisms
   // TODO: Consider if this should be a user-facing feature
-  dev_clear_all_memories_in_capsule : (text, bool) -> (Result_8);
-  folders_create : (FolderData) -> (Result_9);
+  dev_clear_all_memories_in_capsule : (text, bool) -> (Result_7);
+  folders_create : (FolderData) -> (Result_8);
   folders_delete : (text) -> (Result);
   folders_list : () -> (vec FolderHeader) query;
-  folders_update : (text, FolderUpdateData) -> (Result_9);
-  galleries_create : (GalleryData) -> (Result_10);
-  galleries_create_with_memories : (GalleryData, bool) -> (Result_10);
+  folders_update : (text, FolderUpdateData) -> (Result_8);
+  galleries_create : (GalleryData) -> (Result_9);
+  galleries_create_with_memories : (GalleryData, bool) -> (Result_9);
   galleries_delete : (text) -> (Result);
   galleries_list : () -> (vec FolderHeader) query;
-  galleries_read : (text) -> (Result_10) query;
-  galleries_update : (text, GalleryUpdateData) -> (Result_10);
+  galleries_read : (text) -> (Result_9) query;
+  galleries_update : (text, GalleryUpdateData) -> (Result_9);
   get_canister_size_stats : () -> (CanisterSizeStats) query;
-  get_creation_states_by_status : (CreationStatus) -> (Result_11) query;
-  get_creation_status : () -> (opt CreationStatusResponse) query;
-  get_detailed_creation_status : () -> (opt DetailedCreationStatus) query;
-  get_detailed_migration_status : () -> (opt DetailedCreationStatus) query;
   // Get detailed gallery size breakdown
   get_gallery_size_breakdown : (Gallery) -> (GallerySizeInfo) query;
   // Get gallery size information for debugging stable memory limits
   get_gallery_size_info : (Gallery) -> (text) query;
-  get_migration_states_by_status : (CreationStatus) -> (Result_11) query;
-  get_migration_stats : () -> (Result_12) query;
-  get_migration_status : () -> (opt CreationStatusResponse) query;
-  get_my_personal_canister_id : () -> (opt principal) query;
-  get_personal_canister_creation_stats : () -> (Result_12) query;
-  get_personal_canister_id : (principal) -> (opt principal) query;
-  get_user_creation_status : (principal) -> (Result_13) query;
-  get_user_migration_status : (principal) -> (Result_13) query;
-  get_user_settings : () -> (Result_14) query;
+  get_user_settings : () -> (Result_10) query;
   greet : (text) -> (text) query;
   http_request : (HttpRequest) -> (HttpResponse) query;
-  is_migration_enabled : () -> (Result_7) query;
-  is_personal_canister_creation_enabled : () -> (Result_7) query;
   // Owner: "I am alive" - drops every death confirmation, at any time
-  legacy_cancel_death : (text) -> (Result_15);
+  legacy_cancel_death : (text) -> (Result_11);
   // Trustee: confirm the owner's death (starts the waiting period once enough confirmed)
-  legacy_confirm_death : (text) -> (Result_15);
+  legacy_confirm_death : (text) -> (Result_11);
   // Owner: record that an event happened (wedding, graduation, custom, ...)
-  legacy_event_record : (text, AccessEvent) -> (Result_15);
+  legacy_event_record : (text, AccessEvent) -> (Result_11);
   // Owner: take a recorded event back
-  legacy_event_revoke : (text, AccessEvent) -> (Result_15);
+  legacy_event_revoke : (text, AccessEvent) -> (Result_11);
   // Owner: set trustees, how many must confirm a death, and the waiting period
-  legacy_settings_set : (text, vec principal, nat32, nat64) -> (Result_15);
+  legacy_settings_set : (text, vec principal, nat32, nat64) -> (Result_11);
   // Owner, controller or trustee: the inheritance state of a capsule
-  legacy_status : (text) -> (Result_15) query;
+  legacy_status : (text) -> (Result_11) query;
   // Trustee: take the confirmation back (only before the death is in effect)
-  legacy_withdraw_confirmation : (text) -> (Result_15);
+  legacy_withdraw_confirmation : (text) -> (Result_11);
   list_admins : () -> (vec principal) query;
-  list_all_creation_states : () -> (Result_11) query;
-  list_all_migration_states : () -> (Result_11) query;
   list_superadmins : () -> (vec principal) query;
   memories_add_asset : (text, InternalBlobAssetInput, text) -> (Result6);
   memories_add_inline_asset : (text, InlineAssetInput, text) -> (Result6);
   // Clean up all assets from a memory while preserving the memory record
-  memories_cleanup_assets_all : (text) -> (Result_16);
+  memories_cleanup_assets_all : (text) -> (Result_12);
   // Bulk cleanup assets from multiple memories
-  memories_cleanup_assets_bulk : (vec text) -> (Result_17);
+  memories_cleanup_assets_bulk : (vec text) -> (Result_13);
   memories_create : (
       text,
       opt blob,
@@ -661,24 +600,23 @@ service : (opt BackendInitArg) -> {
     ) -> (Result6);
   memories_delete : (text, bool) -> (Result);
   // Delete ALL memories in a capsule (high-risk operation)
-  memories_delete_all : (text, bool) -> (Result_8);
+  memories_delete_all : (text, bool) -> (Result_7);
   // Bulk delete multiple memories in a single operation
-  memories_delete_bulk : (text, vec text, bool) -> (Result_8);
-  memories_list : (text, opt text, opt nat32) -> (Result_18) query;
+  memories_delete_bulk : (text, vec text, bool) -> (Result_7);
+  memories_list : (text, opt text, opt nat32) -> (Result_14) query;
   // List all assets in a memory
-  memories_list_assets : (text) -> (Result_19) query;
+  memories_list_assets : (text) -> (Result_15) query;
   // List memories filtered by capsule_id field (for UUID v7 implementation)
-  memories_list_by_capsule : (text, opt text, opt nat32) -> (Result_18) query;
+  memories_list_by_capsule : (text, opt text, opt nat32) -> (Result_14) query;
   // Anyone granted access: the memories of a capsule they may view right now
-  memories_list_shared : (text, opt text, opt nat32) -> (Result_18) query;
+  memories_list_shared : (text, opt text, opt nat32) -> (Result_14) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (Result_20) query;
-  memories_read : (text) -> (Result_21) query;
+  memories_ping : (vec text) -> (Result_16) query;
+  memories_read : (text) -> (Result_17) query;
   memories_read_asset : (text, nat32) -> (Result_1) query;
   // Anyone granted access: one memory they may view right now
-  memories_read_shared : (text, text) -> (Result_21) query;
-  memories_update : (text, MemoryUpdateData) -> (Result_21);
-  migrate_capsule : () -> (PersonalCanisterCreationResponse);
+  memories_read_shared : (text, text) -> (Result_17) query;
+  memories_update : (text, MemoryUpdateData) -> (Result_17);
   mint_http_token : (text, vec text, opt vec text, nat32) -> (text) query;
   // Bulk token minting for efficient dashboard loading
   // Returns a vector of (memory_id, token) pairs
@@ -698,10 +636,8 @@ service : (opt BackendInitArg) -> {
   sessions_list : () -> (Result6) query;
   // Get session statistics for monitoring
   sessions_stats : () -> (Result6) query;
-  set_migration_enabled : (bool) -> (Result);
-  set_personal_canister_creation_enabled : (bool) -> (Result);
   update_gallery_storage_location : (text, vec BlobHosting) -> (Result);
-  update_user_settings : (UserSettingsUpdateData) -> (Result_14);
+  update_user_settings : (UserSettingsUpdateData) -> (Result_10);
   // Get upload configuration for TypeScript client discoverability
   upload_config : () -> (UploadConfig) query;
   // Abort upload session and cleanup

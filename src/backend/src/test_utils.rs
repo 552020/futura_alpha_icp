@@ -4,46 +4,11 @@
 //! to create consistent test capsules, memories, and other test data.
 
 use crate::capsule::domain::{
-    AccessCondition, AccessEntry, Capsule, GrantSource, OwnerState, ResourceRole, SharingStatus,
+    AccessCondition, AccessEntry, GrantSource, ResourceRole, SharingStatus,
 };
 use crate::memories::types::{Memory, MemoryMetadata, MemoryType};
 use crate::types::PersonRef;
 use candid::Principal;
-use std::collections::HashMap;
-
-/// Create a test capsule with default values
-pub fn create_test_capsule() -> Capsule {
-    let now = crate::capsule::time::now_icp_ns();
-    let subject = PersonRef::Principal(Principal::anonymous());
-
-    let mut owners = HashMap::new();
-    owners.insert(
-        subject.clone(),
-        OwnerState {
-            since: now,
-            last_activity_at: now,
-        },
-    );
-
-    Capsule {
-        id: "test_capsule_1".to_string(),
-        subject: subject.clone(),
-        owners,
-        controllers: HashMap::new(),
-        connections: HashMap::new(),
-        connection_groups: HashMap::new(),
-        memories: HashMap::new(),
-        galleries: HashMap::new(),
-        folders: HashMap::new(),
-        created_at: now,
-        updated_at: now,
-        bound_to_neon: false,
-        inline_bytes_used: 0,
-        has_advanced_settings: true,
-        hosting_preferences: crate::types::HostingPreferences::default(),
-        legacy: None,
-    }
-}
 
 /// Create a test memory with default values
 pub fn create_test_memory() -> Memory {
