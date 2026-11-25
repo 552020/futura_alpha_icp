@@ -307,6 +307,7 @@ fn create_test_capsule_with_principal(
         bound_to_neon: false,
         inline_bytes_used: 0,
         hosting_preferences: HostingPreferences::default(),
+        legacy: None,
     }
 }
 
@@ -337,5 +338,6 @@ fn create_test_capsule(id: CapsuleId) -> Capsule {
         bound_to_neon: false,
         inline_bytes_used: 0,
         hosting_preferences: HostingPreferences::default(),
+        legacy: None,
     }
 }

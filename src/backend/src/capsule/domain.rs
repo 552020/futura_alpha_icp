@@ -254,6 +254,9 @@ pub struct Capsule {
     pub inline_bytes_used: u64,      // Track inline storage consumption
     pub has_advanced_settings: bool, // Controls whether user sees advanced settings panels
     pub hosting_preferences: HostingPreferences, // User's preferred hosting providers
+    /// Inheritance settings and recorded events (see legacy.rs). Optional so that
+    /// capsules stored before this field existed still decode.
+    pub legacy: Option<crate::legacy::LegacyState>,
 }
 
 impl Capsule {
@@ -286,6 +289,7 @@ impl Capsule {
             inline_bytes_used: 0,        // Start with zero inline consumption
             has_advanced_settings: true, // Default to advanced settings for Web3 users
             hosting_preferences: HostingPreferences::default(), // Default to ICP hosting
+            legacy: None,
         }
     }
 
@@ -397,10 +401,21 @@ impl PrincipalContext {
 /// Calculate effective permission mask for a resource
 #[allow(dead_code)]
 pub fn effective_perm_mask<T: AccessControlled>(resource: &T, ctx: &PrincipalContext) -> u32 {
+    // Without capsule context no event is in effect: event-conditioned
+    // entries grant nothing here.
+    effective_perm_mask_with_events(resource, ctx, &crate::legacy::ActiveEvents::none())
+}
+
+/// Like `effective_perm_mask`, with the events in effect on the resource's capsule
+pub fn effective_perm_mask_with_events<T: AccessControlled>(
+    resource: &T,
+    ctx: &PrincipalContext,
+    events: &crate::legacy::ActiveEvents,
+) -> u32 {
     use Perm as P;
 
     // 1) Ownership short-circuit (implement is_owner in domain, pure)
-    if is_owner(resource, ctx) {
+    if is_owner(resource, ctx, events) {
         return (P::VIEW | P::DOWNLOAD | P::SHARE | P::MANAGE | P::OWN).bits();
     }
 
@@ -409,7 +424,7 @@ pub fn effective_perm_mask<T: AccessControlled>(resource: &T, ctx: &PrincipalCon
     // 2) Check all access entries (unified individual and public access)
     for entry in resource.access_entries() {
         // Check if access is currently active (time/event conditions)
-        if !is_access_active(&entry.condition, ctx.now_ns) {
+        if !is_access_active(&entry.condition, ctx.now_ns, events) {
             continue;
         }
 
@@ -440,17 +455,16 @@ pub fn effective_perm_mask<T: AccessControlled>(resource: &T, ctx: &PrincipalCon
 }
 
 /// Check if an access condition is currently active
-#[allow(dead_code)]
-fn is_access_active(condition: &AccessCondition, now_ns: u64) -> bool {
+fn is_access_active(
+    condition: &AccessCondition,
+    now_ns: u64,
+    events: &crate::legacy::ActiveEvents,
+) -> bool {
     match condition {
         AccessCondition::Immediate => true,
         AccessCondition::Scheduled { accessible_after } => now_ns >= *accessible_after,
         AccessCondition::ExpiresAt { expires } => now_ns <= *expires,
-        AccessCondition::EventTriggered { event: _ } => {
-            // TODO: Implement event checking
-            // For now, treat as inactive until event system is implemented
-            false
-        }
+        AccessCondition::EventTriggered { event } => events.is_active(event),
     }
 }
 
@@ -462,10 +476,19 @@ pub fn has_perm<T: AccessControlled>(res: &T, ctx: &PrincipalContext, want: Perm
 
 /// Check if the principal is the owner of the resource
 #[allow(dead_code)]
-fn is_owner<T: AccessControlled>(res: &T, ctx: &PrincipalContext) -> bool {
-    // Check if the principal has an access entry with ResourceRole::Owner
+fn is_owner<T: AccessControlled>(
+    res: &T,
+    ctx: &PrincipalContext,
+    events: &crate::legacy::ActiveEvents,
+) -> bool {
+    // Check if the principal has an access entry with ResourceRole::Owner.
+    // The entry's condition counts here too: an Owner entry that is scheduled
+    // or waits for an event (e.g. an heir after death) must not grant
+    // ownership before its condition holds.
     for entry in res.access_entries() {
-        if entry.role == ResourceRole::Owner {
+        if entry.role == ResourceRole::Owner
+            && is_access_active(&entry.condition, ctx.now_ns, events)
+        {
             // Check if this entry applies to the current principal
             if entry.is_public {
                 // Public owner access (unusual but possible)

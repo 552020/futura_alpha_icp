@@ -129,6 +129,7 @@ type Capsule = record {
   connections : vec record { PersonRef; Connection };
   memories : vec record { text; Memory };
   bound_to_neon : bool;
+  legacy : opt LegacyState;
   galleries : vec record { text; Gallery };
   hosting_preferences : HostingPreferences;
 };
@@ -187,6 +188,7 @@ type CreationStatusResponse = record {
   message : opt text;
 };
 type DatabaseHosting = variant { Icp; Neon };
+type DeathConfirmation = record { trustee : principal; confirmed_at : nat64 };
 type DetailedCreationStatus = record {
   status : CreationStatus;
   progress_message : text;
@@ -211,6 +213,11 @@ type Error = variant {
   ResourceExhausted;
   NotImplemented : text;
   Conflict : text;
+};
+type EventRecord = record {
+  event : AccessEvent;
+  recorded_at : nat64;
+  recorded_by : principal;
 };
 type Folder = record {
   id : text;
@@ -321,6 +328,24 @@ type InlineAssetInput = record { metadata : AssetMetadata; bytes : blob };
 type InternalBlobAssetInput = record {
   metadata : AssetMetadata;
   blob_id : text;
+};
+type LegacyState = record {
+  waiting_period_ns : nat64;
+  required_confirmations : nat32;
+  occurred_events : vec EventRecord;
+  trustees : vec principal;
+  death_threshold_reached_at : opt nat64;
+  death_confirmations : vec DeathConfirmation;
+};
+type LegacyStatus = record {
+  now : nat64;
+  death_effective_at : opt nat64;
+  waiting_period_secs : nat64;
+  required_confirmations : nat32;
+  occurred_events : vec EventRecord;
+  trustees : vec principal;
+  death_in_effect : bool;
+  death_confirmations : vec DeathConfirmation;
 };
 type Memory = record {
   id : text;
@@ -454,13 +479,14 @@ type Result_11 = variant {
 type Result_12 = variant { Ok : PersonalCanisterCreationStats; Err : Error };
 type Result_13 = variant { Ok : opt DetailedCreationStatus; Err : Error };
 type Result_14 = variant { Ok : UserSettingsResponse; Err : Error };
-type Result_15 = variant { Ok : AssetCleanupResult; Err : Error };
-type Result_16 = variant { Ok : BulkResult; Err : Error };
-type Result_17 = variant { Ok : Page; Err : Error };
-type Result_18 = variant { Ok : MemoryAssetsList; Err : Error };
-type Result_19 = variant { Ok : vec MemoryPresenceResult; Err : Error };
+type Result_15 = variant { Ok : LegacyStatus; Err : Error };
+type Result_16 = variant { Ok : AssetCleanupResult; Err : Error };
+type Result_17 = variant { Ok : BulkResult; Err : Error };
+type Result_18 = variant { Ok : Page; Err : Error };
+type Result_19 = variant { Ok : MemoryAssetsList; Err : Error };
 type Result_2 = variant { Ok : AssetRemovalResult; Err : Error };
-type Result_20 = variant { Ok : Memory; Err : Error };
+type Result_20 = variant { Ok : vec MemoryPresenceResult; Err : Error };
+type Result_21 = variant { Ok : Memory; Err : Error };
 type Result_3 = variant { Ok : BlobMeta; Err : Error };
 type Result_4 = variant { Ok : blob; Err : Error };
 type Result_5 = variant { Ok : Capsule; Err : Error };
@@ -591,6 +617,20 @@ service : () -> {
   http_request : (HttpRequest) -> (HttpResponse) query;
   is_migration_enabled : () -> (Result_7) query;
   is_personal_canister_creation_enabled : () -> (Result_7) query;
+  // Owner: "I am alive" - drops every death confirmation, at any time
+  legacy_cancel_death : (text) -> (Result_15);
+  // Trustee: confirm the owner's death (starts the waiting period once enough confirmed)
+  legacy_confirm_death : (text) -> (Result_15);
+  // Owner: record that an event happened (wedding, graduation, custom, ...)
+  legacy_event_record : (text, AccessEvent) -> (Result_15);
+  // Owner: take a recorded event back
+  legacy_event_revoke : (text, AccessEvent) -> (Result_15);
+  // Owner: set trustees, how many must confirm a death, and the waiting period
+  legacy_settings_set : (text, vec principal, nat32, nat64) -> (Result_15);
+  // Owner, controller or trustee: the inheritance state of a capsule
+  legacy_status : (text) -> (Result_15) query;
+  // Trustee: take the confirmation back (only before the death is in effect)
+  legacy_withdraw_confirmation : (text) -> (Result_15);
   list_admins : () -> (vec principal) query;
   list_all_creation_states : () -> (Result_11) query;
   list_all_migration_states : () -> (Result_11) query;
@@ -598,9 +638,9 @@ service : () -> {
   memories_add_asset : (text, InternalBlobAssetInput, text) -> (Result6);
   memories_add_inline_asset : (text, InlineAssetInput, text) -> (Result6);
   // Clean up all assets from a memory while preserving the memory record
-  memories_cleanup_assets_all : (text) -> (Result_15);
+  memories_cleanup_assets_all : (text) -> (Result_16);
   // Bulk cleanup assets from multiple memories
-  memories_cleanup_assets_bulk : (vec text) -> (Result_16);
+  memories_cleanup_assets_bulk : (vec text) -> (Result_17);
   memories_create : (
       text,
       opt blob,
@@ -624,16 +664,20 @@ service : () -> {
   memories_delete_all : (text, bool) -> (Result_8);
   // Bulk delete multiple memories in a single operation
   memories_delete_bulk : (text, vec text, bool) -> (Result_8);
-  memories_list : (text, opt text, opt nat32) -> (Result_17) query;
+  memories_list : (text, opt text, opt nat32) -> (Result_18) query;
   // List all assets in a memory
-  memories_list_assets : (text) -> (Result_18) query;
+  memories_list_assets : (text) -> (Result_19) query;
   // List memories filtered by capsule_id field (for UUID v7 implementation)
-  memories_list_by_capsule : (text, opt text, opt nat32) -> (Result_17) query;
+  memories_list_by_capsule : (text, opt text, opt nat32) -> (Result_18) query;
+  // Anyone granted access: the memories of a capsule they may view right now
+  memories_list_shared : (text, opt text, opt nat32) -> (Result_18) query;
   // Check presence for multiple memories on ICP (consolidated from get_memory_presence_icp and get_memory_list_presence_icp)
-  memories_ping : (vec text) -> (Result_19) query;
-  memories_read : (text) -> (Result_20) query;
+  memories_ping : (vec text) -> (Result_20) query;
+  memories_read : (text) -> (Result_21) query;
   memories_read_asset : (text, nat32) -> (Result_1) query;
-  memories_update : (text, MemoryUpdateData) -> (Result_20);
+  // Anyone granted access: one memory they may view right now
+  memories_read_shared : (text, text) -> (Result_21) query;
+  memories_update : (text, MemoryUpdateData) -> (Result_21);
   migrate_capsule : () -> (PersonalCanisterCreationResponse);
   mint_http_token : (text, vec text, opt vec text, nat32) -> (text) query;
   // Bulk token minting for efficient dashboard loading

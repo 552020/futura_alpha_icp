@@ -180,6 +180,7 @@ mod tests {
             bound_to_neon: false,
             inline_bytes_used: 0,
             hosting_preferences: HostingPreferences::default(),
+            legacy: None,
         }
     }
 

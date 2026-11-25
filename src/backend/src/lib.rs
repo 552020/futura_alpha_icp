@@ -28,6 +28,7 @@ pub mod capsule_store;
 mod folder;
 mod gallery;
 mod http;
+pub mod legacy;
 pub mod memories;
 mod memory;
 mod person;
@@ -1530,4 +1531,129 @@ fn mint_http_tokens_bulk(
 }
 
 // Export the interface for the smart contract.
+// ============================================================================
+// INHERITANCE ("legacy"): trustees, death confirmation, events, shared reads
+// See legacy.rs for the rules.
+// ============================================================================
+
+fn legacy_update<F>(capsule_id: String, f: F) -> std::result::Result<legacy::LegacyStatus, Error>
+where
+    F: FnOnce(&mut Capsule, Principal, u64) -> std::result::Result<legacy::LegacyStatus, Error>,
+{
+    let caller = ic_cdk::api::msg_caller();
+    let now = ic_cdk::api::time();
+    with_capsule_store_mut(|store| {
+        // A missing capsule and a capsule the caller has no role in look the same
+        store
+            .update_with(&capsule_id, |capsule| f(capsule, caller, now))
+            .map_err(|e| match e {
+                Error::InvalidArgument(_) | Error::Conflict(_) | Error::ResourceExhausted => e,
+                Error::Unauthorized => Error::NotFound,
+                other => other,
+            })
+    })
+}
+
+/// Owner: set trustees, how many must confirm a death, and the waiting period
+#[ic_cdk::update]
+fn legacy_settings_set(
+    capsule_id: String,
+    trustees: Vec<Principal>,
+    required_confirmations: u32,
+    waiting_period_secs: u64,
+) -> std::result::Result<legacy::LegacyStatus, Error> {
+    legacy_update(capsule_id, |capsule, caller, now| {
+        legacy::settings_set(
+            capsule,
+            caller,
+            trustees,
+            required_confirmations,
+            waiting_period_secs,
+            now,
+        )
+    })
+}
+
+/// Owner, controller or trustee: the inheritance state of a capsule
+#[ic_cdk::query]
+fn legacy_status(capsule_id: String) -> std::result::Result<legacy::LegacyStatus, Error> {
+    let caller = ic_cdk::api::msg_caller();
+    let now = ic_cdk::api::time();
+    with_capsule_store(|store| {
+        let capsule = store.get(&capsule_id).ok_or(Error::NotFound)?;
+        legacy::status(&capsule, caller, now)
+    })
+}
+
+/// Trustee: confirm the owner's death (starts the waiting period once enough confirmed)
+#[ic_cdk::update]
+fn legacy_confirm_death(capsule_id: String) -> std::result::Result<legacy::LegacyStatus, Error> {
+    legacy_update(capsule_id, legacy::confirm_death)
+}
+
+/// Trustee: take the confirmation back (only before the death is in effect)
+#[ic_cdk::update]
+fn legacy_withdraw_confirmation(
+    capsule_id: String,
+) -> std::result::Result<legacy::LegacyStatus, Error> {
+    legacy_update(capsule_id, legacy::withdraw_confirmation)
+}
+
+/// Owner: "I am alive" - drops every death confirmation, at any time
+#[ic_cdk::update]
+fn legacy_cancel_death(capsule_id: String) -> std::result::Result<legacy::LegacyStatus, Error> {
+    legacy_update(capsule_id, legacy::cancel_death)
+}
+
+/// Owner: record that an event happened (wedding, graduation, custom, ...)
+#[ic_cdk::update]
+fn legacy_event_record(
+    capsule_id: String,
+    event: capsule::domain::AccessEvent,
+) -> std::result::Result<legacy::LegacyStatus, Error> {
+    legacy_update(capsule_id, |capsule, caller, now| {
+        legacy::event_record(capsule, caller, event, now)
+    })
+}
+
+/// Owner: take a recorded event back
+#[ic_cdk::update]
+fn legacy_event_revoke(
+    capsule_id: String,
+    event: capsule::domain::AccessEvent,
+) -> std::result::Result<legacy::LegacyStatus, Error> {
+    legacy_update(capsule_id, |capsule, caller, now| {
+        legacy::event_revoke(capsule, caller, event, now)
+    })
+}
+
+/// Anyone granted access: the memories of a capsule they may view right now
+#[ic_cdk::query]
+fn memories_list_shared(
+    capsule_id: String,
+    cursor: Option<String>,
+    limit: Option<u32>,
+) -> std::result::Result<crate::capsule_store::types::Page<types::MemoryHeader>, Error> {
+    let caller = ic_cdk::api::msg_caller();
+    let now = ic_cdk::api::time();
+    with_capsule_store(|store| {
+        let capsule = store.get(&capsule_id).ok_or(Error::NotFound)?;
+        legacy::list_shared(&capsule, caller, cursor, limit, now)
+    })
+}
+
+/// Anyone granted access: one memory they may view right now
+#[ic_cdk::query]
+fn memories_read_shared(
+    capsule_id: String,
+    memory_id: String,
+) -> std::result::Result<types::Memory, Error> {
+    let caller = ic_cdk::api::msg_caller();
+    let now = ic_cdk::api::time();
+    with_capsule_store(|store| {
+        let capsule = store.get(&capsule_id).ok_or(Error::NotFound)?;
+        legacy::read_shared(&capsule, caller, &memory_id, now)
+    })
+}
+
 ic_cdk::export_candid!();

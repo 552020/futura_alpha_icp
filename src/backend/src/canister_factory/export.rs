@@ -556,6 +556,7 @@ mod tests {
             bound_to_neon: false, // Default to not bound to Neon
             inline_bytes_used: 0,
             hosting_preferences: HostingPreferences::default(),
+            legacy: None,
         }
     }
 

@@ -27,6 +27,7 @@ TEST_INFO=(
     "test_memories_read.sh"
     "test_memories_update.sh"
     "test_canister_capsule.sh"
+    "test_legacy_inheritance.sh"
 )
 
 # Test paths (indexed by test number)
@@ -51,6 +52,7 @@ TEST_PATHS=(
     "shared-capsule/memories/test_memories_read.sh"
     "shared-capsule/memories/test_memories_update.sh"
     "canister-capsule/test_canister_capsule.sh"
+    "legacy/test_legacy_inheritance.sh"
 )
 
 # Test descriptions (indexed by test number)
@@ -75,6 +77,7 @@ TEST_DESCRIPTIONS=(
     "Test memory reading"
     "Test memory updating"
     "Test canister-capsule integration"
+    "Test inheritance: trustees, death confirmation, heir access"
 )
 
 # Test categories (indexed by test number)
@@ -99,6 +102,7 @@ TEST_CATEGORIES=(
     "shared-capsule"
     "shared-capsule"
     "canister-capsule"
+    "legacy"
 )
 
 # Total number of tests

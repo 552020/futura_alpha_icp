@@ -41,6 +41,7 @@ pub fn create_test_capsule() -> Capsule {
         inline_bytes_used: 0,
         has_advanced_settings: true,
         hosting_preferences: crate::types::HostingPreferences::default(),
+        legacy: None,
     }
 }
 
