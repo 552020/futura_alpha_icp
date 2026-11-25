@@ -1183,6 +1183,7 @@ async fn post_upgrade() {
 
     // Initialize HTTP secret store
     http::secret_store::post_upgrade();
+    http::secret_store::schedule_random_key();
 
     // Set skip certification for private assets
     ic_cdk::api::certified_data_set(
@@ -1422,6 +1423,7 @@ async fn init(arg: Option<personal::BackendInitArg>) {
 
     // Initialize HTTP secret store
     http::secret_store::init().await;
+    http::secret_store::schedule_random_key();
 
     // Set skip certification for private assets
     ic_cdk::api::certified_data_set(

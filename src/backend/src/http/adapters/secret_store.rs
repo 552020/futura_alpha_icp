@@ -82,37 +82,64 @@ pub fn current_key() -> [u8; 32] {
     })
 }
 
-#[allow(dead_code)]
-pub async fn rotate_secret() {
-    SECRET_CELL.with(|c| {
-        let cell = c.borrow();
-        let cell = cell.get().expect("secret cell not initialized");
-        let mut s = *cell.get();
-        s.previous = s.current;
-        // We can't await here; do an outer async helper that calls set()
-        // So: provide a separate async API to do set() after you fetch randomness
-        ic_cdk::futures::spawn_017_compat(async move {
-            let new_key = random_32().await;
-            s.current = new_key;
-            s.version = s.version.wrapping_add(1);
-            // Re-open to set (StableCell doesn't need reopening; you need mut access)
-            // Workaround: reopen inside post_upgrade/init or store a mutable handle in thread_local
-            // Simpler: expose a `set_secrets(new: Secrets)` function also using SECRET_CELL.with()
+/// From this version on the key is random
+const RANDOM_KEY_VERSION: u32 = 2;
+
+/// Is this key still a placeholder that outsiders can work out?
+/// Version 1 is the key made at install from canister id and time, both
+/// public; version 0 is the all-zero key of a canister older than this store.
+fn is_guessable(version: u32) -> bool {
+    version < RANDOM_KEY_VERSION
+}
+
+/// Replace a guessable key by a random one, right after `init` or
+/// `post_upgrade` return. Randomness comes from the network (`raw_rand`),
+/// which cannot be called during install or upgrade themselves, hence the
+/// timer. Links signed with the old key stop working; they live minutes.
+pub fn schedule_random_key() {
+    if !is_guessable(key_version()) {
+        return;
+    }
+    ic_cdk_timers::set_timer(std::time::Duration::ZERO, || {
+        ic_cdk::futures::spawn(async {
+            let random = match raw_rand().await {
+                Ok(bytes) if bytes.len() >= 32 => bytes,
+                other => {
+                    ic_cdk::println!("signing key: no randomness ({other:?}), still guessable");
+                    return;
+                }
+            };
+            let mut current = [0u8; 32];
+            current.copy_from_slice(&random[..32]);
+            SECRET_CELL.with(|c| {
+                let mut cell = c.borrow_mut();
+                let cell = cell.get_mut().expect("secret cell not initialized");
+                // Another timer may have been faster (init and a quick upgrade)
+                if is_guessable(cell.get().version) {
+                    cell.set(Secrets {
+                        current,
+                        previous: [0; 32], // never accept the guessable key again
+                        version: RANDOM_KEY_VERSION,
+                    })
+                    .expect("store signing key");
+                    ic_cdk::println!("signing key: replaced by a random one");
+                }
+            });
         });
     });
 }
 
-#[allow(dead_code)]
-async fn random_32() -> [u8; 32] {
-    let r = raw_rand().await.expect("raw_rand");
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&r[..32]);
-    out
+fn key_version() -> u32 {
+    SECRET_CELL.with(|c| {
+        let cell = c.borrow();
+        cell.get().expect("secret cell not initialized").get().version
+    })
 }
 
 fn deterministic_key() -> [u8; 32] {
-    // Generate deterministic key based on canister ID and time
-    // This is used during initialization when system calls are not allowed
+    // A placeholder from canister id and time, for the moment between
+    // install and the first timer: both are public, so `schedule_random_key`
+    // replaces it at once.
     let canister_id = ic_cdk::api::canister_self();
     let time = ic_cdk::api::time();
 
@@ -132,5 +159,18 @@ pub struct StableSecretStore;
 impl SecretStore for StableSecretStore {
     fn get_key(&self) -> [u8; 32] {
         current_key()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_keys_from_before_the_random_one_are_replaced() {
+        assert!(is_guessable(0), "the zero key of a canister older than the store");
+        assert!(is_guessable(1), "the install-time placeholder");
+        assert!(!is_guessable(RANDOM_KEY_VERSION));
+        assert!(!is_guessable(RANDOM_KEY_VERSION + 1));
     }
 }

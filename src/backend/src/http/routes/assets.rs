@@ -133,10 +133,8 @@ pub fn get(
     // 1) verify token - check header first, then query string
     let token_param = extract_token_from_request(req, url);
     let token_param = match token_param {
-        Some(t) => {
-            ic_cdk::println!("  Token found: {}", t);
-            t
-        }
+        // Not logged: whoever reads the log could use the link
+        Some(t) => t,
         None => {
             ic_cdk::println!("  ❌ No token found in headers or query params");
             return HttpError::MissingToken.to_response();
