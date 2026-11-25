@@ -88,6 +88,9 @@ pub struct PersonalCanister {
     /// A create call is running for this owner
     pub busy: bool,
     pub last_error: Option<String>,
+    /// Balance checks and top-ups (top_up.rs). Optional so that entries
+    /// saved by an older factory still load.
+    pub top_up: Option<crate::top_up::TopUpRecord>,
 }
 
 #[derive(CandidType, Serialize, Deserialize, Clone, Default)]
@@ -100,6 +103,10 @@ pub struct PersonalState {
     pub credits: Option<BTreeMap<Principal, u32>>,
     /// Creation open to every signed-in principal (local test networks only)
     pub open: Option<bool>,
+    /// Floor, target and monthly cap for top-ups; defaults when unset
+    pub top_up: Option<crate::top_up::TopUpConfig>,
+    /// When the check of all canisters last started
+    pub top_up_last_run: Option<u64>,
 }
 
 /// Init argument of the backend wasm (`personal::BackendInitArg` there)
@@ -108,7 +115,7 @@ struct BackendInitArg {
     owner: Option<Principal>,
 }
 
-fn with_personal<R>(f: impl FnOnce(&mut PersonalState) -> R) -> R {
+pub(crate) fn with_personal<R>(f: impl FnOnce(&mut PersonalState) -> R) -> R {
     STATE.with(|s| {
         let mut st = s.borrow_mut();
         f(st.personal.get_or_insert_with(PersonalState::default))
@@ -325,6 +332,7 @@ async fn create_personal_canister() -> Result<PersonalCanister, String> {
             updated_at: now,
             busy: false,
             last_error: None,
+            top_up: None,
         });
         if e.status == PersonalStatus::Ready {
             return Ok(Some(e.clone()));
@@ -466,6 +474,7 @@ mod tests {
             updated_at: 0,
             busy: false,
             last_error: None,
+            top_up: None,
         }
     }
 

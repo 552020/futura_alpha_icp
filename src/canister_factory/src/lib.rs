@@ -17,8 +17,10 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod personal;
+mod top_up;
 #[allow(unused_imports)]
 use personal::{PersonalCanister, ReleaseInfo};
+use top_up::{TopUpConfig, TopUpReport};
 
 /// ===== Configuration Constants =====
 const MAX_CHUNK_SIZE: usize = 2_000_000; // 2MB per chunk
@@ -274,6 +276,7 @@ fn init(arg: Option<InitArg>) {
     }
 
     STATE.with(|s| *s.borrow_mut() = st);
+    top_up::start_timer();
 }
 
 #[pre_upgrade]
@@ -289,6 +292,8 @@ fn post_upgrade() {
     let (st,): (State,) = ic_cdk::storage::stable_restore()
         .expect("post_upgrade: cannot read the saved state; upgrade rolled back");
     STATE.with(|s| *s.borrow_mut() = st);
+    // Timers are not kept across upgrades
+    top_up::start_timer();
 }
 
 /// ===== Upload API (chunked) =====
@@ -692,6 +697,14 @@ fn export_candid() -> String {
 
 mod tests {
     use super::*;
+
+    /// Run with `-- --ignored --nocapture` to print the interface the code
+    /// exports, for comparing with the hand-kept canister_factory.did
+    #[test]
+    #[ignore]
+    fn print_candid() {
+        println!("{}", export_candid());
+    }
 
     #[test]
     fn sha256_hex_works() {

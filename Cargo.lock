@@ -247,6 +247,7 @@ dependencies = [
  "hex",
  "ic-cdk",
  "ic-cdk-macros",
+ "ic-cdk-timers",
  "serde",
  "serde_bytes",
  "sha2",

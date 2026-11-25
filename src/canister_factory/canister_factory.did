@@ -50,6 +50,7 @@ type PersonalCanister = record {
   canister_id : opt principal;
   created_at : nat64;
   version : opt text;
+  top_up : opt TopUpRecord;
   module_sha256_hex : opt text;
 };
 type PersonalStatus = variant { Ready; Created; Installed; Pending };
@@ -61,14 +62,40 @@ type ReleaseInfo = record {
 };
 type Result = variant { Ok; Err : text };
 type Result_1 = variant { Ok : nat32; Err : text };
+type Result_10 = variant { Ok : blob; Err : text };
+type Result_11 = variant { Ok : TopUpReport; Err : text };
+type Result_12 = variant { Ok : vec TopUpReport; Err : text };
 type Result_2 = variant { Ok : text; Err : text };
 type Result_3 = variant { Ok : CreateInstallResponse; Err : text };
 type Result_4 = variant { Ok : PersonalCanister; Err : text };
 type Result_5 = variant { Ok : nat64; Err : text };
 type Result_6 = variant { Ok : UploadInfo; Err : text };
 type Result_7 = variant { Ok : vec PersonalCanister; Err : text };
-type Result_8 = variant { Ok : ReleaseInfo; Err : text };
-type Result_9 = variant { Ok : blob; Err : text };
+type Result_8 = variant { Ok : vec record { principal; nat32 }; Err : text };
+type Result_9 = variant { Ok : ReleaseInfo; Err : text };
+type TopUpConfig = record {
+  floor : nat;
+  enabled : bool;
+  target : nat;
+  monthly_cap : nat;
+};
+type TopUpRecord = record {
+  last_error : opt text;
+  month : opt nat32;
+  last_top_up_at : opt nat64;
+  last_checked_at : opt nat64;
+  month_total : opt nat;
+  monthly_cap : opt nat;
+  last_top_up_cycles : opt nat;
+  last_balance : opt nat;
+};
+type TopUpReport = record {
+  balance : opt nat;
+  owner : principal;
+  note : text;
+  sent : nat;
+  canister_id : opt principal;
+};
 type UploadCommit = record { expected_sha256_hex : text };
 type UploadInfo = record {
   committed_hash : opt blob;
@@ -77,7 +104,6 @@ type UploadInfo = record {
   total_len : nat64;
   chunks : vec blob;
 };
-type Result_10 = variant { Ok : vec record { principal; nat32 }; Err : text };
 service : (opt InitArg) -> {
   __get_candid_interface_tmp_hack : () -> (text) query;
   add_admin : (principal) -> (Result);
@@ -97,16 +123,16 @@ service : (opt InitArg) -> {
   get_upload_info : (nat64) -> (Result_6) query;
   health_check : () -> (text) query;
   my_personal_canister : () -> (opt PersonalCanister) query;
-  my_stats : () -> (CallerStats) query;
   // How many personal canisters the caller may still create.
   my_personal_credits : () -> (nat32) query;
+  my_stats : () -> (CallerStats) query;
   // Admin: every personal canister the factory created.
   personal_canisters_list : () -> (Result_7) query;
   // Admin: set how many personal canisters a principal may still create
   // (0 removes the entry).
   personal_credit_set : (principal, nat32) -> (Result);
   // Admin: all principals that hold credits.
-  personal_credits_list : () -> (Result_10) query;
+  personal_credits_list : () -> (Result_8) query;
   personal_open : () -> (bool) query;
   // Admin: open creation to every signed-in principal. For local test
   // networks; on mainnet this lets anybody spend the factory's cycles.
@@ -114,16 +140,29 @@ service : (opt InitArg) -> {
   put_chunk : (nat64, blob) -> (Result_5);
   release_info : () -> (opt ReleaseInfo) query;
   // Admin: make a committed upload the release that new personal canisters get.
-  release_set : (nat64, text) -> (Result_8);
+  release_set : (nat64, text) -> (Result_9);
   // The released wasm, for owners who upgrade their canister themselves.
   // Check it against `release_info().sha256_hex` before installing.
-  release_wasm : () -> (Result_9) query;
+  release_wasm : () -> (Result_10) query;
   remove_admin : (principal) -> (Result);
   set_allowlist : (opt vec principal) -> (Result);
   // ===== Admin endpoints =====
   set_emergency_stop : (bool) -> (Result);
   // Admin: cycles a new personal canister starts with.
   set_personal_canister_cycles : (nat) -> (Result);
+  // Admin: one owner's monthly cap; `null` goes back to the default.
+  // A cap of 0 stops top-ups for that owner.
+  top_up_cap_set : (principal, opt nat) -> (Result);
+  // Check one owner's canister now and top it up if needed.
+  // For admins, and for the owner (the monthly cap applies either way).
+  top_up_check : (principal) -> (Result_11);
+  // Admin: check every ready canister now. The daily timer does the same.
+  top_up_check_all : () -> (Result_12);
+  top_up_config : () -> (TopUpConfig) query;
+  // Admin: floor, target, default monthly cap, and whether the timer runs.
+  top_up_config_set : (TopUpConfig) -> (Result);
+  // When the check of all canisters last started (network time, ns)
+  top_up_last_run : () -> (opt nat64) query;
   // ===== Utility functions =====
   version : () -> (text) query;
 }
