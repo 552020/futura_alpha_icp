@@ -35,7 +35,7 @@ use ic_cdk::call::{Call, CallFailed, RejectCode};
 use ic_cdk::management_canister::{deposit_cycles, DepositCyclesArgs};
 use ic_cdk_macros::{query, update};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::time::Duration;
 
@@ -150,24 +150,41 @@ pub fn sent_in_month(record: &TopUpRecord, now_month: u32) -> u128 {
     }
 }
 
+/// The settings that apply to one owner
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Limits {
+    pub floor: u128,
+    pub target: u128,
+    pub monthly_cap: u128,
+}
+
+impl Limits {
+    /// The factory's settings, with the owner's own cap if they have one
+    fn of(cfg: &TopUpConfig, record: &TopUpRecord) -> Self {
+        Self {
+            floor: cfg.floor,
+            target: cfg.target,
+            monthly_cap: record.monthly_cap.unwrap_or(cfg.monthly_cap),
+        }
+    }
+}
+
 /// How much to send a canister that can still spend `balance`.
 /// `factory_spare` is what the factory holds above its own minimum.
 pub fn decide(
     balance: u128,
-    floor: u128,
-    target: u128,
-    monthly_cap: u128,
+    limits: Limits,
     sent_this_month: u128,
     factory_spare: u128,
 ) -> Decision {
-    if balance >= floor {
+    if balance >= limits.floor {
         return Decision::Enough;
     }
-    let wanted = target.saturating_sub(balance);
+    let wanted = limits.target.saturating_sub(balance);
     if wanted < MIN_DEPOSIT {
         return Decision::Enough;
     }
-    let cap_left = monthly_cap.saturating_sub(sent_this_month);
+    let cap_left = limits.monthly_cap.saturating_sub(sent_this_month);
     if cap_left < MIN_DEPOSIT {
         return Decision::CapReached;
     }
@@ -211,7 +228,7 @@ fn config_of(p: &PersonalState) -> TopUpConfig {
 
 thread_local! {
     static IN_FLIGHT: RefCell<BTreeSet<Principal>> = const { RefCell::new(BTreeSet::new()) };
-    static ALL_RUNNING: RefCell<bool> = const { RefCell::new(false) };
+    static ALL_RUNNING: Cell<bool> = const { Cell::new(false) };
 }
 
 /// One check per owner at a time, so that two calls cannot both send.
@@ -236,21 +253,14 @@ struct AllLock;
 
 impl AllLock {
     fn take() -> Option<Self> {
-        ALL_RUNNING.with(|r| {
-            let mut r = r.borrow_mut();
-            if *r {
-                None
-            } else {
-                *r = true;
-                Some(AllLock)
-            }
-        })
+        // replace returns the old value: free if it was false
+        ALL_RUNNING.with(|r| (!r.replace(true)).then_some(AllLock))
     }
 }
 
 impl Drop for AllLock {
     fn drop(&mut self) {
-        ALL_RUNNING.with(|r| *r.borrow_mut() = false);
+        ALL_RUNNING.with(|r| r.set(false));
     }
 }
 
@@ -269,6 +279,33 @@ fn factory_spare() -> u128 {
     ic_cdk::api::canister_cycle_balance().saturating_sub(min)
 }
 
+/// Note a failed check in the registry and hand the message back
+fn failed(owner: Principal, msg: String) -> String {
+    let now = ic_cdk::api::time();
+    record_update(owner, |r| {
+        r.last_checked_at = Some(now);
+        r.last_error = Some(msg.clone());
+    });
+    msg
+}
+
+/// What a canister answered when asked for its cycles
+enum Reading {
+    /// The cycles it can still spend
+    Liquid(u128),
+    /// Nothing: the network rejected the call because the canister is frozen
+    Frozen,
+}
+
+impl Reading {
+    fn balance(&self) -> u128 {
+        match self {
+            Reading::Liquid(b) => *b,
+            Reading::Frozen => 0,
+        }
+    }
+}
+
 /// Did the network reject the call because the canister is frozen?
 fn is_frozen_reject(e: &CallFailed) -> bool {
     match e {
@@ -277,117 +314,116 @@ fn is_frozen_reject(e: &CallFailed) -> bool {
     }
 }
 
+/// Ask a canister for its liquid cycles. Bounded wait: its code is the
+/// owner's, not ours. A frozen canister counts as such only if it
+/// `reported_before`, so that one which never ran our code gets nothing.
+async fn read_balance(canister_id: Principal, reported_before: bool) -> Result<Reading, String> {
+    let asked = Call::bounded_wait(canister_id, "cycles_liquid_balance")
+        .change_timeout(BALANCE_TIMEOUT_SECS)
+        .await;
+    match asked {
+        Ok(reply) => reply
+            .candid::<u128>()
+            .map(Reading::Liquid)
+            .map_err(|e| format!("balance reply not understood: {e:?}")),
+        Err(e) if is_frozen_reject(&e) && reported_before => Ok(Reading::Frozen),
+        Err(e) => Err(format!("balance call failed: {e:?}")),
+    }
+}
+
+/// Store the balance and decide. A top-up is booked here, before the
+/// deposit, so that a second check running meanwhile sees it.
+fn decide_and_book(owner: Principal, balance: u128, month: u32) -> Result<Decision, String> {
+    let now = ic_cdk::api::time();
+    // Read before with_personal: both borrow the factory state
+    let spare = factory_spare();
+    with_personal(|p| {
+        let cfg = config_of(p);
+        let e = p.canisters.get_mut(&owner).ok_or("entry vanished")?;
+        let r = e.top_up.get_or_insert_with(TopUpRecord::default);
+        r.last_balance = Some(balance);
+        r.last_checked_at = Some(now);
+        let decision = decide(balance, Limits::of(&cfg, r), sent_in_month(r, month), spare);
+        r.last_error = match decision {
+            Decision::Enough | Decision::Send(_) => None,
+            Decision::CapReached => Some("monthly cap reached".into()),
+            Decision::FactoryLow => Some("factory low on cycles".into()),
+        };
+        if let Decision::Send(cycles) = decision {
+            book(r, cycles, month);
+        }
+        Ok(decision)
+    })
+}
+
+/// Send the booked cycles. No rights needed; works on a frozen canister too.
+async fn deposit(
+    owner: Principal,
+    canister_id: Principal,
+    cycles: u128,
+    month: u32,
+) -> Result<(), String> {
+    match deposit_cycles(&DepositCyclesArgs { canister_id }, cycles).await {
+        Ok(()) => {
+            let now = ic_cdk::api::time();
+            record_update(owner, |r| {
+                r.last_top_up_cycles = Some(cycles);
+                r.last_top_up_at = Some(now);
+            });
+            Ok(())
+        }
+        Err(e) => {
+            record_update(owner, |r| unbook(r, cycles, month));
+            Err(failed(owner, format!("deposit_cycles failed: {e:?}")))
+        }
+    }
+}
+
+/// Check one owner's canister: ask, decide, deposit.
 async fn check_owner(owner: Principal) -> Result<TopUpReport, String> {
-    let (canister_id, cfg, record) = with_personal(|p| {
+    let (canister_id, reported_before) = with_personal(|p| {
         let e = p.canisters.get(&owner).ok_or("no personal canister")?;
         if e.status != PersonalStatus::Ready {
             return Err(format!("canister is not ready ({:?})", e.status));
         }
         let id = e.canister_id.ok_or("canister has no id")?;
-        Ok((id, config_of(p), e.top_up.clone().unwrap_or_default()))
+        let reported = e.top_up.as_ref().is_some_and(|r| r.last_balance.is_some());
+        Ok((id, reported))
     })?;
     let _lock = OwnerLock::take(owner).ok_or("a check for this owner is running")?;
-    let report = |balance, sent, note: &str| TopUpReport {
+
+    let reading = read_balance(canister_id, reported_before)
+        .await
+        .map_err(|e| failed(owner, e))?;
+    let balance = reading.balance();
+    let month = month_of(ic_cdk::api::time());
+
+    let (sent, note) = match decide_and_book(owner, balance, month)? {
+        Decision::Enough => (0, "enough"),
+        Decision::CapReached => (0, "needs cycles, monthly cap reached"),
+        Decision::FactoryLow => (0, "needs cycles, factory low on cycles"),
+        Decision::Send(cycles) => {
+            deposit(owner, canister_id, cycles, month).await?;
+            match reading {
+                Reading::Frozen => (cycles, "was frozen, topped up"),
+                Reading::Liquid(_) => (cycles, "topped up"),
+            }
+        }
+    };
+    Ok(TopUpReport {
         owner,
         canister_id: Some(canister_id),
-        balance,
+        balance: Some(balance),
         sent,
         note: note.to_string(),
-    };
-
-    // 1) ask the canister. Bounded wait: its code is the owner's, not ours.
-    let asked = Call::bounded_wait(canister_id, "cycles_liquid_balance")
-        .change_timeout(BALANCE_TIMEOUT_SECS)
-        .await;
-    let now = ic_cdk::api::time();
-    let (balance, frozen) = match asked {
-        Ok(res) => match res.candid::<u128>() {
-            Ok(b) => (b, false),
-            Err(e) => {
-                let msg = format!("balance reply not understood: {e:?}");
-                record_update(owner, |r| {
-                    r.last_checked_at = Some(now);
-                    r.last_error = Some(msg.clone());
-                });
-                return Err(msg);
-            }
-        },
-        // Frozen: rescue it, but only a canister that reported before, so
-        // that one which never ran our code gets nothing
-        Err(e) if is_frozen_reject(&e) && record.last_balance.is_some() => (0, true),
-        Err(e) => {
-            let msg = format!("balance call failed: {e:?}");
-            record_update(owner, |r| {
-                r.last_checked_at = Some(now);
-                r.last_error = Some(msg.clone());
-            });
-            return Err(msg);
-        }
-    };
-
-    // 2) decide and book before the deposit, so a second call sees it
-    let month = month_of(now);
-    let cap = record.monthly_cap.unwrap_or(cfg.monthly_cap);
-    // Read before with_personal: both borrow the factory state
-    let spare = factory_spare();
-    let decision = with_personal(|p| {
-        let e = p.canisters.get_mut(&owner).ok_or("entry vanished")?;
-        let r = e.top_up.get_or_insert_with(TopUpRecord::default);
-        r.last_balance = Some(balance);
-        r.last_checked_at = Some(now);
-        r.last_error = None;
-        let d = decide(
-            balance,
-            cfg.floor,
-            cfg.target,
-            cap,
-            sent_in_month(r, month),
-            spare,
-        );
-        if let Decision::Send(cycles) = d {
-            book(r, cycles, month);
-        }
-        Ok::<Decision, String>(d)
-    })?;
-
-    let cycles = match decision {
-        Decision::Enough => return Ok(report(Some(balance), 0, "enough")),
-        Decision::CapReached => {
-            record_update(owner, |r| r.last_error = Some("monthly cap reached".into()));
-            return Ok(report(Some(balance), 0, "needs cycles, monthly cap reached"));
-        }
-        Decision::FactoryLow => {
-            record_update(owner, |r| r.last_error = Some("factory low on cycles".into()));
-            return Ok(report(Some(balance), 0, "needs cycles, factory low on cycles"));
-        }
-        Decision::Send(cycles) => cycles,
-    };
-
-    // 3) deposit. No rights needed; works on a frozen canister too.
-    match deposit_cycles(&DepositCyclesArgs { canister_id }, cycles).await {
-        Ok(()) => {
-            let at = ic_cdk::api::time();
-            record_update(owner, |r| {
-                r.last_top_up_cycles = Some(cycles);
-                r.last_top_up_at = Some(at);
-            });
-            let note = if frozen { "was frozen, topped up" } else { "topped up" };
-            Ok(report(Some(balance), cycles, note))
-        }
-        Err(e) => {
-            let msg = format!("deposit_cycles failed: {e:?}");
-            record_update(owner, |r| {
-                unbook(r, cycles, month);
-                r.last_error = Some(msg.clone());
-            });
-            Err(msg)
-        }
-    }
+    })
 }
 
 async fn check_all() -> Result<Vec<TopUpReport>, String> {
     let _lock = AllLock::take().ok_or("a check of all canisters is running")?;
     let owners: Vec<(Principal, Option<Principal>)> = with_personal(|p| {
+        // Noted at the start: a run that fails half-way is not repeated
+        // every hour
         p.top_up_last_run = Some(ic_cdk::api::time());
         p.canisters
             .values()
@@ -495,8 +531,21 @@ mod tests {
     const DAY_NS: u64 = 86_400 * 1_000_000_000;
     const SPARE: u128 = 100 * T;
 
+    /// Floor 1T, target 2T, monthly cap 3T
+    const LIMITS: Limits = Limits {
+        floor: T,
+        target: 2 * T,
+        monthly_cap: 3 * T,
+    };
+
+    /// With a factory that has plenty to spare
     fn d(balance: u128, sent: u128) -> Decision {
-        decide(balance, T, 2 * T, 3 * T, sent, SPARE)
+        decide(balance, LIMITS, sent, SPARE)
+    }
+
+    /// With a factory that has `spare` above its minimum, nothing sent yet
+    fn with_spare(balance: u128, spare: u128) -> Decision {
+        decide(balance, LIMITS, 0, spare)
     }
 
     #[test]
@@ -522,21 +571,25 @@ mod tests {
         assert_eq!(d(0, 3 * T - MIN_DEPOSIT + 1), Decision::CapReached);
         assert_eq!(d(0, 3 * T - MIN_DEPOSIT), Decision::Send(MIN_DEPOSIT));
         // cap 0 switches an owner off
-        assert_eq!(decide(0, T, 2 * T, 0, 0, SPARE), Decision::CapReached);
+        let off = Limits {
+            monthly_cap: 0,
+            ..LIMITS
+        };
+        assert_eq!(decide(0, off, 0, SPARE), Decision::CapReached);
     }
 
     #[test]
     fn the_factory_keeps_its_own_minimum() {
-        assert_eq!(decide(0, T, 2 * T, 3 * T, 0, 0), Decision::FactoryLow);
-        assert_eq!(decide(0, T, 2 * T, 3 * T, 0, MIN_DEPOSIT - 1), Decision::FactoryLow);
-        assert_eq!(decide(0, T, 2 * T, 3 * T, 0, T / 2), Decision::Send(T / 2));
+        assert_eq!(with_spare(0, 0), Decision::FactoryLow);
+        assert_eq!(with_spare(0, MIN_DEPOSIT - 1), Decision::FactoryLow);
+        assert_eq!(with_spare(0, T / 2), Decision::Send(T / 2));
         // a full canister is not a factory problem
-        assert_eq!(decide(T, T, 2 * T, 3 * T, 0, 0), Decision::Enough);
+        assert_eq!(with_spare(T, 0), Decision::Enough);
     }
 
     #[test]
     fn the_cap_is_checked_before_the_factory() {
-        assert_eq!(decide(0, T, 2 * T, 3 * T, 3 * T, 0), Decision::CapReached);
+        assert_eq!(decide(0, LIMITS, 3 * T, 0), Decision::CapReached);
     }
 
     #[test]
@@ -599,6 +652,18 @@ mod tests {
         assert!(due(true, Some(now - DAY_NS), now));
         assert!(!due(false, None, now), "switched off");
         assert!(!due(true, Some(now + 5), now), "clock behind the last run");
+    }
+
+    #[test]
+    fn an_owners_own_cap_replaces_the_default() {
+        let cfg = TopUpConfig::default();
+        let mut r = TopUpRecord::default();
+        assert_eq!(Limits::of(&cfg, &r).monthly_cap, DEFAULT_MONTHLY_CAP);
+        r.monthly_cap = Some(7 * T);
+        let l = Limits::of(&cfg, &r);
+        assert_eq!((l.floor, l.target, l.monthly_cap), (cfg.floor, cfg.target, 7 * T));
+        r.monthly_cap = Some(0);
+        assert_eq!(Limits::of(&cfg, &r).monthly_cap, 0, "0 is a cap, not 'unset'");
     }
 
     #[test]

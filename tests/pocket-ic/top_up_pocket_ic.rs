@@ -168,6 +168,37 @@ impl World {
         self.query(self.pc, self.owner, "cycles_liquid_balance").unwrap()
     }
 
+    /// Release the backend wasm (gzipped, in chunks), as
+    /// scripts/factory-release.sh does
+    fn release_backend(&self) {
+        let (factory, admin) = (self.factory, self.admin);
+        let gz = gzip(&wasm("backend"));
+        let upload: Res<u64> = self.update(factory, admin, "create_upload", ()).unwrap();
+        let upload = upload.unwrap();
+        for chunk in gz.chunks(900_000) {
+            let r: Res<u64> = self
+                .update(factory, admin, "put_chunk", (upload, chunk.to_vec()))
+                .unwrap();
+            r.unwrap();
+        }
+        let commit = UploadCommit {
+            expected_sha256_hex: hex::encode(Sha256::digest(&gz)),
+        };
+        let r: Res<String> = self
+            .update(factory, admin, "commit_upload", (upload, commit))
+            .unwrap();
+        r.unwrap();
+        // The reply (release info) is not needed here
+        self.pic
+            .update_call(
+                factory,
+                admin,
+                "release_set",
+                encode_args((upload, "test".to_string())).unwrap(),
+            )
+            .expect("release_set");
+    }
+
     /// Let time pass and the timers run
     fn pass(&self, d: Duration) {
         self.pic.advance_time(d);
@@ -177,7 +208,25 @@ impl World {
     }
 }
 
+/// Init argument of the factory
+#[derive(CandidType)]
+struct FactoryInitArg {
+    max_canisters_per_caller: Option<u32>,
+    min_factory_cycles: Option<u128>,
+    allowlist: Option<Vec<Principal>>,
+    admins: Option<Vec<Principal>>,
+    max_upload_size: Option<u64>,
+    upload_ttl_seconds: Option<u64>,
+}
+
+/// A factory with a released backend and one owner's personal canister
 fn setup() -> World {
+    setup_with(200 * T, None)
+}
+
+/// The same, for a factory that holds `factory_cycles` and must keep
+/// `min_factory_cycles` (none: its default)
+fn setup_with(factory_cycles: u128, min_factory_cycles: Option<u128>) -> World {
     let pic = PocketIc::new();
     let admin = Principal::from_slice(&[1; 29]);
     let owner = Principal::from_slice(&[2; 29]);
@@ -185,11 +234,19 @@ fn setup() -> World {
 
     // The factory: installed by the admin, who thereby becomes its admin
     let factory = pic.create_canister_with_settings(Some(admin), None);
-    pic.add_cycles(factory, 200 * T);
+    pic.add_cycles(factory, factory_cycles);
+    let init = FactoryInitArg {
+        max_canisters_per_caller: None,
+        min_factory_cycles,
+        allowlist: None,
+        admins: None,
+        max_upload_size: None,
+        upload_ttl_seconds: None,
+    };
     pic.install_canister(
         factory,
         wasm("canister_factory"),
-        encode_one(None::<()>).unwrap(),
+        encode_one(Some(init)).unwrap(),
         Some(admin),
     );
 
@@ -201,35 +258,9 @@ fn setup() -> World {
         stranger,
         pc: Principal::anonymous(),
     };
-    // Keep the timer quiet until the test asks for it
+    // Keep the timer quiet until a test asks for it
     w.set_config(false, T, 2 * T, 3 * T);
-
-    // Release the backend wasm (gzipped, in chunks) as scripts/factory-release.sh does
-    let gz = gzip(&wasm("backend"));
-    let sha = hex::encode(Sha256::digest(&gz));
-    let upload: Res<u64> = w.update(factory, admin, "create_upload", ()).unwrap();
-    let upload = upload.unwrap();
-    for chunk in gz.chunks(900_000) {
-        let r: Res<u64> = w
-            .update(factory, admin, "put_chunk", (upload, chunk.to_vec()))
-            .unwrap();
-        r.unwrap();
-    }
-    let commit = UploadCommit {
-        expected_sha256_hex: sha,
-    };
-    let r: Res<String> = w
-        .update(factory, admin, "commit_upload", (upload, commit))
-        .unwrap();
-    r.unwrap();
-    w.pic
-        .update_call(
-            factory,
-            admin,
-            "release_set",
-            encode_args((upload, "test".to_string())).unwrap(),
-        )
-        .expect("release_set");
+    w.release_backend();
 
     // One credit, one personal canister
     let r: Res<()> = w
@@ -473,90 +504,27 @@ fn top_up_end_to_end() {
 
 #[test]
 fn the_factory_keeps_its_own_minimum() {
-    let w = setup();
-    #[derive(CandidType)]
-    struct InitArg {
-        max_canisters_per_caller: Option<u32>,
-        min_factory_cycles: Option<u128>,
-        allowlist: Option<Vec<Principal>>,
-        admins: Option<Vec<Principal>>,
-        max_upload_size: Option<u64>,
-        upload_ttl_seconds: Option<u64>,
-    }
-    // The minimum is an init setting, so use a second factory with 20T and a
-    // minimum of 17T.
-    let low = w.pic.create_canister_with_settings(Some(w.admin), None);
-    w.pic.add_cycles(low, 20 * T);
-    w.pic.install_canister(
-        low,
-        wasm("canister_factory"),
-        encode_one(Some(InitArg {
-            max_canisters_per_caller: None,
-            // creating needs the balance above the minimum; top-ups keep it
-            min_factory_cycles: Some(17 * T),
-            allowlist: None,
-            admins: None,
-            max_upload_size: None,
-            upload_ttl_seconds: None,
-        }))
-        .unwrap(),
-        Some(w.admin),
-    );
-    let low_w = World {
-        factory: low,
-        pc: Principal::anonymous(),
-        pic: w.pic,
-        ..w
-    };
-    low_w.set_config(false, T, 2 * T, 3 * T);
-    let gz = gzip(&wasm("backend"));
-    let upload: Res<u64> = low_w.update(low, low_w.admin, "create_upload", ()).unwrap();
-    let upload = upload.unwrap();
-    for chunk in gz.chunks(900_000) {
-        let r: Res<u64> = low_w
-            .update(low, low_w.admin, "put_chunk", (upload, chunk.to_vec()))
-            .unwrap();
-        r.unwrap();
-    }
-    let commit = UploadCommit {
-        expected_sha256_hex: hex::encode(Sha256::digest(&gz)),
-    };
-    let r: Res<String> = low_w
-        .update(low, low_w.admin, "commit_upload", (upload, commit))
-        .unwrap();
-    r.unwrap();
-    low_w
-        .pic
-        .update_call(
-            low,
-            low_w.admin,
-            "release_set",
-            encode_args((upload, "test".to_string())).unwrap(),
-        )
-        .expect("release_set");
-    let r: Res<()> = low_w
-        .update(low, low_w.admin, "personal_credit_set", (low_w.owner, 1u32))
-        .unwrap();
-    r.unwrap();
-    let created: Res<PersonalCanister> = low_w
-        .update(low, low_w.owner, "create_personal_canister", ())
-        .unwrap();
-    let pc = created.expect("create").canister_id.unwrap();
-    let low_w = World { pc, ..low_w };
-
-    // About 18T left, minimum 17T: about 1T to spare, 5T wanted
-    let liquid = low_w.liquid();
-    low_w.set_config(false, liquid + 4 * T, liquid + 5 * T, 1_000 * T);
-    let spare = low_w.pic.cycle_balance(low) - 17 * T;
+    // 20T, of which 17T must stay. Creating the canister costs 2T: about 1T
+    // is left to spare.
+    const MINIMUM: u128 = 17 * T;
+    let w = setup_with(20 * T, Some(MINIMUM));
+    let spare = w.pic.cycle_balance(w.factory) - MINIMUM;
     assert!(spare < 2 * T, "spare {spare}");
-    let rep = low_w.check_ok();
+
+    // The canister wants 5T
+    let liquid = w.liquid();
+    w.set_config(false, liquid + 4 * T, liquid + 5 * T, 1_000 * T);
+    let rep = w.check_ok();
     assert!(rep.sent > 0 && rep.sent <= spare, "sent {} of spare {spare}", rep.sent);
+    // It ends at its minimum: a little above (it sent slightly less than
+    // its spare) or a hair below (what the calls themselves cost)
+    let left = w.pic.cycle_balance(w.factory);
     assert!(
-        low_w.pic.cycle_balance(low) >= 17 * T - T / 100,
-        "the factory stays at its minimum (apart from call fees): {}",
-        low_w.pic.cycle_balance(low)
+        left > MINIMUM - T / 100 && left < MINIMUM + T / 10,
+        "the factory stays at its minimum: {left}"
     );
-    let rep = low_w.check_ok();
+
+    let rep = w.check_ok();
     assert_eq!(rep.sent, 0);
     assert!(rep.note.contains("factory low on cycles"), "{}", rep.note);
     println!("ok: the factory sends only what it holds above its minimum");

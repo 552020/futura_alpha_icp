@@ -65,23 +65,13 @@ pub fn init(arg: Option<BackendInitArg>, installer: Principal) {
 }
 
 fn set_factory(factory: Option<Principal>) {
-    let bytes = factory.map(|p| p.as_slice().to_vec()).unwrap_or_default();
-    FACTORY.with(|c| {
-        c.borrow_mut().set(bytes).expect("store personal factory");
-    });
+    store(&FACTORY, factory);
 }
 
-/// The factory that installed this personal canister
+/// The factory that installed this personal canister, or the one its owner
+/// named
 pub fn factory() -> Option<Principal> {
-    FACTORY.with(|c| {
-        let cell = c.borrow();
-        let bytes = cell.get();
-        if bytes.is_empty() {
-            None
-        } else {
-            Some(Principal::from_slice(bytes))
-        }
-    })
+    load(&FACTORY)
 }
 
 /// Owner only: name the factory that may read this canister's cycles, or
@@ -111,23 +101,30 @@ pub fn may_read_cycles(caller: &Principal, is_controller: bool) -> bool {
     }
 }
 
-fn set_owner(owner: Option<Principal>) {
-    let bytes = owner.map(|p| p.as_slice().to_vec()).unwrap_or_default();
-    OWNER.with(|c| {
-        c.borrow_mut().set(bytes).expect("store personal owner");
+/// A principal in stable memory; no bytes means none
+type PrincipalCell = std::thread::LocalKey<RefCell<StableCell<Vec<u8>, Mem>>>;
+
+fn store(cell: &'static PrincipalCell, principal: Option<Principal>) {
+    let bytes = principal.map(|p| p.as_slice().to_vec()).unwrap_or_default();
+    cell.with(|c| {
+        c.borrow_mut().set(bytes).expect("store principal");
     });
 }
 
-pub fn owner() -> Option<Principal> {
-    OWNER.with(|c| {
+fn load(cell: &'static PrincipalCell) -> Option<Principal> {
+    cell.with(|c| {
         let cell = c.borrow();
         let bytes = cell.get();
-        if bytes.is_empty() {
-            None
-        } else {
-            Some(Principal::from_slice(bytes))
-        }
+        (!bytes.is_empty()).then(|| Principal::from_slice(bytes))
     })
+}
+
+fn set_owner(owner: Option<Principal>) {
+    store(&OWNER, owner);
+}
+
+pub fn owner() -> Option<Principal> {
+    load(&OWNER)
 }
 
 pub fn mode() -> CanisterMode {
